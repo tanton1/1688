@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/post-build.js"
+    "build": "node scripts/build.js"
   },
   "dependencies": {
     "@hub1688/shared-types": "*",

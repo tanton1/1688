@@ -53,12 +53,61 @@ export function injectSourceOverlay(
     `;
   }
 
-  document.body.appendChild(container);
+  if (document.body) {
+    document.body.appendChild(container);
+  } else {
+    window.addEventListener("DOMContentLoaded", () => document.body.appendChild(container));
+  }
 
   const btn = document.getElementById("hub1688-open-panel-btn");
   if (btn) {
     btn.addEventListener("click", () => {
+      // 1. Gửi message cho background mở native sidePanel (nếu Chrome cho phép)
       chrome.runtime.sendMessage({ action: "OPEN_SIDE_PANEL", offerId });
+
+      // 2. Mở Slide Drawer iframe nhúng trực tiếp ngay trên trang 1688 để đảm bảo 100% người dùng luôn thấy panel!
+      toggleInPageSidePanel();
     });
   }
+}
+
+/**
+ * Tạo và bật/tắt Drawer nhúng trực tiếp ngay trên trang 1688
+ */
+function toggleInPageSidePanel() {
+  const existingDrawer = document.getElementById("hub1688-inpage-drawer");
+  if (existingDrawer) {
+    existingDrawer.remove();
+    return;
+  }
+
+  const drawer = document.createElement("div");
+  drawer.id = "hub1688-inpage-drawer";
+  drawer.style.position = "fixed";
+  drawer.style.top = "0";
+  drawer.style.right = "0";
+  drawer.style.width = "420px";
+  drawer.style.height = "100vh";
+  drawer.style.backgroundColor = "#ffffff";
+  drawer.style.boxShadow = "-5px 0 25px rgba(0,0,0,0.2)";
+  drawer.style.zIndex = "9999999";
+  drawer.style.display = "flex";
+  drawer.style.flexDirection = "column";
+  drawer.style.animation = "hub1688-slide-in 0.25s ease-out";
+
+  const sidepanelUrl = chrome.runtime.getURL("src/sidepanel/index.html");
+
+  drawer.innerHTML = `
+    <div style="background: #ea580c; color: white; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; font-family: system-ui, sans-serif; font-size: 13px; font-weight: bold;">
+      <span>1688 SYNC HUB (SIDE PANEL)</span>
+      <button id="hub1688-close-drawer" style="background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; line-height: 1; padding: 2px 6px;">✕</button>
+    </div>
+    <iframe src="${sidepanelUrl}" style="flex: 1; border: none; width: 100%; height: 100%;"></iframe>
+  `;
+
+  document.body.appendChild(drawer);
+
+  document.getElementById("hub1688-close-drawer")?.addEventListener("click", () => {
+    drawer.remove();
+  });
 }

@@ -1,4 +1,4 @@
-export const DEFAULT_API_URL = "http://localhost:3001";
+export const DEFAULT_API_URL = "https://1688-phi.vercel.app";
 
 /**
  * Lấy URL của Backend Server (Ưu tiên lấy từ chrome.storage nếu người dùng cấu hình Vercel)

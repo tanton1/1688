@@ -1,9 +1,14 @@
 {
   "version": 2,
   "buildCommand": "npm run build:vercel",
+  "outputDirectory": "public",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/health",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api/v1/(.*)",
       "destination": "/api/index.js"
     }
   ],

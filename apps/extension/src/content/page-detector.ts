@@ -9,26 +9,31 @@ export function detect1688Page(url: string = window.location.href): {
     const parsed = new URL(url);
     const pathname = parsed.pathname;
     const hostname = parsed.hostname;
+    const searchParams = parsed.searchParams;
 
     // 1. Kiểm tra trang Chi tiết sản phẩm (Detail page)
-    // Ví dụ: https://detail.1688.com/offer/83647282933.html
-    if (hostname.includes("detail.1688.com") && pathname.includes("/offer/")) {
-      const match = pathname.match(/\/offer\/(\d+)\.html/);
+    // Hỗ trợ: detail.1688.com/offer/123.html, m.1688.com/offer/123, url có offerId=123
+    const offerMatch = pathname.match(/\/offer\/(\d+)/) || 
+                       searchParams.get("offerId") || 
+                       searchParams.get("itemId") ||
+                       searchParams.get("offer_id");
+
+    if (offerMatch) {
+      const offerId = typeof offerMatch === "string" ? offerMatch : offerMatch[1];
       return {
         pageType: "DETAIL",
-        offerId: match ? match[1] : undefined
+        offerId
       };
     }
 
     // 2. Kiểm tra trang Kết quả tìm kiếm (Search results)
-    // Ví dụ: https://s.1688.com/youyuan/index.htm hoặc https://s.1688.com/selloffer/offer_search.htm
-    if (hostname.includes("s.1688.com")) {
+    // Ví dụ: s.1688.com, search.1688.com
+    if (hostname.includes("s.1688.com") || pathname.includes("/selloffer/") || pathname.includes("/youyuan/")) {
       return { pageType: "SEARCH" };
     }
 
     // 3. Kiểm tra trang Gian hàng / Shop catalog
-    // Ví dụ: https://shop123.1688.com/page/offerlist.htm
-    if (pathname.includes("/page/offerlist.htm") || pathname.includes("/page/index.htm")) {
+    if (pathname.includes("/page/offerlist") || pathname.includes("/page/index") || hostname.match(/shop\d+\.1688\.com/)) {
       const shopIdMatch = hostname.match(/([a-zA-Z0-9_-]+)\.1688\.com/);
       return {
         pageType: "SHOP",

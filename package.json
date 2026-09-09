@@ -14,8 +14,8 @@
     "test": "node --test packages/shared-utils/test/pipeline.test.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
-    "rimraf": "^5.0.7"
+    "rimraf": "^5.0.7",
+    "typescript": "^5.4.5"
   },
   "keywords": [
     "1688",
@@ -26,5 +26,8 @@
     "sku-matrix"
   ],
   "author": "Antigravity Engineering",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
 }
