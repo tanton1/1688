@@ -10,6 +10,10 @@
     {
       "source": "/api/v1/(.*)",
       "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api|health|assets).*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [

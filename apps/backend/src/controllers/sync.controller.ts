@@ -2,9 +2,10 @@ import { Request, Response } from "express";
 import { Raw1688Product, ProductDiffSummary } from "@hub1688/shared-types";
 import { inMemoryProducts } from "./import.controller.js";
 import { DiffSyncService } from "../services/diff-sync.service.js";
+import { SEED_DIFF_LOGS } from "../services/seed-data.js";
 
 const diffSyncService = new DiffSyncService();
-const inMemoryDiffLogs: ProductDiffSummary[] = [];
+const inMemoryDiffLogs: ProductDiffSummary[] = [...SEED_DIFF_LOGS.map(l => ({ ...l }))];
 
 export class SyncController {
   /**

@@ -12,8 +12,12 @@ import { PricingEngineService } from "../services/pricing.service.js";
 import { SkuMappingService } from "../services/sku-mapping.service.js";
 import { supabaseService } from "../services/supabase.service.js";
 
+import { SEED_PRODUCTS } from "../services/seed-data.js";
+
 // Bộ nhớ in-memory giả lập Database Repository khi chưa kết nối Postgres thực tế
-export const inMemoryProducts = new Map<string, WebProduct>();
+export const inMemoryProducts = new Map<string, WebProduct>(
+  SEED_PRODUCTS.map(p => [p.id!, { ...p }])
+);
 export const inMemoryJobs = new Map<string, ImportJobStatus>();
 
 const translationService = new TranslationEngineService();

@@ -13,6 +13,9 @@ const productsCtrl = new ProductsController();
 const pricingCtrl = new PricingController();
 const glossaryCtrl = new GlossaryController();
 
+// 0. Dashboard Stats
+apiRouter.get("/dashboard/stats", (req, res) => productsCtrl.getDashboardStats(req, res));
+
 // 1. Ingestion & Duplicate Check
 apiRouter.post("/sync/check-existing", (req, res) => importCtrl.checkExisting(req, res));
 apiRouter.post("/import/single", (req, res) => importCtrl.importSingle(req, res));
@@ -27,8 +30,12 @@ apiRouter.post("/sync/resolve-diff", (req, res) => syncCtrl.resolveDiff(req, res
 // 3. Web Products Management
 apiRouter.get("/products", (req, res) => productsCtrl.listProducts(req, res));
 apiRouter.get("/products/:id", (req, res) => productsCtrl.getProductById(req, res));
+apiRouter.put("/products/:id", (req, res) => productsCtrl.updateProduct(req, res));
 apiRouter.patch("/products/:id/locks", (req, res) => productsCtrl.updateFieldLocks(req, res));
 apiRouter.post("/products/:id/publish", (req, res) => productsCtrl.publishProduct(req, res));
+apiRouter.delete("/products/:id", (req, res) => productsCtrl.deleteProduct(req, res));
+apiRouter.post("/products/bulk-publish", (req, res) => productsCtrl.bulkPublish(req, res));
+apiRouter.post("/products/bulk-delete", (req, res) => productsCtrl.bulkDelete(req, res));
 
 // 4. Pricing Rules & Calculator
 apiRouter.get("/pricing/rules", (req, res) => pricingCtrl.getRules(req, res));
