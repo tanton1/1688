@@ -1,0 +1,203 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. NHÀ CUNG CẤP / SHOP 1688
+model Supplier {
+  id              String          @id @default(cuid())
+  sourcePlatform  String          @default("1688")
+  shopId          String
+  shopName        String
+  companyName     String?
+  shopUrl         String
+  ratingScore     Float?          @default(0)
+  reliabilityTier String?         @default("STANDARD")
+  sourceProducts  SourceProduct[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([sourcePlatform, shopId])
+}
+
+// 2. DỮ LIỆU SẢN PHẨM NGUỒN 1688 (SOURCE PRODUCT)
+model SourceProduct {
+  id                String                 @id @default(cuid())
+  sourcePlatform    String                 @default("1688")
+  sourceProductId   String
+  sourceUrl         String
+  titleCN           String
+  categoryPath      String?
+  moq               Int                    @default(1)
+  minPriceCNY       Decimal                @db.Decimal(10, 2)
+  maxPriceCNY       Decimal                @db.Decimal(10, 2)
+  rawMediaJson      Json
+  rawAttributesJson Json
+  rawDescriptionHtml String?               @db.Text
+  supplierId        String
+  supplier          Supplier               @relation(fields: [supplierId], references: [id])
+  sourceVariants    SourceVariant[]
+  priceSnapshots    ProductPriceSnapshot[]
+  webProductLinks   ProductSourceLink[]
+  lastCheckedAt     DateTime               @default(now())
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([sourcePlatform, sourceProductId])
+  @@index([sourceProductId])
+}
+
+// 3. VARIANT NGUỒN 1688 (SOURCE SKU)
+model SourceVariant {
+  id              String          @id @default(cuid())
+  sourceProductId String
+  sourceProduct   SourceProduct   @relation(fields: [sourceProductId], references: [id], onDelete: Cascade)
+  sourceSkuId     String
+  attributesJson  Json
+  sourcePriceCNY  Decimal         @db.Decimal(10, 2)
+  sourceStock     Int             @default(0)
+  imageUrl        String?
+  webVariants     ProductVariant[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([sourceProductId, sourceSkuId])
+  @@index([sourceSkuId])
+}
+
+// 4. SẢN PHẨM BÁN TRÊN WEB (WEB PRODUCT)
+enum PublishStatus {
+  DRAFT
+  READY_TO_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Product {
+  id              String              @id @default(cuid())
+  slug            String              @unique
+  skuCode         String              @unique
+  titleVI         String
+  aiSeoTitle      String?
+  shortDescVI     String?
+  fullDescVI      String?             @db.Text
+  categoryName    String
+  primaryImage    String
+  galleryImages   String[]
+  status          PublishStatus       @default(DRAFT)
+  qualityScore    Int                 @default(0)
+
+  minPriceVND     Decimal             @db.Decimal(12, 0)
+  maxPriceVND     Decimal             @db.Decimal(12, 0)
+
+  // Khóa trường dữ liệu (Field Lock Mechanism)
+  isTitleLocked   Boolean             @default(false)
+  isDescLocked    Boolean             @default(false)
+  isImagesLocked  Boolean             @default(false)
+  isPriceAutoSync Boolean             @default(true)
+  isStockAutoSync Boolean             @default(true)
+
+  sourceLinks     ProductSourceLink[]
+  variants        ProductVariant[]
+  syncLogs        SyncLog[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+// 5. BẢNG LIÊN KẾT NGUỒN HÀNG VÀ SẢN PHẨM WEB
+model ProductSourceLink {
+  id              String        @id @default(cuid())
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceProductId String
+  sourceProduct   SourceProduct @relation(fields: [sourceProductId], references: [id])
+  isPrimarySource Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+
+  @@unique([productId, sourceProductId])
+}
+
+// 6. BIẾN THỂ SẢN PHẨM TRÊN WEB
+model ProductVariant {
+  id              String         @id @default(cuid())
+  productId       String
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceVariantId String?
+  sourceVariant   SourceVariant? @relation(fields: [sourceVariantId], references: [id], onDelete: SetNull)
+  skuBarcode      String?
+  colorName       String?
+  sizeName        String?
+  specDetails     Json?
+  costPriceVND    Decimal        @db.Decimal(12, 0)
+  sellingPriceVND Decimal        @db.Decimal(12, 0)
+  stockQuantity   Int            @default(0)
+  imageUrl        String?
+  sourceAvailable Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([productId])
+  @@index([sourceVariantId])
+}
+
+// 7. SNAPSHOT BIẾN ĐỘNG GIÁ NGUỒN
+model ProductPriceSnapshot {
+  id              String        @id @default(cuid())
+  sourceProductId String
+  sourceProduct   SourceProduct @relation(fields: [sourceProductId], references: [id], onDelete: Cascade)
+  priceCNY        Decimal       @db.Decimal(10, 2)
+  stockQuantity   Int
+  recordedAt      DateTime      @default(now())
+
+  @@index([sourceProductId, recordedAt])
+}
+
+// 8. TỪ ĐIỂN DỊCH CHUYÊN BIỆT (GLOSSARY)
+model TranslationGlossary {
+  id          String   @id @default(cuid())
+  sourceText  String   @unique
+  targetText  String
+  category    String?
+  isRegex     Boolean  @default(false)
+  priority    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 9. CÔNG THỨC ĐỊNH GIÁ (PRICING RULES)
+model PricingRule {
+  id                String   @id @default(cuid())
+  categoryKeyword   String?
+  minCostCNY        Decimal? @db.Decimal(10, 2)
+  maxCostCNY        Decimal? @db.Decimal(10, 2)
+  exchangeRate      Decimal  @default(3800) @db.Decimal(8, 2)
+  domesticChinaShip Decimal  @default(12000) @db.Decimal(10, 0)
+  intlShipPerKg     Decimal  @default(30000) @db.Decimal(10, 0)
+  estimatedWeightKg Decimal  @default(0.35) @db.Decimal(6, 3)
+  multiplier        Decimal  @default(2.2) @db.Decimal(4, 2)
+  platformFeeRate   Decimal  @default(0.05) @db.Decimal(4, 2)
+  minProfitVND      Decimal  @default(50000) @db.Decimal(10, 0)
+  minMarginPercent  Decimal  @default(35) @db.Decimal(5, 2)
+  roundToThousand   Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// 10. NHẬT KÝ ĐỒNG BỘ DIFF VÀ CẢNH BÁO
+model SyncLog {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  eventType     String
+  oldValueJson  Json?
+  newValueJson  Json?
+  diffSummary   String
+  status        String   @default("PENDING_REVIEW")
+  createdAt     DateTime @default(now())
+
+  @@index([productId, createdAt])
+}

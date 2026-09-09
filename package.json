@@ -1,0 +1,30 @@
+{
+  "name": "1688-listing-sync-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hệ thống 1688 Listing Sync Hub gồm Chrome Extension Manifest V3, Backend Sync Hub, Translation & Pricing Engine",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:vercel": "npm run build --workspace=@hub1688/shared-types && npm run build --workspace=@hub1688/shared-utils && npm run build --workspace=@hub1688/backend",
+    "test": "node --test packages/shared-utils/test/pipeline.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "rimraf": "^5.0.7"
+  },
+  "keywords": [
+    "1688",
+    "sync",
+    "chrome-extension",
+    "ecommerce",
+    "pricing-engine",
+    "sku-matrix"
+  ],
+  "author": "Antigravity Engineering",
+  "license": "MIT"
+}

@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "1688 Listing Sync Hub",
+  "version": "1.0.0",
+  "description": "Đồng bộ thông minh sản phẩm từ 1688 về website: Bóc tách SKU, Dịch AI E-commerce, Tính giá vốn & Lợi nhuận, Quản lý Diff.",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.1688.com/*",
+    "http://localhost:3001/*",
+    "https://*.vercel.app/*",
+    "https://*.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Mở 1688 Sync Hub"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.1688.com/*"
+      ],
+      "js": [
+        "src/content/index.ts"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
