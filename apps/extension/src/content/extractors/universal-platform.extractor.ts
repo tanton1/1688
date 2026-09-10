@@ -141,6 +141,13 @@ export class UniversalPlatformExtractor {
 
     // 3. Platform-specific gallery images
     const gallerySelectors = [
+      // Shopify & Custom Commerce (e.g. Macorner, CottonOn, etc.)
+      ".product__media img",
+      ".product-single__photo img",
+      ".product-single__media img",
+      ".product__modal-opener img",
+      "img[src*='/cdn/shop/']",
+      "img[src*='cdn.shopify.com']",
       // Shopee
       ".product-briefing img",
       "._2J7wog img",
@@ -196,20 +203,44 @@ export class UniversalPlatformExtractor {
     originalMin: number;
     originalMax: number;
   } {
-    let originalCurrency: "CNY" | "VND" | "USD" = "CNY";
+    let originalCurrency: "CNY" | "VND" | "USD" = "USD";
     let foundPrices: number[] = [];
 
-    // Nhận diện tiền tệ theo platform
-    if (platform === "SHOPEE") {
-      originalCurrency = "VND";
-    } else if (platform === "ALIEXPRESS") {
-      originalCurrency = "USD";
-    } else if (platform === "TAOBAO" || platform === "TMALL") {
-      originalCurrency = "CNY";
+    // 1. Kiểm tra trực tiếp thẻ meta OpenGraph price & currency (Chuẩn quốc tế trên Shopify như Macorner, WooCommerce...)
+    const metaPrice = document.querySelector('meta[property="og:price:amount"], meta[property="product:price:amount"]')?.getAttribute("content");
+    const metaCurr = document.querySelector('meta[property="og:price:currency"], meta[property="product:price:currency"]')?.getAttribute("content");
+    if (metaCurr) {
+      const c = metaCurr.toUpperCase().trim();
+      if (c === "USD" || c === "VND" || c === "CNY") {
+        originalCurrency = c;
+      }
+    }
+    if (metaPrice) {
+      const p = parseFloat(metaPrice.replace(/[^0-9.]/g, ""));
+      if (!isNaN(p) && p > 0) {
+        foundPrices.push(p);
+      }
+    }
+
+    // Nhận diện tiền tệ theo platform nếu chưa có
+    if (foundPrices.length === 0) {
+      if (platform === "SHOPEE") {
+        originalCurrency = "VND";
+      } else if (platform === "ALIEXPRESS" || platform === "GENERIC_WEB") {
+        originalCurrency = "USD";
+      } else if (platform === "TAOBAO" || platform === "TMALL" || platform === "1688") {
+        originalCurrency = "CNY";
+      }
     }
 
     // Quét giá từ các selector
     const priceSelectors = [
+      // Shopify / Macorner
+      ".price-item--regular",
+      ".price-item--sale",
+      ".product__price",
+      "[data-product-price]",
+      ".price--on-sale",
       // Shopee
       "._3n5zSv",
       ".pqTWkA",
@@ -296,6 +327,17 @@ export class UniversalPlatformExtractor {
   }
 
   private static extractShop(platform: SourcePlatform, productId: string): Raw1688Shop {
+    // 1. Thử lấy từ OpenGraph site_name (ví dụ: Macorner)
+    const ogSite = document.querySelector('meta[property="og:site_name"]')?.getAttribute("content");
+    if (ogSite && ogSite.trim().length > 1) {
+      return {
+        shopId: `shop_${productId}`,
+        shopName: ogSite.trim(),
+        shopUrl: window.location.origin,
+        ratingScore: 4.9
+      };
+    }
+
     let shopName = `${platform} Store`;
     const shopSelectors = [
       ".shop-name",

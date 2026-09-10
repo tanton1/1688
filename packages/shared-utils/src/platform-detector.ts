@@ -226,11 +226,22 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     result.description = decodeHtmlEntities(ogDescMatch[1]);
   }
 
+  // OpenGraph Brand / Site Name
+  const ogSiteNameMatch = html.match(/<meta\b[^>]*property=["']og:site_name["'][^>]*content=["']([^"']*)["']/i);
+  if (!result.brand && ogSiteNameMatch) {
+    result.brand = decodeHtmlEntities(ogSiteNameMatch[1]);
+  }
+
   // OpenGraph Image
-  const ogImageMatch = html.match(/<meta\b[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i) ||
-                       html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*property=["']og:image["']/i);
-  if (ogImageMatch && !result.images.includes(ogImageMatch[1])) {
-    result.images.unshift(ogImageMatch[1]);
+  const ogImageMatch = html.match(/<meta\b[^>]*property=["'](?:og:image:secure_url|og:image)["'][^>]*content=["']([^"']*)["']/i) ||
+                       html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*property=["'](?:og:image:secure_url|og:image)["']/i);
+  if (ogImageMatch) {
+    let imgUrl = ogImageMatch[1].trim();
+    if (imgUrl.startsWith("//")) imgUrl = "https:" + imgUrl;
+    if (imgUrl.startsWith("http://")) imgUrl = imgUrl.replace("http://", "https://");
+    if (!result.images.includes(imgUrl)) {
+      result.images.unshift(imgUrl);
+    }
   }
 
   // OpenGraph Price
@@ -248,16 +259,21 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     if (c === "VND" || c === "USD" || c === "CNY") result.currency = c as any;
   }
 
-  // 3. Trích xuất ảnh chi tiết dài (Detail & Size Chart Images) từ HTML content
-  const imgRegex = /<img\b[^>]*\b(?:src|data-src|data-original)=["'](https?:\/\/[^"'\s>]+)["'][^>]*>/gi;
+  // 3. Trích xuất ảnh chi tiết dài (Detail & Gallery Images) từ HTML content
+  const imgRegex = /<img\b[^>]*\b(?:src|data-src|data-original)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
   let imgMatch: RegExpExecArray | null;
   const detailImgs: string[] = [];
   while ((imgMatch = imgRegex.exec(html)) !== null) {
-    const url = imgMatch[1];
+    let url = imgMatch[1].trim();
+    if (url.startsWith("//")) url = "https:" + url;
+    if (url.startsWith("http://")) url = url.replace("http://", "https://");
+
     // Loại trừ icon nhỏ, tracking pixel, file gif hoặc banner logo hệ thống
-    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b/i.test(url);
+    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b|\.svg\b/i.test(url);
     if (!isIgnored && !result.images.includes(url) && !detailImgs.includes(url)) {
-      detailImgs.push(url);
+      // Làm sạch URL ảnh Shopify (bỏ thumbnail query params để lấy ảnh gốc)
+      const cleanUrl = url.replace(/_([0-9]+x[0-9]*|small|compact|medium|large|grande|pico)(\.[a-zA-Z0-9]+)/, "$2");
+      detailImgs.push(cleanUrl);
     }
   }
   result.detailImages = detailImgs.slice(0, 15);
