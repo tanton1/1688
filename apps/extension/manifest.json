@@ -11,6 +11,12 @@
   ],
   "host_permissions": [
     "*://*.1688.com/*",
+    "*://*.taobao.com/*",
+    "*://*.tmall.com/*",
+    "*://*.shopee.vn/*",
+    "*://*.shopee.com/*",
+    "*://*.tiktok.com/*",
+    "*://*.aliexpress.com/*",
     "http://localhost:3001/*",
     "https://*.vercel.app/*",
     "https://*.supabase.co/*"
@@ -28,7 +34,13 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.1688.com/*"
+        "*://*.1688.com/*",
+        "*://*.taobao.com/*",
+        "*://*.tmall.com/*",
+        "*://*.shopee.vn/*",
+        "*://*.shopee.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.aliexpress.com/*"
       ],
       "js": [
         "src/content/index.js"
@@ -44,7 +56,13 @@
         "icons/*"
       ],
       "matches": [
-        "*://*.1688.com/*"
+        "*://*.1688.com/*",
+        "*://*.taobao.com/*",
+        "*://*.tmall.com/*",
+        "*://*.shopee.vn/*",
+        "*://*.shopee.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.aliexpress.com/*"
       ]
     }
   ],

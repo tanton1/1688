@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
-import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle } from "@hub1688/shared-types";
+import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch } from "@hub1688/shared-types";
+import { AdminApi } from "../services/api";
 import {
   generateSlug,
   extractSEOKeywords,
@@ -41,7 +42,9 @@ import {
   Smartphone,
   Check,
   Share2,
-  FileText
+  FileText,
+  Factory,
+  RefreshCw
 } from "lucide-react";
 
 interface ProductDetailModalProps {
@@ -61,12 +64,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 }) => {
   if (!product) return null;
 
-  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality" | "copywriter">("content");
+  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality" | "copywriter" | "sourcing">("content");
   const [copyStyle, setCopyStyle] = useState<AICopywritingStyle>("AIDA");
   const [copyLang, setCopyLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
   const [generatedCopy, setGeneratedCopy] = useState<any>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [editLang, setEditLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
+  const [visualMatches, setVisualMatches] = useState<VisualSourcingMatch[] | null>(null);
+  const [isLoadingVisual, setIsLoadingVisual] = useState(false);
   const [formData, setFormData] = useState<WebProduct>(() => {
     const p = { ...product };
     // Khởi tạo các trường SEO nếu chưa có
@@ -156,6 +161,26 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       return img;
     });
     handleFieldChange("imagesSEO", nextImagesSEO);
+  };
+
+  // Tìm kiếm xưởng sản xuất gốc trên 1688 (Visual Sourcing)
+  const handleLoadVisualSourcing = async () => {
+    setIsLoadingVisual(true);
+    try {
+      const res = await AdminApi.getVisualSourcingMatches({
+        productId: formData.id,
+        imageUrl: formData.primaryImage,
+        title: formData.titleVI,
+        currentSellingPriceVND: formData.minPriceVND
+      });
+      if (res.success && res.matches) {
+        setVisualMatches(res.matches);
+      }
+    } catch (err) {
+      console.warn("Lỗi tìm kiếm nguồn xưởng 1688:", err);
+    } finally {
+      setIsLoadingVisual(false);
+    }
   };
 
   // Tự động điền lại thẻ ALT chuẩn SEO
@@ -427,6 +452,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           >
             <Award className="w-3.5 h-3.5" />
             Chất Lượng Listing ({formData.qualityScore}/100)
+          </button>
+
+          {/* TAB: VISUAL SOURCING 1688 */}
+          <button
+            onClick={() => {
+              setActiveTab("sourcing");
+              if (!visualMatches) {
+                handleLoadVisualSourcing();
+              }
+            }}
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
+              activeTab === "sourcing"
+                ? "border-amber-600 text-amber-600"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+            title="Tìm nguồn xưởng sản xuất tận gốc 1688 bằng hình ảnh để tối ưu giá vốn và tăng biên lợi nhuận"
+          >
+            <Factory className="w-3.5 h-3.5 text-amber-500" />
+            <span>Nguồn Xưởng 1688 Gốc</span>
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-700">
+              Sourcing
+            </span>
           </button>
         </div>
 
@@ -1777,6 +1824,104 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       Sao chép CTA
                     </button>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 7: VISUAL SOURCING 1688 (TÌM XƯỞNG GỐC) */}
+          {activeTab === "sourcing" && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Factory className="w-4 h-4 text-amber-600" />
+                    <span>Visual Sourcing: Tìm Nguồn Xưởng Sản Xuất Gốc Trên 1688</span>
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Hệ thống phân tích hình ảnh và tiêu đề để truy tìm trực tiếp các nhà máy sản xuất gốc tại Chiết Giang, Quảng Đông, giúp cắt giảm các tầng trung gian và tăng biên lợi nhuận lên đến 65%.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isLoadingVisual}
+                  onClick={handleLoadVisualSourcing}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-2 transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingVisual ? "animate-spin" : ""}`} />
+                  <span>{isLoadingVisual ? "Đang quét xưởng 1688..." : "Quét Lại Nguồn Xưởng"}</span>
+                </button>
+              </div>
+
+              {isLoadingVisual && (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <RefreshCw className="w-8 h-8 text-amber-600 animate-spin" />
+                  <p className="text-xs text-slate-500 font-medium">
+                    Đang tìm kiếm nhà máy 1688 bằng thuật toán hình ảnh và đối chiếu bảng giá sỉ...
+                  </p>
+                </div>
+              )}
+
+              {!isLoadingVisual && visualMatches && visualMatches.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {visualMatches.map((m, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white border-2 border-slate-200 hover:border-amber-500/60 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                            Khớp {m.similarityScore}%
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            Tỷ lệ mua lại: <strong className="text-emerald-600">{m.repurchaseRate}%</strong>
+                          </span>
+                        </div>
+
+                        <div className="aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                          <img
+                            src={m.primaryImage}
+                            alt={m.shopName}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{m.shopName}</h4>
+                          <p className="text-[11px] text-slate-500">{m.location} • MOQ: {m.moq} cái</p>
+                          <p className="text-xs text-slate-700 line-clamp-2 mt-1 italic">{m.titleVI}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500">Giá xưởng gốc:</span>
+                          <span className="font-bold text-amber-600">
+                            ¥{m.factoryPriceCNY} ({m.factoryPriceVND.toLocaleString("vi-VN")} ₫)
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500">Biên lãi dự kiến:</span>
+                          <span className="font-bold text-emerald-600 text-sm">
+                            +{m.estimatedMarginWith1688}%
+                          </span>
+                        </div>
+
+                        <a
+                          href={m.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2 px-3 text-xs font-bold rounded-xl bg-orange-50 hover:bg-orange-600 text-orange-600 hover:text-white border border-orange-200 hover:border-orange-600 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <span>Mở Link Xưởng 1688 Gốc</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

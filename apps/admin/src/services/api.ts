@@ -6,7 +6,11 @@ import {
   SupportedPlatformInfo,
   ClonePreviewResponse,
   CloneExecuteRequest,
-  SourcePlatform
+  SourcePlatform,
+  BatchCloneRequest,
+  BatchCloneResponse,
+  VisualSourcingRequest,
+  VisualSourcingResponse
 } from "@hub1688/shared-types";
 
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
@@ -278,5 +282,20 @@ export const AdminApi = {
       method: "POST",
       body: JSON.stringify(data)
     });
+  },
+
+  async batchCloneProducts(data: BatchCloneRequest): Promise<BatchCloneResponse & { success: boolean; message: string }> {
+    return request("/api/v1/clone/batch", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  },
+
+  async getVisualSourcingMatches(data: VisualSourcingRequest): Promise<VisualSourcingResponse> {
+    return request("/api/v1/clone/visual-sourcing", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
   }
 };
+

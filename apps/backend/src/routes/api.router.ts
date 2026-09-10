@@ -22,6 +22,9 @@ const ordersCtrl = new OrdersController();
 apiRouter.get("/clone/supported-platforms", (req, res) => cloneController.getSupportedPlatforms(req, res));
 apiRouter.post("/clone/preview", (req, res) => cloneController.preview(req, res));
 apiRouter.post("/clone/execute", (req, res) => cloneController.execute(req, res));
+apiRouter.post("/clone/batch", (req, res) => cloneController.batchClone(req, res));
+apiRouter.post("/clone/visual-sourcing", (req, res) => cloneController.visualSourcing(req, res));
+
 
 
 // 0. Dashboard Stats

@@ -1,49 +1,88 @@
+import { SourcePlatform } from "@hub1688/shared-types";
+import { detectProductPlatform, extractProductIdFromUrl } from "@hub1688/shared-utils";
+
 export type PageType = "DETAIL" | "SEARCH" | "SHOP" | "UNKNOWN";
+
+export interface DetectedCommercePage {
+  platform: SourcePlatform;
+  pageType: PageType;
+  productId?: string;
+  offerId?: string; // alias for 1688
+  shopId?: string;
+}
+
+export function detectAnyCommercePage(url: string = window.location.href): DetectedCommercePage {
+  const platform = detectProductPlatform(url);
+  const productId = extractProductIdFromUrl(url, platform);
+
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname;
+    const hostname = parsed.hostname;
+
+    // 1. 1688
+    if (platform === "1688") {
+      if (pathname.includes("/offer/") || parsed.searchParams.get("offerId")) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      if (hostname.includes("s.1688.com") || pathname.includes("/selloffer/")) {
+        return { platform, pageType: "SEARCH" };
+      }
+      if (pathname.includes("/page/offerlist") || hostname.match(/shop\d+\.1688\.com/)) {
+        return { platform, pageType: "SHOP" };
+      }
+    }
+
+    // 2. Taobao & Tmall
+    if (platform === "TAOBAO" || platform === "TMALL") {
+      if (parsed.searchParams.get("id") || pathname.includes("/item.htm")) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      if (hostname.includes("s.taobao.com")) return { platform, pageType: "SEARCH" };
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
+    // 3. Shopee
+    if (platform === "SHOPEE") {
+      if (pathname.includes("-i.") || pathname.includes("/product/")) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      if (pathname.includes("/search")) return { platform, pageType: "SEARCH" };
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
+    // 4. TikTok Shop
+    if (platform === "TIKTOK_SHOP") {
+      if (pathname.includes("/product/")) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
+    // 5. AliExpress
+    if (platform === "ALIEXPRESS") {
+      if (pathname.includes("/item/")) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
+    return { platform, pageType: "DETAIL", productId, offerId: productId };
+  } catch {
+    return { platform, pageType: "UNKNOWN", productId };
+  }
+}
 
 export function detect1688Page(url: string = window.location.href): {
   pageType: PageType;
   offerId?: string;
   shopId?: string;
 } {
-  try {
-    const parsed = new URL(url);
-    const pathname = parsed.pathname;
-    const hostname = parsed.hostname;
-    const searchParams = parsed.searchParams;
-
-    // 1. Kiểm tra trang Chi tiết sản phẩm (Detail page)
-    // Hỗ trợ: detail.1688.com/offer/123.html, m.1688.com/offer/123, url có offerId=123
-    const offerMatch = pathname.match(/\/offer\/(\d+)/) || 
-                       searchParams.get("offerId") || 
-                       searchParams.get("itemId") ||
-                       searchParams.get("offer_id");
-
-    if (offerMatch) {
-      const offerId = typeof offerMatch === "string" ? offerMatch : offerMatch[1];
-      return {
-        pageType: "DETAIL",
-        offerId
-      };
-    }
-
-    // 2. Kiểm tra trang Kết quả tìm kiếm (Search results)
-    // Ví dụ: s.1688.com, search.1688.com
-    if (hostname.includes("s.1688.com") || pathname.includes("/selloffer/") || pathname.includes("/youyuan/")) {
-      return { pageType: "SEARCH" };
-    }
-
-    // 3. Kiểm tra trang Gian hàng / Shop catalog
-    if (pathname.includes("/page/offerlist") || pathname.includes("/page/index") || hostname.match(/shop\d+\.1688\.com/)) {
-      const shopIdMatch = hostname.match(/([a-zA-Z0-9_-]+)\.1688\.com/);
-      return {
-        pageType: "SHOP",
-        shopId: shopIdMatch ? shopIdMatch[1] : undefined
-      };
-    }
-
-    return { pageType: "UNKNOWN" };
-  } catch (err) {
-    console.error("[1688 Hub] Lỗi phân tích URL:", err);
-    return { pageType: "UNKNOWN" };
-  }
+  const res = detectAnyCommercePage(url);
+  return {
+    pageType: res.pageType,
+    offerId: res.productId,
+    shopId: res.shopId
+  };
 }
+

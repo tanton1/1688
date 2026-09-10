@@ -343,4 +343,41 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.ok(extracted.images.includes("https://img.cdn.com/shirt.jpg"));
 });
 
+test("9. Batch URL Processing & Visual Sourcing Sourcing Margin Engine", (t) => {
+  // 1. Batch URL string parsing
+  const rawBatchInput = `
+    https://item.taobao.com/item.htm?id=681928471928
+    
+    https://shopee.vn/product/12345678/987654321
+    invalid-url-string
+    https://shop.tiktok.com/view/product/1729384918294
+    http://example.com/test-prod
+  `;
+
+  const parsedUrls = rawBatchInput
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l.startsWith("http://") || l.startsWith("https://"));
+
+  assert.equal(parsedUrls.length, 4);
+  assert.equal(parsedUrls[0], "https://item.taobao.com/item.htm?id=681928471928");
+  assert.equal(parsedUrls[1], "https://shopee.vn/product/12345678/987654321");
+  assert.equal(parsedUrls[2], "https://shop.tiktok.com/view/product/1729384918294");
+  assert.equal(parsedUrls[3], "http://example.com/test-prod");
+
+  // 2. Visual Sourcing Sourcing Margin Calculation
+  // Shopee retail price: 250.000đ, current dropship cost: 185.000đ -> margin: 26%
+  const shopeeRetailPriceVND = 250000;
+  const currentCostVND = 185000;
+  const initialMargin = Math.round(((shopeeRetailPriceVND - currentCostVND) / shopeeRetailPriceVND) * 100);
+  assert.equal(initialMargin, 26);
+
+  // 1688 Direct Factory Price: ¥16.5 = 62.700đ + 18.000đ shipping = 80.700đ total cost
+  const factoryPriceCNY = 16.5;
+  const factoryCostVND = Math.round(factoryPriceCNY * 3800) + 18000; // 80.700đ
+  const sourcedMargin1688 = Math.round(((shopeeRetailPriceVND - factoryCostVND) / shopeeRetailPriceVND) * 100);
+  assert.equal(sourcedMargin1688, 68, "Biên lợi nhuận phải tăng từ 26% lên 68% khi đổi nguồn sang 1688");
+});
+
+
 

@@ -227,3 +227,57 @@ export interface CloneExecuteRequest {
   autoPublish?: boolean;
 }
 
+export interface BatchCloneRequest {
+  urls: string[];
+  pricingRuleId?: string;
+  categoryName?: string;
+  autoPublish?: boolean;
+}
+
+export interface BatchCloneItemResult {
+  url: string;
+  success: boolean;
+  product?: WebProduct;
+  error?: string;
+  sourcePlatform?: SourcePlatform;
+}
+
+export interface BatchCloneResponse {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BatchCloneItemResult[];
+}
+
+export interface VisualSourcingRequest {
+  productId?: string;
+  imageUrl?: string;
+  title?: string;
+  currentSellingPriceVND?: number;
+}
+
+export interface VisualSourcingMatch {
+  offerId: string;
+  sourceUrl: string;
+  titleCN: string;
+  titleVI: string;
+  shopName: string;
+  location: string;
+  moq: number;
+  factoryPriceCNY: number;
+  factoryPriceVND: number;
+  currentProductSellingPriceVND: number;
+  estimatedMarginWith1688: number;
+  similarityScore: number;
+  primaryImage: string;
+  repurchaseRate: number;
+}
+
+export interface VisualSourcingResponse {
+  success: boolean;
+  queryTitle?: string;
+  queryImage?: string;
+  matches: VisualSourcingMatch[];
+}
+
+

@@ -54,6 +54,47 @@ export class CloneController {
       res.status(500).json({ success: false, error: err.message || "Lỗi thực hiện clone sản phẩm" });
     }
   }
+
+  /**
+   * Clone hàng loạt danh sách URLs (Batch Queue processing)
+   */
+  public async batchClone(req: Request, res: Response): Promise<void> {
+    try {
+      const { urls, pricingRuleId, categoryName, autoPublish } = req.body;
+      if (!Array.isArray(urls) || urls.length === 0) {
+        res.status(400).json({ success: false, error: "Vui lòng cung cấp danh sách URLs hợp lệ" });
+        return;
+      }
+
+      const result = await multiPlatformClonerService.executeBatchClone({
+        urls,
+        pricingRuleId,
+        categoryName,
+        autoPublish
+      });
+
+      res.json({
+        success: true,
+        message: `Đã xử lý xong ${result.total} sản phẩm (Thành công: ${result.succeeded}, Lỗi: ${result.failed})`,
+        ...result
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "Lỗi xử lý batch clone" });
+    }
+  }
+
+  /**
+   * Tìm kiếm xưởng 1688 bằng hình ảnh từ sản phẩm Shopee/TikTok/Web (Visual Sourcing)
+   */
+  public async visualSourcing(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await multiPlatformClonerService.find1688SuppliersByImage(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || "Lỗi tìm kiếm nguồn xưởng 1688" });
+    }
+  }
 }
 
 export const cloneController = new CloneController();
+
