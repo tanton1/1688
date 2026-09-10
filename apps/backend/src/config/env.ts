@@ -1,11 +1,29 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+const asPositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const asBoolean = (value: string | undefined): boolean =>
+  ["1", "true", "yes", "on"].includes((value || "").trim().toLowerCase());
+
 export const ENV = {
   PORT: parseInt(process.env.PORT || "3001", 10),
   NODE_ENV: process.env.NODE_ENV || "development",
   DATABASE_URL: process.env.DATABASE_URL || "",
-  EXTENSION_API_KEY: process.env.EXTENSION_API_KEY || "hub1688_secret_extension_key_2026",
+  ADMIN_API_TOKEN: process.env.ADMIN_API_TOKEN || "",
+  EXTENSION_API_KEY: process.env.EXTENSION_API_KEY || "",
+  CRON_SECRET: process.env.CRON_SECRET || "",
+  CORS_ALLOWED_ORIGINS: (process.env.CORS_ALLOWED_ORIGINS || "http://localhost:5173")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean),
+  DEMO_MODE: asBoolean(process.env.DEMO_MODE),
+  JSON_BODY_LIMIT: process.env.JSON_BODY_LIMIT || "5mb",
+  OUTBOUND_TIMEOUT_MS: asPositiveInt(process.env.OUTBOUND_TIMEOUT_MS, 8_000),
+  OUTBOUND_MAX_BYTES: asPositiveInt(process.env.OUTBOUND_MAX_BYTES, 5 * 1024 * 1024),
   
   // Supabase Configuration
   SUPABASE_URL: process.env.SUPABASE_URL || "https://jpbrwfctgrufbdkstufq.supabase.co",

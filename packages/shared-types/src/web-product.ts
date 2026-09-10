@@ -20,6 +20,8 @@ export interface WebProductVariant {
   sizeNameEN?: string;
   specDetails?: Record<string, string>;
   costPriceVND: number;
+  /** Source price snapshot used for like-for-like diffing. */
+  sourcePrice?: number;
   sellingPriceVND: number;
   stockQuantity: number;
   imageUrl?: string;
@@ -227,6 +229,11 @@ export interface ClonePreviewResponse {
   rawAttributes?: Array<{ key: string; value: string }>;
   rawOptions?: Array<{ name: string; values: string[] }>;
   qualityScorePreview: number;
+  extractionStatus: "LIVE" | "DEMO" | "UNVERIFIED";
+  isDemo: boolean;
+  confidence: number;
+  provenance: string[];
+  warnings: string[];
 }
 
 export interface CloneExecuteRequest {

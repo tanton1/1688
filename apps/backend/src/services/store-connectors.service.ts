@@ -19,6 +19,7 @@ import {
 } from "@hub1688/shared-utils";
 import { supabaseService } from "./supabase.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
+import { assertSafePublicUrl, assertShopifyDomain, safeFetch } from "../utils/safe-network.js";
 
 export class StoreConnectorsService {
   /**
@@ -34,6 +35,7 @@ export class StoreConnectorsService {
     const productId = product.id || "";
 
     try {
+      await assertSafePublicUrl(cleanUrl);
       const payload = buildWooCommercePayload(product, config);
 
       // Basic Auth Header
@@ -42,7 +44,9 @@ export class StoreConnectorsService {
       ).toString("base64")}`;
 
       // 1. Tạo sản phẩm chính (Parent Variable / Simple Product)
-      const parentRes = await fetch(`${cleanUrl}/wp-json/wc/v3/products`, {
+      const parentRes = await safeFetch(`${cleanUrl}/wp-json/wc/v3/products`, {
+        maxBytes: 2 * 1024 * 1024,
+        allowedContentTypes: ["application/json"],
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -102,14 +106,17 @@ export class StoreConnectorsService {
     config: ShopifyConfig
   ): Promise<StoreSyncResult> {
     const startedAt = new Date().toISOString();
-    const cleanDomain = config.shopDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    let cleanDomain = "";
     const apiVersion = config.apiVersion || "2024-01";
     const productId = product.id || "";
 
     try {
+      cleanDomain = assertShopifyDomain(config.shopDomain);
       const payload = buildShopifyPayload(product, config);
 
-      const res = await fetch(`https://${cleanDomain}/admin/api/${apiVersion}/products.json`, {
+      const res = await safeFetch(`https://${cleanDomain}/admin/api/${apiVersion}/products.json`, {
+        maxBytes: 2 * 1024 * 1024,
+        allowedContentTypes: ["application/json"],
         method: "POST",
         headers: {
           "Content-Type": "application/json",

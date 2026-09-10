@@ -11,6 +11,7 @@
   "dependencies": {
     "@hub1688/shared-types": "*",
     "@hub1688/shared-utils": "*",
+    "dompurify": "^3.4.15",
     "lucide-react": "^0.378.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

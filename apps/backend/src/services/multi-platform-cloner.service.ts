@@ -25,6 +25,8 @@ import { PricingEngineService } from "./pricing.service.js";
 import { supabaseService } from "./supabase.service.js";
 import { aiGatewayService } from "./ai-gateway.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
+import { ENV } from "../config/env.js";
+import { safeFetch } from "../utils/safe-network.js";
 
 interface PlatformPresetItem {
   platform: SourcePlatform;
@@ -256,10 +258,12 @@ export class MultiPlatformClonerService {
     const platform = manualPlatform || detectProductPlatform(url);
     const productId = extractProductIdFromUrl(url, platform);
 
-    // 1. Kiểm tra nếu URL khớp với catalog mẫu preset sẵn có
-    for (const [key, preset] of Object.entries(PRESET_SAMPLE_CATALOG)) {
-      if (url.includes(key) || productId.includes(key)) {
-        return this.formatPresetToPreviewResponse(preset, url);
+    // Demo presets are opt-in and must never look like live extraction.
+    if (ENV.DEMO_MODE) {
+      for (const [key, preset] of Object.entries(PRESET_SAMPLE_CATALOG)) {
+        if (url.includes(key) || productId.includes(key)) {
+          return this.formatPresetToPreviewResponse(preset, url);
+        }
       }
     }
 
@@ -289,9 +293,12 @@ export class MultiPlatformClonerService {
       // Fetch bị chặn bởi Cloudflare / CORS / bot blocker
     }
 
-    // 3. Nếu fetch thất bại (thường gặp khi sàn có tường lửa anti-bot), tự động lấy mẫu đại diện theo nền tảng
-    const fallbackPreset = this.getFallbackPresetForPlatform(platform);
-    return this.formatPresetToPreviewResponse(fallbackPreset, url);
+    if (ENV.DEMO_MODE) {
+      return this.formatPresetToPreviewResponse(this.getFallbackPresetForPlatform(platform), url);
+    }
+    const error = new Error("Không thể trích xuất dữ liệu thật từ URL này") as Error & { code?: string };
+    error.code = "EXTRACTION_FAILED";
+    throw error;
   }
 
   /**
@@ -299,6 +306,7 @@ export class MultiPlatformClonerService {
    */
   public async executeClone(request: CloneExecuteRequest): Promise<WebProduct> {
     const preview = await this.previewProduct(request.url, request.platform);
+    if (preview.isDemo) throw new Error("DEMO_DATA_CANNOT_BE_IMPORTED");
 
     const titleVI = request.customTitle || preview.translatedTitleVI;
     const titleEN = preview.translatedTitleEN || titleVI;
@@ -327,7 +335,8 @@ export class MultiPlatformClonerService {
         colorNameEN: v.name,
         costPriceVND: vCostVND,
         sellingPriceVND: v.priceVND || preview.estimatedSellingPriceVND,
-        stockQuantity: v.stock || 100,
+        stockQuantity: v.stock ?? 0,
+        sourcePrice: v.originalPrice,
         imageUrl: v.imageUrl || preview.primaryImage,
         sourceAvailable: true,
         selectedForSale: true
@@ -383,7 +392,7 @@ export class MultiPlatformClonerService {
       focusKeywords: seoPackage.focusKeywords,
       imagesSEO: seoPackage.imagesSEO,
       faqs: seoPackage.faqs,
-      status: request.autoPublish ? "PUBLISHED" : "DRAFT",
+      status: "DRAFT",
       qualityScore: 0,
       minPriceVND,
       maxPriceVND,
@@ -403,6 +412,10 @@ export class MultiPlatformClonerService {
     // Chấm điểm Quality Score
     const qualityResult = evaluateProductQuality(newProduct);
     newProduct.qualityScore = qualityResult.totalScore;
+    if (request.autoPublish) {
+      if (!qualityResult.canPublish) throw new Error(`QUALITY_GATE_FAILED: ${qualityResult.blockers.join(", ")}`);
+      newProduct.status = "PUBLISHED";
+    }
 
     // Lưu vào inMemory cache
     inMemoryProducts.set(productId, newProduct);
@@ -410,9 +423,11 @@ export class MultiPlatformClonerService {
     // Lưu vào Supabase PostgreSQL nếu đã cấu hình
     if (supabaseService.isConfigured()) {
       try {
-        await supabaseService.saveWebProduct(newProduct);
+        const persisted = await supabaseService.saveWebProduct(newProduct);
+        if (!persisted) throw new Error("PERSISTENCE_FAILED");
       } catch (err) {
-        console.warn("Lỗi lưu Supabase cho sản phẩm clone:", err);
+        inMemoryProducts.delete(productId);
+        throw err;
       }
     }
 
@@ -515,8 +530,10 @@ export class MultiPlatformClonerService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
-    const response = await fetch(url, {
-      signal: controller.signal,
+    const response = await safeFetch(url, {
+      timeoutMs: 6000,
+      maxBytes: 3 * 1024 * 1024,
+      allowedContentTypes: ["text/html", "application/xhtml+xml"],
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -533,8 +550,10 @@ export class MultiPlatformClonerService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
-    const response = await fetch(url, {
-      signal: controller.signal,
+    const response = await safeFetch(url, {
+      timeoutMs: 6000,
+      maxBytes: 2 * 1024 * 1024,
+      allowedContentTypes: ["application/json", "text/javascript"],
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -676,7 +695,12 @@ export class MultiPlatformClonerService {
         { key: "Thương hiệu", value: data.vendor || "Macorner" },
         ...(rawOptions.map((o: any) => ({ key: o.name, value: o.values.join(", ") })))
       ],
-      qualityScorePreview: 92
+      qualityScorePreview: 92,
+      extractionStatus: "LIVE",
+      isDemo: false,
+      confidence: 0.9,
+      provenance: ["Shopify product JSON endpoint"],
+      warnings: []
     };
   }
 
@@ -739,7 +763,12 @@ export class MultiPlatformClonerService {
       variants,
       categorySuggested: preset.categoryName,
       rawAttributes: preset.attributes,
-      qualityScorePreview: 88
+      qualityScorePreview: 88,
+      extractionStatus: "DEMO",
+      isDemo: true,
+      confidence: 0,
+      provenance: ["DEMO_MODE preset catalog"],
+      warnings: ["Dữ liệu mẫu, không được dùng để đăng bán hoặc đồng bộ"]
     };
   }
 
@@ -858,7 +887,12 @@ export class MultiPlatformClonerService {
         { key: "Nguồn gốc", value: platform },
         { key: "Thương hiệu", value: extracted.brand || "OEM" }
       ],
-      qualityScorePreview: 85
+      qualityScorePreview: 85,
+      extractionStatus: "UNVERIFIED",
+      isDemo: false,
+      confidence: 0.55,
+      provenance: ["Public HTML metadata"],
+      warnings: ["Cần kiểm tra lại giá, tồn kho và biến thể trước khi xuất bản"]
     };
   }
 

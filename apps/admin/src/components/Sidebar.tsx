@@ -10,7 +10,8 @@ import {
   ExternalLink,
   Settings,
   Sparkles,
-  LayoutTemplate
+  LayoutTemplate,
+  Store
 } from "lucide-react";
 
 export type AdminTab = "DASHBOARD" | "PRODUCTS" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY" | "TEMPLATES";
@@ -21,6 +22,7 @@ interface SidebarProps {
   pendingDiffCount: number;
   totalProductsCount: number;
   onOpenSettings: () => void;
+  onOpenStorefront?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -28,7 +30,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   pendingDiffCount,
   totalProductsCount,
-  onOpenSettings
+  onOpenSettings,
+  onOpenStorefront
 }) => {
   const menuItems = [
     {
@@ -131,6 +134,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+
+        {/* Storefront Direct Portal CTA */}
+        {onOpenStorefront && (
+          <div className="pt-3">
+            <button
+              onClick={onOpenStorefront}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-xs group cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <Store className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>Web Bán Hàng ↗</span>
+              </div>
+              <span className="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded">
+                TRỰC TIẾP
+              </span>
+            </button>
+          </div>
+        )}
       </nav>
 
       {/* Extension & Status Footer */}

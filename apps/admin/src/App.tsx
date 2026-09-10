@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { WebProduct, ProductDiffSummary } from "@hub1688/shared-types";
-import { AdminApi, getApiBaseUrl, setApiBaseUrl } from "./services/api";
+import { AdminApi, clearAccessToken, getAccessToken, getApiBaseUrl, setApiBaseUrl } from "./services/api";
 import { Sidebar, AdminTab } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DashboardView } from "./components/DashboardView";
@@ -15,6 +15,8 @@ import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
 import { BannerFrameStudioModal, StudioMode } from "./components/BannerFrameStudioModal";
 import { MultiPlatformCloneModal } from "./components/MultiPlatformCloneModal";
 import { TemplatesView } from "./components/TemplatesView";
+import { StorefrontView } from "./storefront/StorefrontView";
+import { StoreSettingsModal } from "./storefront/StoreSettingsModal";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -28,23 +30,59 @@ export const App: React.FC = () => {
   const [customUrlInput, setCustomUrlInput] = useState(backendUrl);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  // Web Bán Hàng Trực Tiếp (Storefront State)
+  const [viewMode, setViewMode] = useState<"admin" | "storefront">(() => {
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (path.startsWith("/shop") || path.startsWith("/store") || params.get("view") === "store" || params.get("view") === "shop") {
+        return "storefront";
+      }
+    }
+    return "admin";
+  });
+  const [storefrontProductId, setStorefrontProductId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("product") || null;
+    }
+    return null;
+  });
+  const [showStoreSettingsModal, setShowStoreSettingsModal] = useState(false);
+
+  const openStorefront = (productId?: string) => {
+    setStorefrontProductId(productId || null);
+    setViewMode("storefront");
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "store");
+      if (productId) url.searchParams.set("product", productId);
+      else url.searchParams.delete("product");
+      window.history.pushState({}, "", url.toString());
+    } catch {}
+  };
+
+  const openAdmin = () => {
+    setViewMode("admin");
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("view");
+      url.searchParams.delete("product");
+      window.history.pushState({}, "", url.toString());
+    } catch {}
+  };
+
   // Authentication & Role State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    const saved = localStorage.getItem("hub1688_user");
+    const saved = sessionStorage.getItem("hub1688_user");
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch {}
     }
-    // Mặc định tài khoản Quản Trị Viên (Owner / Admin) để trải nghiệm liền mạch không rào cản
-    return {
-      email: "admin@1688hub.com",
-      name: "Quản Trị Viên (Owner)",
-      role: "ADMIN",
-      isDemo: true
-    };
+    return null;
   });
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(() => !getAccessToken());
 
   // Omnichannel Store Connectors State
   const [showConnectorsModal, setShowConnectorsModal] = useState(false);
@@ -66,7 +104,7 @@ export const App: React.FC = () => {
 
   const handleLogin = (user: CurrentUser) => {
     setCurrentUser(user);
-    localStorage.setItem("hub1688_user", JSON.stringify(user));
+    sessionStorage.setItem("hub1688_user", JSON.stringify(user));
     showToast(
       `Chào mừng ${user.name} (${user.role === "ADMIN" ? "Quản Trị Viên" : "Sourcing Specialist"})!`
     );
@@ -74,82 +112,27 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem("hub1688_user");
+    sessionStorage.removeItem("hub1688_user");
+    clearAccessToken();
+    setProducts([]);
+    setDiffLogs([]);
     showToast("Đã đăng xuất tài khoản!");
   };
 
-  // Persistent local cache helper (Chống mất dữ liệu khi Vercel Serverless Function bị cold-start reset RAM)
-  const getPersistedProducts = (): WebProduct[] => {
-    try {
-      const raw = localStorage.getItem("hub1688_persisted_products");
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const savePersistedProducts = (items: WebProduct[]) => {
-    try {
-      localStorage.setItem("hub1688_persisted_products", JSON.stringify(items));
-    } catch (e) {
-      console.warn("Could not save to localStorage:", e);
-    }
-  };
-
-  // Tải dữ liệu từ backend kết hợp Local Storage Persistence
+  // Database is the only source of truth; the browser does not rehydrate server RAM.
   const loadData = useCallback(async () => {
+    if (!getAccessToken()) return;
     setIsRefreshing(true);
     try {
       const [prodRes, diffRes] = await Promise.all([
-        AdminApi.getProducts().catch(() => ({ total: 0, items: [] })),
-        AdminApi.getDiffLogs().catch(() => ({ logs: [] }))
+        AdminApi.getProducts(),
+        AdminApi.getDiffLogs()
       ]);
-
-      const backendItems = prodRes.items || [];
-      const localItems = getPersistedProducts();
-
-      // Hợp nhất dữ liệu thông minh giữa Backend và LocalStorage
-      const mergedMap = new Map<string, WebProduct>();
-
-      // 1. Đưa sản phẩm từ backend vào trước
-      backendItems.forEach(p => {
-        if (p.id) mergedMap.set(p.id, p);
-      });
-
-      // 2. Đưa sản phẩm từ local persisted vào (đảm bảo các sản phẩm vừa scan/clone không bao giờ mất)
-      const missingOnBackend: WebProduct[] = [];
-      localItems.forEach(p => {
-        if (p.id) {
-          const existing = mergedMap.get(p.id);
-          if (!existing) {
-            mergedMap.set(p.id, p);
-            missingOnBackend.push(p);
-          } else {
-            const localTime = new Date(p.updatedAt || p.createdAt || 0).getTime();
-            const backendTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-            if (localTime >= backendTime) {
-              mergedMap.set(p.id, p);
-            }
-          }
-        }
-      });
-
-      const finalProducts = Array.from(mergedMap.values());
-      setProducts(finalProducts);
-      savePersistedProducts(finalProducts);
+      setProducts(prodRes.items || []);
       setDiffLogs(diffRes.logs || []);
-
-      // Tự động re-hydrate lại RAM của backend nếu backend vừa bị Cold Start
-      if (missingOnBackend.length > 0) {
-        AdminApi.syncBatchProducts(missingOnBackend).catch(() => {});
-      }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu:", err);
-      // Fallback về local persisted nếu mất mạng hoặc backend lỗi
-      const localItems = getPersistedProducts();
-      if (localItems.length > 0) {
-        setProducts(localItems);
-      }
+      if (String(err.message).includes("401")) { handleLogout(); setShowAuthModal(true); }
       showToast(err.message || "Không thể tải dữ liệu từ backend", "error");
     } finally {
       setIsRefreshing(false);
@@ -157,36 +140,20 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (currentUser && getAccessToken()) loadData();
+  }, [currentUser, loadData]);
 
-  // Lắng nghe thay đổi từ các tab khác hoặc Extension
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "hub1688_persisted_products" && e.newValue) {
-        try {
-          const items = JSON.parse(e.newValue);
-          if (Array.isArray(items)) {
-            setProducts(items);
-          }
-        } catch {}
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    const onExpired = () => { setCurrentUser(null); setProducts([]); setDiffLogs([]); setShowAuthModal(true); };
+    window.addEventListener("hub1688:auth-expired", onExpired);
+    return () => window.removeEventListener("hub1688:auth-expired", onExpired);
   }, []);
 
   // Cập nhật sản phẩm
   const handleSaveProduct = async (updated: WebProduct) => {
     try {
-      setProducts(prev => {
-        const next = prev.map(p => (p.id === updated.id ? updated : p));
-        savePersistedProducts(next);
-        return next;
-      });
-      await AdminApi.updateProduct(updated.id!, updated).catch(err => {
-        console.warn("Lưu backend tạm lỗi, dữ liệu đã lưu an toàn vào LocalStorage:", err);
-      });
+      const result = await AdminApi.updateProduct(updated.id!, updated);
+      setProducts(prev => prev.map(p => (p.id === updated.id ? result.product : p)));
       showToast("Đã lưu thông tin sản phẩm và ma trận SKU thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sản phẩm", "error");
@@ -236,12 +203,10 @@ export const App: React.FC = () => {
 
     const newStatus: "PUBLISHED" | "DRAFT" = prod.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
     try {
-      setProducts(prev => {
-        const next: WebProduct[] = prev.map(p => (p.id === id ? { ...p, status: newStatus } : p));
-        savePersistedProducts(next);
-        return next;
-      });
-      await AdminApi.updateProduct(id, { status: newStatus }).catch(() => {});
+      const result = newStatus === "PUBLISHED"
+        ? await AdminApi.publishProduct(id)
+        : await AdminApi.updateProduct(id, { status: "DRAFT" });
+      setProducts(prev => prev.map(p => (p.id === id ? result.product : p)));
       showToast(
         newStatus === "PUBLISHED"
           ? "Đã xuất bản sản phẩm lên website!"
@@ -261,11 +226,7 @@ export const App: React.FC = () => {
 
     try {
       await AdminApi.deleteProduct(id);
-      setProducts(prev => {
-        const next = prev.filter(p => p.id !== id);
-        savePersistedProducts(next);
-        return next;
-      });
+      setProducts(prev => prev.filter(p => p.id !== id));
       showToast("Đã xóa sản phẩm thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa sản phẩm", "error");
@@ -275,13 +236,9 @@ export const App: React.FC = () => {
   // Đăng bán hàng loạt
   const handleBulkPublish = async (ids: string[]) => {
     try {
-      await AdminApi.bulkPublish(ids);
-      setProducts(prev => {
-        const next = prev.map(p => (ids.includes(p.id!) ? { ...p, status: "PUBLISHED" as const } : p));
-        savePersistedProducts(next);
-        return next;
-      });
-      showToast(`Đã đăng bán thành công ${ids.length} sản phẩm!`);
+      const result = await AdminApi.bulkPublish(ids);
+      await loadData();
+      showToast(`Đã đăng bán thành công ${result.count} sản phẩm đủ quality gate!`);
     } catch (err: any) {
       showToast(err.message || "Lỗi khi đăng bán hàng loạt", "error");
     }
@@ -296,11 +253,7 @@ export const App: React.FC = () => {
 
     try {
       await AdminApi.bulkDelete(ids);
-      setProducts(prev => {
-        const next = prev.filter(p => !ids.includes(p.id!));
-        savePersistedProducts(next);
-        return next;
-      });
+      setProducts(prev => prev.filter(p => !ids.includes(p.id!)));
       showToast(`Đã xóa ${ids.length} sản phẩm!`);
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa hàng loạt", "error");
@@ -332,7 +285,13 @@ export const App: React.FC = () => {
 
     try {
       showToast(`Đang gửi yêu cầu bóc tách sản phẩm #${cleanId}...`);
-      await loadData();
+      const result = await AdminApi.executeCloneProduct({
+        url: `https://detail.1688.com/offer/${cleanId}.html`,
+        autoPublish: false
+      });
+      setProducts(prev => [result.product, ...prev.filter(p => p.id !== result.product.id)]);
+      setSelectedProduct(result.product);
+      showToast("Đã nhập dữ liệu thật. Vui lòng duyệt trước khi đăng bán.");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi kéo sản phẩm", "error");
     }
@@ -348,12 +307,49 @@ export const App: React.FC = () => {
     loadData();
   };
 
+  if (viewMode === "storefront") {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900">
+        {toast && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-lg border flex items-center gap-2 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200 ${
+              toast.type === "success"
+                ? "bg-emerald-600 text-white border-emerald-500"
+                : "bg-rose-600 text-white border-rose-500"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <AlertCircle className="w-4 h-4" />
+            )}
+            <span>{toast.message}</span>
+          </div>
+        )}
+
+        <StorefrontView
+          onBackToAdmin={openAdmin}
+          onShowToast={showToast}
+          initialProductId={storefrontProductId}
+        />
+
+        <StoreSettingsModal
+          isOpen={showStoreSettingsModal}
+          onClose={() => setShowStoreSettingsModal(false)}
+          onShowToast={showToast}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-[#F7F8FA] flex">
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold flex items-center gap-2 animate-in slide-in-from-top duration-200 ${
+          role={toast.type === "error" ? "alert" : "status"}
+          aria-live={toast.type === "error" ? "assertive" : "polite"}
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl border text-sm font-bold flex items-center gap-2 animate-in slide-in-from-top duration-200 ${
             toast.type === "success"
               ? "bg-emerald-600 text-white border-emerald-500"
               : "bg-rose-600 text-white border-rose-500"
@@ -375,10 +371,11 @@ export const App: React.FC = () => {
         pendingDiffCount={diffLogs.length}
         totalProductsCount={products.length}
         onOpenSettings={() => setShowSettingsModal(true)}
+        onOpenStorefront={() => openStorefront()}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 ml-64 flex flex-col min-w-0">
+      <div className="flex-1 md:ml-64 flex flex-col min-w-0 pt-16 md:pt-0">
         <Header
           currentTab={currentTab}
           backendUrl={backendUrl}
@@ -392,9 +389,11 @@ export const App: React.FC = () => {
             setShowConnectorsModal(true);
           }}
           onOpenMultiClone={() => setShowMultiCloneModal(true)}
+          onOpenStorefront={() => openStorefront()}
+          onOpenStoreSettings={() => setShowStoreSettingsModal(true)}
         />
 
-        <main className="p-6 flex-1 overflow-x-hidden">
+        <main className="p-3 sm:p-5 lg:p-6 flex-1 overflow-x-hidden">
           {currentTab === "DASHBOARD" && (
             <DashboardView
               products={products}
@@ -412,6 +411,7 @@ export const App: React.FC = () => {
               onDeleteProduct={handleDeleteProduct}
               onBulkPublish={handleBulkPublish}
               onBulkDelete={handleBulkDelete}
+              onViewOnStore={(prod) => openStorefront(prod.id)}
             />
           )}
 
@@ -484,11 +484,7 @@ export const App: React.FC = () => {
         isOpen={showMultiCloneModal}
         onClose={() => setShowMultiCloneModal(false)}
         onProductCreated={(newProd) => {
-          setProducts(prev => {
-            const next = [newProd, ...prev.filter(p => p.id !== newProd.id)];
-            savePersistedProducts(next);
-            return next;
-          });
+          setProducts(prev => [newProd, ...prev.filter(p => p.id !== newProd.id)]);
           loadData();
           setSelectedProduct(newProd);
         }}
@@ -502,6 +498,13 @@ export const App: React.FC = () => {
         onClose={() => setShowAuthModal(false)}
         onLogin={handleLogin}
         onLogout={handleLogout}
+      />
+
+      {/* Modal Cấu Hình Web Bán Hàng Trực Tiếp (Storefront Settings) */}
+      <StoreSettingsModal
+        isOpen={showStoreSettingsModal}
+        onClose={() => setShowStoreSettingsModal(false)}
+        onShowToast={showToast}
       />
 
       {/* Modal Cấu Hình Backend URL */}

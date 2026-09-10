@@ -224,9 +224,24 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onShowToast }) => {
                       <span className="font-mono font-bold text-slate-900 block text-xs">
                         {order.orderNumber}
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 inline-block mt-1">
-                        {order.platform}
-                      </span>
+                      {order.platform === "STOREFRONT" ? (
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1 mt-1">
+                          🛍️ Web Bán Hàng
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 inline-block mt-1">
+                          {order.platform}
+                        </span>
+                      )}
+                      {order.paymentMethod && (
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border block mt-1 w-fit ${
+                          order.paymentMethod === "VIETQR"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}>
+                          {order.paymentMethod === "VIETQR" ? "QR Chuyển Khoản" : "Thu Hộ COD"}
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-400 block mt-1">
                         {new Date(order.createdAt).toLocaleDateString("vi-VN")}
                       </span>

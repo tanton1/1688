@@ -278,17 +278,10 @@ export class StoreConnectorsController {
    * Lưu cấu hình AI Key & Model trực tiếp vào Backend (không lộ ra client)
    */
   public updateAiConfig(req: Request, res: Response): void {
-    const { apiKey, geminiKey, openAiKey, imageKey, model, baseUrl } = req.body as {
-      apiKey?: string;
-      geminiKey?: string;
-      openAiKey?: string;
-      imageKey?: string;
-      model?: string;
-      baseUrl?: string;
-    };
-
-    const result = aiGatewayService.updateBackendConfig({ apiKey, geminiKey, openAiKey, imageKey, model, baseUrl });
-    res.json(result);
+    res.status(405).json({
+      error: "RUNTIME_AI_CONFIG_DISABLED",
+      message: "Cấu hình AI chỉ được quản lý bằng biến môi trường trên máy chủ"
+    });
   }
 
   /**

@@ -14,10 +14,11 @@ import { SkuMappingService } from "../services/sku-mapping.service.js";
 import { supabaseService } from "../services/supabase.service.js";
 
 import { SEED_PRODUCTS } from "../services/seed-data.js";
+import { ENV } from "../config/env.js";
 
 // Bộ nhớ in-memory giả lập Database Repository khi chưa kết nối Postgres thực tế
 export const inMemoryProducts = new Map<string, WebProduct>(
-  SEED_PRODUCTS.map(p => [p.id!, { ...p }])
+  (ENV.DEMO_MODE ? SEED_PRODUCTS : []).map(p => [p.id!, { ...p }])
 );
 export const inMemoryJobs = new Map<string, ImportJobStatus>();
 
@@ -56,7 +57,9 @@ export class ImportController {
           currentMinSellingPriceVND: existing.minPriceVND,
           currentStock: existing.variants.reduce((sum, v) => sum + v.stockQuantity, 0),
           lastSyncedAt: existing.updatedAt,
-          marginPercent: 58.5
+          marginPercent: existing.minPriceVND > 0
+            ? Math.round(((existing.minPriceVND - Math.min(...existing.variants.map(v => v.costPriceVND))) / existing.minPriceVND) * 1000) / 10
+            : undefined
         };
       }
       return {
@@ -149,10 +152,11 @@ export class ImportController {
           colorNameEN: nv.colorVI || nv.colorCN,
           sizeNameEN: nv.sizeVI || nv.sizeCN,
           costPriceVND: costVND,
+          sourcePrice: nv.priceCNY ?? raw.prices?.minPriceCNY,
           sellingPriceVND: sellVND,
-          stockQuantity: nv.stock || 100,
+          stockQuantity: nv.stock ?? 0,
           imageUrl: nv.imageUrl || normalized.media.images[0] || "",
-          sourceAvailable: (nv.stock || 100) > 0,
+          sourceAvailable: (nv.stock ?? 0) > 0,
           selectedForSale: isSelected
         };
       });
@@ -259,7 +263,7 @@ export class ImportController {
       imagesSEO: seoPackage.imagesSEO,
       faqs: seoPackage.faqs,
 
-      status: settings.autoPublish ? "PUBLISHED" : "DRAFT",
+      status: "DRAFT",
       qualityScore: 0,
       minPriceVND,
       maxPriceVND,
@@ -280,6 +284,19 @@ export class ImportController {
     const qualityResult = evaluateProductQuality(newProduct);
     newProduct.qualityScore = qualityResult.totalScore;
 
+    if (settings.autoPublish) {
+      if (!qualityResult.canPublish) {
+        res.status(422).json({
+          error: "QUALITY_GATE_FAILED",
+          message: "Sản phẩm chưa đạt điều kiện đăng bán",
+          blockers: qualityResult.blockers,
+          qualityScore: qualityResult
+        });
+        return;
+      }
+      newProduct.status = "PUBLISHED";
+    }
+
     // Lưu vào database (in-memory cache)
     inMemoryProducts.set(productId, newProduct);
 
@@ -292,7 +309,10 @@ export class ImportController {
         }
         await supabaseService.saveWebProduct(newProduct);
       } catch (dbErr) {
+        inMemoryProducts.delete(productId);
         console.error("[Supabase save error]", dbErr);
+        res.status(503).json({ error: "PERSISTENCE_FAILED", message: "Không thể lưu sản phẩm vào cơ sở dữ liệu" });
+        return;
       }
     }
 
@@ -325,56 +345,20 @@ export class ImportController {
 
     inMemoryJobs.set(jobId, jobStatus);
 
-    // Giả lập worker nền xử lý batch không đồng bộ
-    setTimeout(() => {
-      offerIds.forEach((offerId, index) => {
-        const prodId = `prod_bulk_${Date.now()}_${index}`;
-        const dummyProduct: WebProduct = {
-          id: prodId,
-          slug: `bulk-imported-item-${offerId}`,
-          skuCode: `SP-BLK-${offerId.slice(-4)}`,
-          titleVI: `Sản Phẩm Thời Trang Nữ Cao Cấp 1688 #${offerId.slice(-4)}`,
-          categoryName: settings.categoryName || "Thời trang",
-          primaryImage: "https://cbu01.alicdn.com/img/ibank/dummy.jpg",
-          galleryImages: [],
-          status: settings.autoPublish ? "PUBLISHED" : "DRAFT",
-          qualityScore: 88,
-          minPriceVND: 189000,
-          maxPriceVND: 249000,
-          isTitleLocked: false,
-          isDescLocked: false,
-          isImagesLocked: false,
-          isPriceAutoSync: true,
-          isStockAutoSync: true,
-          variants: [
-            {
-              sourceSkuId: `sku_${offerId}_01`,
-              colorName: "Đen",
-              sizeName: "M",
-              costPriceVND: 80000,
-              sellingPriceVND: 189000,
-              stockQuantity: 250,
-              sourceAvailable: true,
-              selectedForSale: true
-            }
-          ],
-          sourceProductId: offerId,
-          sourceUrl: `https://detail.1688.com/offer/${offerId}.html`,
-          supplierName: "Nhà Cung Cấp 1688 Uy Tín",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-
-        inMemoryProducts.set(prodId, dummyProduct);
+    // Bulk extraction must be performed by the authenticated extension so its DOM
+    // adapters can send normalized products. Never manufacture catalog data here.
+    queueMicrotask(() => {
+      for (const offerId of offerIds) {
         jobStatus.results.push({
           offerId,
-          status: "SUCCESS",
-          webProductId: prodId
+          status: "FAILED",
+          error: "EXTRACTION_REQUIRED: mở sản phẩm bằng extension để trích xuất dữ liệu thật"
         });
+        jobStatus.failedItems++;
         jobStatus.completedItems++;
-      });
-      jobStatus.status = "COMPLETED";
-    }, 1000);
+      }
+      jobStatus.status = "FAILED";
+    });
 
     res.status(202).json({
       success: true,

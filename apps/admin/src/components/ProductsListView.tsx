@@ -19,7 +19,8 @@ import {
   LayoutGrid,
   List,
   Video,
-  Globe
+  Globe,
+  Store
 } from "lucide-react";
 
 interface ProductsListViewProps {
@@ -29,6 +30,7 @@ interface ProductsListViewProps {
   onDeleteProduct: (id: string) => void;
   onBulkPublish: (ids: string[]) => void;
   onBulkDelete: (ids: string[]) => void;
+  onViewOnStore?: (product: WebProduct) => void;
 }
 
 export const ProductsListView: React.FC<ProductsListViewProps> = ({
@@ -37,7 +39,8 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   onPublishProduct,
   onDeleteProduct,
   onBulkPublish,
-  onBulkDelete
+  onBulkDelete,
+  onViewOnStore
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -415,7 +418,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
                             title="Điểm tối ưu hóa SEO Google"
                           >
-                            <Globe className="w-2.5 h-2.5" /> SEO {product.seo?.seoScore || 95}
+                            <Globe className="w-2.5 h-2.5" /> SEO {product.seo?.seoScore ?? "—"}
                           </span>
                         </div>
                       </td>
@@ -438,6 +441,15 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                       {/* Actions */}
                       <td className="p-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {product.status === "PUBLISHED" && onViewOnStore && (
+                            <button
+                              onClick={() => onViewOnStore(product)}
+                              className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors"
+                              title="Xem sản phẩm trên Web Bán Hàng Trực Tiếp"
+                            >
+                              <Store className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onSelectProduct(product)}
                             className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors"
@@ -503,7 +515,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                       QS {product.qualityScore}
                     </span>
                     <span className="bg-emerald-900/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full" title="Điểm chuẩn SEO">
-                      SEO {product.seo?.seoScore || 95}
+                      SEO {product.seo?.seoScore ?? "—"}
                     </span>
                   </div>
                   {product.videoUrl && (
@@ -547,12 +559,24 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
 
               <div className="p-3.5 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between text-xs">
                 <span className="text-slate-500 text-[11px]">{product.variants.length} biến thể</span>
-                <button
-                  onClick={() => onSelectProduct(product)}
-                  className="text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 text-[11px]"
-                >
-                  Chi tiết & SKU →
-                </button>
+                <div className="flex items-center gap-2">
+                  {product.status === "PUBLISHED" && onViewOnStore && (
+                    <button
+                      onClick={() => onViewOnStore(product)}
+                      className="text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 text-[11px]"
+                      title="Xem trên Web Bán Hàng"
+                    >
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Xem Shop</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onSelectProduct(product)}
+                    className="text-orange-600 hover:text-orange-700 font-bold flex items-center gap-1 text-[11px]"
+                  >
+                    Chi tiết & SKU →
+                  </button>
+                </div>
               </div>
             </div>
           ))}

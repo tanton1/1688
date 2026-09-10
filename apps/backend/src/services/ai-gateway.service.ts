@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
 import { VisualSourcingMatch, AICopywritingStyle } from "@hub1688/shared-types";
 import { generateAICopywriting } from "@hub1688/shared-utils";
+import { safeFetch } from "../utils/safe-network.js";
 
 export interface AiGatewayConfig {
   baseUrl?: string;
@@ -198,7 +197,11 @@ export class AiGatewayService {
   private defaultModel: string;
 
   constructor(config?: AiGatewayConfig) {
-    this.baseUrl = (config?.baseUrl || process.env.APIKEY_FUN_BASE_URL || "https://api.apikey.fun/v1").replace(/\/+$/, "");
+    const configuredBaseUrl = (config?.baseUrl || process.env.APIKEY_FUN_BASE_URL || "https://api.apikey.fun/v1").replace(/\/+$/, "");
+    const allowlist = (process.env.AI_ALLOWED_BASE_URLS || "https://api.apikey.fun/v1,https://api.openai.com/v1")
+      .split(",").map(value => value.trim().replace(/\/+$/, ""));
+    if (!allowlist.includes(configuredBaseUrl)) throw new Error("AI_GATEWAY_BASE_URL_NOT_ALLOWED");
+    this.baseUrl = configuredBaseUrl;
     this.geminiApiKey = config?.geminiApiKey || process.env.APIKEY_FUN_GEMINI_KEY || "";
     this.openaiApiKey = config?.openaiApiKey || process.env.APIKEY_FUN_OPENAI_KEY || "";
     this.imageApiKey = config?.imageApiKey || process.env.APIKEY_FUN_IMAGE_KEY || "";
@@ -302,79 +305,14 @@ export class AiGatewayService {
     maskedImageKey: string;
     model: string;
   } {
-    if (params.apiKey !== undefined && params.apiKey.trim() && !params.apiKey.includes("•")) {
-      this.apiKey = params.apiKey.trim();
-      process.env.APIKEY_FUN_API_KEY = this.apiKey;
-      this.persistEnvVariable("APIKEY_FUN_API_KEY", this.apiKey);
-    }
-
-    if (params.geminiKey !== undefined && params.geminiKey.trim() && !params.geminiKey.includes("•")) {
-      this.geminiApiKey = params.geminiKey.trim();
-      process.env.APIKEY_FUN_GEMINI_KEY = this.geminiApiKey;
-      this.persistEnvVariable("APIKEY_FUN_GEMINI_KEY", this.geminiApiKey);
-    }
-
-    if (params.openAiKey !== undefined && params.openAiKey.trim() && !params.openAiKey.includes("•")) {
-      this.openaiApiKey = params.openAiKey.trim();
-      process.env.APIKEY_FUN_OPENAI_KEY = this.openaiApiKey;
-      this.persistEnvVariable("APIKEY_FUN_OPENAI_KEY", this.openaiApiKey);
-    }
-
-    if (params.imageKey !== undefined && params.imageKey.trim() && !params.imageKey.includes("•")) {
-      this.imageApiKey = params.imageKey.trim();
-      process.env.APIKEY_FUN_IMAGE_KEY = this.imageApiKey;
-      this.persistEnvVariable("APIKEY_FUN_IMAGE_KEY", this.imageApiKey);
-    }
-
-    if (params.model !== undefined && params.model.trim()) {
-      this.defaultModel = params.model.trim();
-      process.env.APIKEY_FUN_DEFAULT_MODEL = this.defaultModel;
-      this.persistEnvVariable("APIKEY_FUN_DEFAULT_MODEL", this.defaultModel);
-    }
-
-    if (params.baseUrl !== undefined && params.baseUrl.trim()) {
-      this.baseUrl = params.baseUrl.trim().replace(/\/+$/, "");
-      process.env.APIKEY_FUN_BASE_URL = this.baseUrl;
-      this.persistEnvVariable("APIKEY_FUN_BASE_URL", this.baseUrl);
-    }
-
     return {
-      success: true,
+      success: false,
       maskedKey: this.maskApiKey(this.geminiApiKey || this.apiKey),
       maskedGeminiKey: this.maskApiKey(this.geminiApiKey),
       maskedOpenAiKey: this.maskApiKey(this.openaiApiKey),
       maskedImageKey: this.maskApiKey(this.imageApiKey),
       model: this.defaultModel
     };
-  }
-
-  /**
-   * Ghi biến môi trường an toàn vào tệp .env của Backend
-   */
-  private persistEnvVariable(key: string, value: string): void {
-    const candidatePaths = [
-      path.resolve(process.cwd(), "apps/backend/.env"),
-      path.resolve(process.cwd(), ".env"),
-      path.resolve(".env")
-    ];
-
-    for (const envPath of candidatePaths) {
-      try {
-        if (fs.existsSync(envPath)) {
-          let content = fs.readFileSync(envPath, "utf8");
-          const regex = new RegExp(`^${key}=.*$`, "m");
-          if (regex.test(content)) {
-            content = content.replace(regex, `${key}=${value}`);
-          } else {
-            content += `\n${key}=${value}\n`;
-          }
-          fs.writeFileSync(envPath, content, "utf8");
-          break;
-        }
-      } catch (err: any) {
-        console.warn(`[AiGateway] Không thể ghi ${key} vào ${envPath}:`, err.message);
-      }
-    }
   }
 
   /**
@@ -411,7 +349,7 @@ export class AiGatewayService {
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -749,7 +687,7 @@ Trả về JSON: { "keywordsCN": ["từ1", "từ2", "từ3"], "suggestedFactoryH
     }
 
     const url = `${this.baseUrl}/images/generations`;
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

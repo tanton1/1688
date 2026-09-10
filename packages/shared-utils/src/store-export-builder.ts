@@ -470,3 +470,41 @@ export function convertRawProductToExportable(
   };
 }
 
+/**
+ * Tạo URL mã QR thanh toán ngân hàng VietQR tự động chuẩn Napas 247
+ * (https://img.vietqr.io/image/{bankId}-{accountNo}-compact2.png)
+ */
+export function generateVietQRUrl(params: {
+  bankId?: string;
+  bankCode?: string;
+  accountNo: string;
+  amount?: number;
+  amountVND?: number;
+  orderInfo?: string;
+  description?: string;
+  accountName?: string;
+}): string {
+  const bank = encodeURIComponent(params.bankId || params.bankCode || "MB");
+  const account = encodeURIComponent(params.accountNo || "");
+  const amountVal = params.amount ?? params.amountVND;
+  const desc = encodeURIComponent(params.orderInfo || params.description || "Thanh toan don hang");
+  const accountName = params.accountName ? encodeURIComponent(params.accountName) : "";
+
+  let url = `https://img.vietqr.io/image/${bank}-${account}-compact2.png`;
+  const queryParts: string[] = [];
+  if (amountVal !== undefined && amountVal > 0) {
+    queryParts.push(`amount=${Math.round(amountVal)}`);
+  }
+  if (desc) {
+    queryParts.push(`addInfo=${desc}`);
+  }
+  if (accountName) {
+    queryParts.push(`accountName=${accountName}`);
+  }
+  if (queryParts.length > 0) {
+    url += `?${queryParts.join("&")}`;
+  }
+  return url;
+}
+
+

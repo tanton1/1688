@@ -70,7 +70,29 @@ export class PricingEngineService {
   ];
 
   public getAllRules(): PricingRuleConfig[] {
-    return this.rules;
+    return this.rules.map(rule => ({ ...rule }));
+  }
+
+  public createRule(rule: PricingRuleConfig): PricingRuleConfig {
+    if (this.rules.some(existing => existing.id === rule.id)) {
+      throw new Error("PRICING_RULE_EXISTS");
+    }
+    this.rules.push({ ...rule });
+    return { ...rule };
+  }
+
+  public updateRule(id: string, updates: Partial<PricingRuleConfig>): PricingRuleConfig | null {
+    const index = this.rules.findIndex(rule => rule.id === id);
+    if (index < 0) return null;
+    this.rules[index] = { ...this.rules[index], ...updates, id };
+    return { ...this.rules[index] };
+  }
+
+  public deleteRule(id: string): boolean {
+    if (id === DEFAULT_PRICING_RULE.id) return false;
+    const initialLength = this.rules.length;
+    this.rules = this.rules.filter(rule => rule.id !== id);
+    return this.rules.length < initialLength;
   }
 
   public getRuleById(ruleId?: string): PricingRuleConfig {

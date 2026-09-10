@@ -11,7 +11,8 @@ import {
   AlertCircle,
   Share2,
   ShieldCheck,
-  User
+  User,
+  Store
 } from "lucide-react";
 
 interface HeaderProps {
@@ -24,6 +25,8 @@ interface HeaderProps {
   onOpenAuth: () => void;
   onOpenConnectors: () => void;
   onOpenMultiClone: () => void;
+  onOpenStorefront: () => void;
+  onOpenStoreSettings: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -35,7 +38,9 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onOpenAuth,
   onOpenConnectors,
-  onOpenMultiClone
+  onOpenMultiClone,
+  onOpenStorefront,
+  onOpenStoreSettings
 }) => {
   const [quickOfferId, setQuickOfferId] = useState("");
   const [showQuickModal, setShowQuickModal] = useState(false);
@@ -112,6 +117,25 @@ export const Header: React.FC<HeaderProps> = ({
           <Globe className="w-3.5 h-3.5 text-indigo-600" />
           <span>Clone Đa Nền Tảng</span>
         </button>
+
+        {/* Web Bán Hàng Trực Tiếp (Storefront Direct) */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenStorefront}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-xs transition-all active:scale-95"
+            title="Mở Cửa Hàng Bán Lẻ & Bán Sỉ Trực Tiếp"
+          >
+            <Store className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Mở Web Bán Hàng ↗</span>
+          </button>
+          <button
+            onClick={onOpenStoreSettings}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Cấu hình VietQR & Thương hiệu Web Bán Hàng"
+          >
+            <span className="text-xs">⚙️</span>
+          </button>
+        </div>
 
         {/* Quick Ingest Button */}
         <button

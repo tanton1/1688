@@ -72,7 +72,7 @@ export interface CustomerOrderItem {
 export interface CustomerOrder {
   id: string;
   orderNumber: string;
-  platform: "WOOCOMMERCE" | "SHOPIFY" | "MANUAL";
+  platform: "WOOCOMMERCE" | "SHOPIFY" | "MANUAL" | "STOREFRONT";
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -81,8 +81,42 @@ export interface CustomerOrder {
   totalCostVND: number;
   estimatedProfitVND: number;
   status: OrderSourcingStatus;
+  paymentMethod?: "COD" | "VIETQR" | "BANK_TRANSFER";
+  paymentStatus?: "PENDING" | "PAID";
   note?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface StorefrontConfig {
+  storeName: string;
+  tagline: string;
+  hotline: string;
+  zaloUrl?: string;
+  address?: string;
+  freeShipThresholdVND: number;
+  bankName: string;
+  bankAccountNo: string;
+  bankAccountName: string;
+  bannerTitle?: string;
+  bannerSubtitle?: string;
+  accentColor?: string;
+}
+
+export interface StorefrontCheckoutRequest {
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  note?: string;
+  paymentMethod: "COD" | "VIETQR" | "BANK_TRANSFER";
+  items: Array<{
+    productId: string;
+    skuCode: string;
+    variantName: string;
+    quantity: number;
+    sellingPriceVND: number;
+    image?: string;
+  }>;
+}
+
 

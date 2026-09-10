@@ -11,7 +11,10 @@ import {
   BatchCloneResponse,
   VisualSourcingRequest,
   VisualSourcingResponse,
-  ProductTemplate
+  ProductTemplate,
+  StorefrontConfig,
+  StorefrontCheckoutRequest,
+  CustomerOrder
 } from "@hub1688/shared-types";
 
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
@@ -31,21 +34,32 @@ export function setApiBaseUrl(url: string) {
   localStorage.setItem("hub1688_backend_url", url.trim());
 }
 
+const TOKEN_KEY = "hub1688_access_token";
+export const getAccessToken = (): string => sessionStorage.getItem(TOKEN_KEY) || "";
+export const setAccessToken = (token: string): void => sessionStorage.setItem(TOKEN_KEY, token);
+export const clearAccessToken = (): void => sessionStorage.removeItem(TOKEN_KEY);
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const base = getApiBaseUrl();
   const url = `${base}${endpoint.startsWith("/") ? endpoint : "/" + endpoint}`;
 
   try {
+    const token = getAccessToken();
     const res = await fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options?.headers
       }
     });
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
+      if (res.status === 401 && endpoint !== "/api/v1/auth/login") {
+        clearAccessToken();
+        window.dispatchEvent(new Event("hub1688:auth-expired"));
+      }
       throw new Error(errBody.error || errBody.message || `Lỗi HTTP ${res.status}: ${res.statusText}`);
     }
 
@@ -57,6 +71,9 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 }
 
 export const AdminApi = {
+  async login(email: string, password: string): Promise<{ accessToken: string; expiresAt?: number; user: { id: string; email: string; name: string; role: "ADMIN" | "SOURCING" } }> {
+    return request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+  },
   // 1. Thống kê Dashboard
   async getDashboardStats(): Promise<{
     totalProducts: number;
@@ -214,7 +231,7 @@ export const AdminApi = {
     const base = getApiBaseUrl();
     const res = await fetch(`${base}/api/v1/connectors/export-csv`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
       body: JSON.stringify({ productIds, platform })
     });
     if (!res.ok) {
@@ -309,95 +326,23 @@ export const AdminApi = {
 
   // 23. Product Templates Management (Content & Variation Presets)
   async getTemplates(category?: string, search?: string): Promise<{ success: boolean; total: number; templates: ProductTemplate[] }> {
-    try {
-      const params = new URLSearchParams();
-      if (category && category !== "ALL") params.append("category", category);
-      if (search) params.append("search", search);
-      const query = params.toString() ? `?${params.toString()}` : "";
-      const res = await request<{ success: boolean; total: number; templates: ProductTemplate[] }>(`/api/v1/templates${query}`);
-      if (res?.templates) {
-        localStorage.setItem("hub1688_cached_templates", JSON.stringify(res.templates));
-      }
-      return res;
-    } catch (err) {
-      console.warn("[AdminApi] Backend templates unreachable, loading from cache:", err);
-      const cached = localStorage.getItem("hub1688_cached_templates");
-      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
-      let filtered = list;
-      if (category && category !== "ALL") {
-        filtered = filtered.filter(t => t.categoryName.toLowerCase().includes(category.toLowerCase()));
-      }
-      if (search) {
-        const q = search.toLowerCase();
-        filtered = filtered.filter(t => t.name.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
-      }
-      return { success: true, total: filtered.length, templates: filtered };
-    }
+    const params = new URLSearchParams();
+    if (category && category !== "ALL") params.append("category", category);
+    if (search) params.append("search", search);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request(`/api/v1/templates${query}`);
   },
 
   async createTemplate(tpl: Partial<ProductTemplate>): Promise<{ success: boolean; template: ProductTemplate }> {
-    try {
-      return await request("/api/v1/templates", {
-        method: "POST",
-        body: JSON.stringify(tpl)
-      });
-    } catch (err) {
-      // Offline fallback
-      const cached = localStorage.getItem("hub1688_cached_templates");
-      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
-      const newTpl: ProductTemplate = {
-        id: `tpl-${Date.now()}`,
-        name: tpl.name || "Template Mới",
-        description: tpl.description || "",
-        categoryName: tpl.categoryName || "Chung",
-        targetPlatform: tpl.targetPlatform || "ALL",
-        isDefault: Boolean(tpl.isDefault),
-        content: tpl.content || {},
-        variation: tpl.variation || { options: [] },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      if (newTpl.isDefault) {
-        list.forEach(t => { t.isDefault = false; });
-      }
-      list.unshift(newTpl);
-      localStorage.setItem("hub1688_cached_templates", JSON.stringify(list));
-      return { success: true, template: newTpl };
-    }
+    return request("/api/v1/templates", { method: "POST", body: JSON.stringify(tpl) });
   },
 
   async updateTemplate(id: string, tpl: Partial<ProductTemplate>): Promise<{ success: boolean; template: ProductTemplate }> {
-    try {
-      return await request(`/api/v1/templates/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(tpl)
-      });
-    } catch (err) {
-      const cached = localStorage.getItem("hub1688_cached_templates");
-      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
-      const idx = list.findIndex(t => t.id === id);
-      if (idx !== -1) {
-        if (tpl.isDefault) list.forEach(t => { t.isDefault = false; });
-        list[idx] = { ...list[idx], ...tpl, updatedAt: new Date().toISOString() };
-        localStorage.setItem("hub1688_cached_templates", JSON.stringify(list));
-        return { success: true, template: list[idx] };
-      }
-      throw err;
-    }
+    return request(`/api/v1/templates/${id}`, { method: "PUT", body: JSON.stringify(tpl) });
   },
 
   async deleteTemplate(id: string): Promise<{ success: boolean; message: string }> {
-    try {
-      return await request(`/api/v1/templates/${id}`, {
-        method: "DELETE"
-      });
-    } catch (err) {
-      const cached = localStorage.getItem("hub1688_cached_templates");
-      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
-      const updated = list.filter(t => t.id !== id);
-      localStorage.setItem("hub1688_cached_templates", JSON.stringify(updated));
-      return { success: true, message: "Deleted from cache" };
-    }
+    return request(`/api/v1/templates/${id}`, { method: "DELETE" });
   },
 
   async resetDefaultTemplates(): Promise<{ success: boolean; total: number; templates: ProductTemplate[] }> {
@@ -419,6 +364,72 @@ export const AdminApi = {
       method: "POST",
       body: JSON.stringify(data)
     });
+  },
+
+  // 26. Cửa Hàng Trực Tiếp (Built-in Storefront E-Commerce)
+  async getStoreInfo(): Promise<{ success: boolean; config: StorefrontConfig }> {
+    return request("/api/v1/store/info");
+  },
+
+  async updateStoreSettings(settings: Partial<StorefrontConfig>): Promise<{ success: boolean; config: StorefrontConfig }> {
+    return request("/api/v1/store/settings", {
+      method: "POST",
+      body: JSON.stringify(settings)
+    });
+  },
+
+  async getStoreProducts(params?: {
+    category?: string;
+    search?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sort?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    total: number;
+    page: number;
+    limit: number;
+    categories: string[];
+    products: WebProduct[];
+  }> {
+    const q = new URLSearchParams();
+    if (params?.category) q.set("category", params.category);
+    if (params?.search) q.set("search", params.search);
+    if (params?.minPrice) q.set("minPrice", params.minPrice.toString());
+    if (params?.maxPrice) q.set("maxPrice", params.maxPrice.toString());
+    if (params?.sort) q.set("sort", params.sort);
+    if (params?.page) q.set("page", params.page.toString());
+    if (params?.limit) q.set("limit", params.limit.toString());
+    const qs = q.toString();
+    return request(`/api/v1/store/products${qs ? "?" + qs : ""}`);
+  },
+
+  async getStoreProductDetail(idOrSlug: string): Promise<{
+    success: boolean;
+    product: WebProduct;
+    relatedProducts: WebProduct[];
+  }> {
+    return request(`/api/v1/store/products/${encodeURIComponent(idOrSlug)}`);
+  },
+
+  async checkoutStoreOrder(data: StorefrontCheckoutRequest): Promise<{
+    success: boolean;
+    order: CustomerOrder;
+    qrCodeUrl?: string;
+    message: string;
+  }> {
+    return request("/api/v1/store/orders", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  },
+
+  async trackStoreOrder(query: string): Promise<{
+    success: boolean;
+    orders: CustomerOrder[];
+  }> {
+    return request(`/api/v1/store/orders/track/${encodeURIComponent(query)}`);
   }
 };
-

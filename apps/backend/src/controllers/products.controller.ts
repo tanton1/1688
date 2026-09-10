@@ -241,6 +241,16 @@ export class ProductsController {
       return;
     }
 
+    const qualityResult = evaluateProductQuality(product);
+    if (!qualityResult.canPublish) {
+      res.status(422).json({
+        error: "QUALITY_GATE_FAILED",
+        message: "Sản phẩm chưa đạt điều kiện đăng bán",
+        blockers: qualityResult.blockers,
+        qualityScore: qualityResult
+      });
+      return;
+    }
     product.status = "PUBLISHED";
     product.updatedAt = new Date().toISOString();
     inMemoryProducts.set(id, product);
@@ -250,6 +260,10 @@ export class ProductsController {
         await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
       } catch (err) {
         console.error("[publishProduct Supabase error]", err);
+        product.status = "DRAFT";
+        inMemoryProducts.set(id, product);
+        res.status(503).json({ error: "PERSISTENCE_FAILED" });
+        return;
       }
     }
 
@@ -273,11 +287,18 @@ export class ProductsController {
         p = (await supabaseService.getProductById(id)) || undefined;
       }
       if (p) {
+        const qualityResult = evaluateProductQuality(p);
+        if (!qualityResult.canPublish) continue;
         p.status = "PUBLISHED";
         p.updatedAt = new Date().toISOString();
         inMemoryProducts.set(id, p);
         if (supabaseService.isConfigured()) {
-          await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
+          const persisted = await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
+          if (!persisted) {
+            p.status = "DRAFT";
+            inMemoryProducts.set(id, p);
+            continue;
+          }
         }
         updatedCount++;
       }
@@ -325,18 +346,19 @@ export class ProductsController {
 
     let deletedCount = 0;
     for (const id of ids) {
-      if (inMemoryProducts.has(id)) {
+      const existedInMemory = inMemoryProducts.has(id);
+      if (existedInMemory) {
         inMemoryProducts.delete(id);
-        deletedCount++;
       }
+      let deleted = existedInMemory;
       if (supabaseService.isConfigured()) {
         try {
-          await supabaseService.deleteWebProduct(id);
-          deletedCount++;
+          deleted = (await supabaseService.deleteWebProduct(id)) || deleted;
         } catch (err) {
           console.error("[bulkDelete Supabase error]", err);
         }
       }
+      if (deleted) deletedCount++;
     }
 
     res.json({ success: true, count: deletedCount });
@@ -379,6 +401,10 @@ export class ProductsController {
    * Đồng bộ hàng loạt sản phẩm từ Client (Persistence Re-hydration chống mất dữ liệu khi Cold Start)
    */
   public async syncBatch(req: Request, res: Response): Promise<void> {
+    if (process.env.NODE_ENV === "production") {
+      res.status(410).json({ error: "CLIENT_REHYDRATION_DISABLED", message: "Cơ sở dữ liệu là nguồn dữ liệu duy nhất" });
+      return;
+    }
     const { products } = req.body as { products?: WebProduct[] };
     let addedCount = 0;
     if (Array.isArray(products)) {
@@ -440,4 +466,3 @@ export class ProductsController {
     }
   }
 }
-

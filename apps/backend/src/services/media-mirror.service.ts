@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
 import { supabaseService } from "./supabase.service.js";
 import { ENV } from "../config/env.js";
+import { safeFetch } from "../utils/safe-network.js";
 
 export class MediaMirrorService {
   private localUploadDir: string;
@@ -34,7 +35,10 @@ export class MediaMirrorService {
         fetchUrl = "https:" + fetchUrl;
       }
 
-      const res = await fetch(fetchUrl, {
+      const res = await safeFetch(fetchUrl, {
+        timeoutMs: ENV.OUTBOUND_TIMEOUT_MS,
+        maxBytes: Math.min(ENV.OUTBOUND_MAX_BYTES, 10 * 1024 * 1024),
+        allowedContentTypes: ["image/"],
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           "Referer": fetchUrl.includes("alicdn") ? "https://detail.1688.com/" : (fetchUrl.includes("shopify") ? "https://shopify.com/" : ""),
@@ -141,7 +145,7 @@ export class MediaMirrorService {
     product: WebProduct;
     stats: { total: number; succeeded: number; failed: number };
   }> {
-    const prodId = product.id || product.sourceProductId || `prod_${Date.now()}`;
+    const prodId = (product.id || product.sourceProductId || `prod_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
     let total = 0;
     let succeeded = 0;
     let failed = 0;

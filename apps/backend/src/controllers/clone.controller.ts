@@ -29,7 +29,8 @@ export class CloneController {
       const preview = await multiPlatformClonerService.previewProduct(url, platform);
       res.json({ success: true, preview });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || "Lỗi phân tích URL sản phẩm" });
+      const status = err?.code === "EXTRACTION_FAILED" ? 422 : 500;
+      res.status(status).json({ success: false, error: err.message || "Lỗi phân tích URL sản phẩm", code: err?.code });
     }
   }
 
@@ -51,7 +52,8 @@ export class CloneController {
         product
       });
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || "Lỗi thực hiện clone sản phẩm" });
+      const status = ["EXTRACTION_FAILED", "QUALITY_GATE_FAILED", "DEMO_DATA_CANNOT_BE_IMPORTED"].some(code => String(err?.message).includes(code)) ? 422 : 500;
+      res.status(status).json({ success: false, error: err.message || "Lỗi thực hiện clone sản phẩm" });
     }
   }
 
@@ -97,4 +99,3 @@ export class CloneController {
 }
 
 export const cloneController = new CloneController();
-
