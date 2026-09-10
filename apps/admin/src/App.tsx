@@ -77,7 +77,25 @@ export const App: React.FC = () => {
     showToast("Đã đăng xuất tài khoản!");
   };
 
-  // Tải dữ liệu từ backend
+  // Persistent local cache helper (Chống mất dữ liệu khi Vercel Serverless Function bị cold-start reset RAM)
+  const getPersistedProducts = (): WebProduct[] => {
+    try {
+      const raw = localStorage.getItem("hub1688_persisted_products");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const savePersistedProducts = (items: WebProduct[]) => {
+    try {
+      localStorage.setItem("hub1688_persisted_products", JSON.stringify(items));
+    } catch (e) {
+      console.warn("Could not save to localStorage:", e);
+    }
+  };
+
+  // Tải dữ liệu từ backend kết hợp Local Storage Persistence
   const loadData = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -86,10 +104,51 @@ export const App: React.FC = () => {
         AdminApi.getDiffLogs().catch(() => ({ logs: [] }))
       ]);
 
-      setProducts(prodRes.items || []);
+      const backendItems = prodRes.items || [];
+      const localItems = getPersistedProducts();
+
+      // Hợp nhất dữ liệu thông minh giữa Backend và LocalStorage
+      const mergedMap = new Map<string, WebProduct>();
+
+      // 1. Đưa sản phẩm từ backend vào trước
+      backendItems.forEach(p => {
+        if (p.id) mergedMap.set(p.id, p);
+      });
+
+      // 2. Đưa sản phẩm từ local persisted vào (đảm bảo các sản phẩm vừa scan/clone không bao giờ mất)
+      const missingOnBackend: WebProduct[] = [];
+      localItems.forEach(p => {
+        if (p.id) {
+          const existing = mergedMap.get(p.id);
+          if (!existing) {
+            mergedMap.set(p.id, p);
+            missingOnBackend.push(p);
+          } else {
+            const localTime = new Date(p.updatedAt || p.createdAt || 0).getTime();
+            const backendTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+            if (localTime >= backendTime) {
+              mergedMap.set(p.id, p);
+            }
+          }
+        }
+      });
+
+      const finalProducts = Array.from(mergedMap.values());
+      setProducts(finalProducts);
+      savePersistedProducts(finalProducts);
       setDiffLogs(diffRes.logs || []);
+
+      // Tự động re-hydrate lại RAM của backend nếu backend vừa bị Cold Start
+      if (missingOnBackend.length > 0) {
+        AdminApi.syncBatchProducts(missingOnBackend).catch(() => {});
+      }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu:", err);
+      // Fallback về local persisted nếu mất mạng hoặc backend lỗi
+      const localItems = getPersistedProducts();
+      if (localItems.length > 0) {
+        setProducts(localItems);
+      }
       showToast(err.message || "Không thể tải dữ liệu từ backend", "error");
     } finally {
       setIsRefreshing(false);
@@ -100,11 +159,33 @@ export const App: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Lắng nghe thay đổi từ các tab khác hoặc Extension
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "hub1688_persisted_products" && e.newValue) {
+        try {
+          const items = JSON.parse(e.newValue);
+          if (Array.isArray(items)) {
+            setProducts(items);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   // Cập nhật sản phẩm
   const handleSaveProduct = async (updated: WebProduct) => {
     try {
-      await AdminApi.updateProduct(updated.id!, updated);
-      setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+      setProducts(prev => {
+        const next = prev.map(p => (p.id === updated.id ? updated : p));
+        savePersistedProducts(next);
+        return next;
+      });
+      await AdminApi.updateProduct(updated.id!, updated).catch(err => {
+        console.warn("Lưu backend tạm lỗi, dữ liệu đã lưu an toàn vào LocalStorage:", err);
+      });
       showToast("Đã lưu thông tin sản phẩm và ma trận SKU thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sản phẩm", "error");
@@ -152,12 +233,14 @@ export const App: React.FC = () => {
     const prod = products.find(p => p.id === id);
     if (!prod) return;
 
-    const newStatus = prod.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
+    const newStatus: "PUBLISHED" | "DRAFT" = prod.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
     try {
-      await AdminApi.updateProduct(id, { status: newStatus });
-      setProducts(prev =>
-        prev.map(p => (p.id === id ? { ...p, status: newStatus } : p))
-      );
+      setProducts(prev => {
+        const next: WebProduct[] = prev.map(p => (p.id === id ? { ...p, status: newStatus } : p));
+        savePersistedProducts(next);
+        return next;
+      });
+      await AdminApi.updateProduct(id, { status: newStatus }).catch(() => {});
       showToast(
         newStatus === "PUBLISHED"
           ? "Đã xuất bản sản phẩm lên website!"
@@ -177,7 +260,11 @@ export const App: React.FC = () => {
 
     try {
       await AdminApi.deleteProduct(id);
-      setProducts(prev => prev.filter(p => p.id !== id));
+      setProducts(prev => {
+        const next = prev.filter(p => p.id !== id);
+        savePersistedProducts(next);
+        return next;
+      });
       showToast("Đã xóa sản phẩm thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa sản phẩm", "error");
@@ -188,9 +275,11 @@ export const App: React.FC = () => {
   const handleBulkPublish = async (ids: string[]) => {
     try {
       await AdminApi.bulkPublish(ids);
-      setProducts(prev =>
-        prev.map(p => (ids.includes(p.id!) ? { ...p, status: "PUBLISHED" } : p))
-      );
+      setProducts(prev => {
+        const next = prev.map(p => (ids.includes(p.id!) ? { ...p, status: "PUBLISHED" as const } : p));
+        savePersistedProducts(next);
+        return next;
+      });
       showToast(`Đã đăng bán thành công ${ids.length} sản phẩm!`);
     } catch (err: any) {
       showToast(err.message || "Lỗi khi đăng bán hàng loạt", "error");
@@ -206,7 +295,11 @@ export const App: React.FC = () => {
 
     try {
       await AdminApi.bulkDelete(ids);
-      setProducts(prev => prev.filter(p => !ids.includes(p.id!)));
+      setProducts(prev => {
+        const next = prev.filter(p => !ids.includes(p.id!));
+        savePersistedProducts(next);
+        return next;
+      });
       showToast(`Đã xóa ${ids.length} sản phẩm!`);
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa hàng loạt", "error");
@@ -388,6 +481,11 @@ export const App: React.FC = () => {
         isOpen={showMultiCloneModal}
         onClose={() => setShowMultiCloneModal(false)}
         onProductCreated={(newProd) => {
+          setProducts(prev => {
+            const next = [newProd, ...prev.filter(p => p.id !== newProd.id)];
+            savePersistedProducts(next);
+            return next;
+          });
           loadData();
           setSelectedProduct(newProd);
         }}

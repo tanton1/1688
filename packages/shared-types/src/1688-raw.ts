@@ -1,3 +1,5 @@
+import { SourcePlatform } from "./normalized-product.js";
+
 export interface Raw1688Shop {
   shopId: string;
   shopName: string;
@@ -47,6 +49,10 @@ export interface Raw1688Product {
   offerId: string;
   sourceUrl: string;
   title: string;
+  sourcePlatform?: SourcePlatform;
+  originalCurrency?: "CNY" | "VND" | "USD";
+  originalPriceMin?: number;
+  originalPriceMax?: number;
   categoryId?: string;
   categoryPath?: string[];
   shop: Raw1688Shop;

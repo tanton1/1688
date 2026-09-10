@@ -88,6 +88,14 @@ export const AdminApi = {
     return request(`/api/v1/products${qs ? "?" + qs : ""}`);
   },
 
+  // 2b. Đồng bộ danh sách sản phẩm cục bộ lên RAM backend
+  async syncBatchProducts(products: WebProduct[]): Promise<{ success: boolean; addedCount: number; totalCount: number }> {
+    return request("/api/v1/products/sync-batch", {
+      method: "POST",
+      body: JSON.stringify({ products })
+    });
+  },
+
   // 3. Chi tiết 1 sản phẩm
   async getProductById(id: string): Promise<WebProduct> {
     return request(`/api/v1/products/${id}`);

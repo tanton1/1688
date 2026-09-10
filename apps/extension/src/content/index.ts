@@ -1,37 +1,38 @@
-import { detect1688Page } from "./page-detector.js";
-import { Detail1688Extractor } from "./extractors/1688-detail.extractor.js";
+import { detectAnyCommercePage } from "./page-detector.js";
+import { UniversalPlatformExtractor } from "./extractors/universal-platform.extractor.js";
 import { injectSourceOverlay } from "./overlay/source-overlay.js";
 import { injectBulkSelectionBar } from "./overlay/bulk-checkbox.js";
 import { ExistingProductCheckResult } from "@hub1688/shared-types";
 import { getApiBaseUrl } from "../shared/config.js";
 
-console.log("[1688 Hub] Content Script đã nạp thành công vào trang 1688!");
+console.log("[1688 Hub] Multi-Platform Content Script đã nạp thành công (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress)!");
 
 function runPageDetection() {
-  const { pageType, offerId } = detect1688Page();
-  console.log(`[1688 Hub] Nhận diện trang: ${pageType}, offerId: ${offerId || "N/A"}`);
+  const { platform, pageType, productId, offerId } = detectAnyCommercePage();
+  const effectiveId = offerId || productId;
+  console.log(`[1688 Hub] Nhận diện nền tảng: ${platform}, Trang: ${pageType}, ID: ${effectiveId || "N/A"}`);
 
-  if (pageType === "DETAIL" && offerId) {
+  if (pageType === "DETAIL" && effectiveId) {
     // Kiểm tra sản phẩm đã có trên Web chưa
     getApiBaseUrl()
       .then(baseUrl => {
         fetch(`${baseUrl}/api/v1/sync/check-existing`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceProductIds: [offerId] })
+          body: JSON.stringify({ sourceProductIds: [effectiveId] })
         })
           .then(res => res.json())
           .then(data => {
-            const existingInfo: ExistingProductCheckResult = data.results?.[0] || { exists: false, sourceProductId: offerId };
-            injectSourceOverlay(offerId, existingInfo);
+            const existingInfo: ExistingProductCheckResult = data.results?.[0] || { exists: false, sourceProductId: effectiveId };
+            injectSourceOverlay(effectiveId, existingInfo);
           })
           .catch(err => {
             console.warn("[1688 Hub] Check existing warning, fallback to default overlay:", err);
-            injectSourceOverlay(offerId);
+            injectSourceOverlay(effectiveId);
           });
       })
       .catch(() => {
-        injectSourceOverlay(offerId);
+        injectSourceOverlay(effectiveId);
       });
   } else if (pageType === "SEARCH" || pageType === "SHOP") {
     setTimeout(() => {
@@ -53,7 +54,7 @@ new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    console.log("[1688 Hub] Phát hiện chuyển hướng trang 1688:", currentUrl);
+    console.log("[1688 Hub] Phát hiện chuyển hướng trang:", currentUrl);
     setTimeout(() => runPageDetection(), 800);
   }
 }).observe(document, { subtree: true, childList: true });
@@ -61,12 +62,12 @@ new MutationObserver(() => {
 // Lắng nghe yêu cầu bóc tách dữ liệu từ Side Panel hoặc Background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "EXTRACT_CURRENT_PRODUCT") {
-    Detail1688Extractor.extract()
+    UniversalPlatformExtractor.extract()
       .then(product => {
         sendResponse({ success: true, data: product });
       })
       .catch(err => {
-        console.error("[1688 Hub] Lỗi bóc tách:", err);
+        console.error("[1688 Hub] Lỗi bóc tách đa nền tảng:", err);
         sendResponse({ success: false, error: err.message });
       });
     return true; // Asynchronous response

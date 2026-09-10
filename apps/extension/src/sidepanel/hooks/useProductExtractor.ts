@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Raw1688Product } from "@hub1688/shared-types";
+import { getApiBaseUrl } from "../../shared/config.js";
 
 export function useProductExtractor() {
   const [product, setProduct] = useState<Raw1688Product | null>(null);
@@ -15,15 +16,34 @@ export function useProductExtractor() {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
-          chrome.tabs.sendMessage(tab.id, { action: "EXTRACT_CURRENT_PRODUCT" }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.warn("[Sidepanel] Fallback data due to runtime error:", chrome.runtime.lastError.message);
-              setProduct(getMock1688Product());
-            } else if (response?.success && response.data) {
+          chrome.tabs.sendMessage(tab.id, { action: "EXTRACT_CURRENT_PRODUCT" }, async (response) => {
+            if (response?.success && response.data) {
               setProduct(response.data);
-            } else {
-              setProduct(getMock1688Product());
+              setLoading(false);
+              return;
             }
+
+            // Nếu content script không phản hồi (do tab chưa reload hoặc trang ngoài), gọi Backend Clone Preview
+            if (tab.url && (tab.url.startsWith("http://") || tab.url.startsWith("https://"))) {
+              try {
+                const baseUrl = await getApiBaseUrl();
+                const prevRes = await fetch(`${baseUrl}/api/v1/clone/preview`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ url: tab.url })
+                });
+                const prevData = await prevRes.json();
+                if (prevData?.success && prevData?.preview) {
+                  setProduct(convertClonePreviewToRawProduct(prevData.preview, tab.url));
+                  setLoading(false);
+                  return;
+                }
+              } catch (beErr) {
+                console.warn("[Sidepanel] Backend preview fallback error:", beErr);
+              }
+            }
+
+            setProduct(getMock1688Product());
             setLoading(false);
           });
           return;
@@ -33,7 +53,7 @@ export function useProductExtractor() {
       }
     }
 
-    // 2. Fallback dữ liệu mẫu để preview test UI mượt mà
+    // 2. Fallback dữ liệu mẫu để preview test UI
     setTimeout(() => {
       setProduct(getMock1688Product());
       setLoading(false);
@@ -45,6 +65,67 @@ export function useProductExtractor() {
   }, []);
 
   return { product, loading, error, refresh: fetchProductData };
+}
+
+function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Product {
+  const minCNY = preview.currency === "VND"
+    ? Math.round((preview.originalPriceMin / 3800) * 10) / 10
+    : preview.currency === "USD"
+    ? Math.round(preview.originalPriceMin * 7.2 * 10) / 10
+    : preview.originalPriceMin;
+
+  const maxCNY = preview.currency === "VND"
+    ? Math.round((preview.originalPriceMax / 3800) * 10) / 10
+    : preview.currency === "USD"
+    ? Math.round(preview.originalPriceMax * 7.2 * 10) / 10
+    : preview.originalPriceMax;
+
+  return {
+    offerId: preview.sourceProductId || `hub_${Date.now()}`,
+    sourceUrl: url,
+    title: preview.originalTitle || preview.translatedTitleVI,
+    sourcePlatform: preview.sourcePlatform,
+    originalCurrency: preview.currency,
+    originalPriceMin: preview.originalPriceMin,
+    originalPriceMax: preview.originalPriceMax,
+    shop: {
+      shopId: `shop_${preview.sourceProductId || "clone"}`,
+      shopName: preview.supplierName || `${preview.sourcePlatform} Shop`,
+      shopUrl: url,
+      ratingScore: 4.9
+    },
+    moq: 1,
+    prices: {
+      minPriceCNY: minCNY || 30,
+      maxPriceCNY: maxCNY || 45,
+      currency: "CNY"
+    },
+    images: [preview.primaryImage, ...(preview.galleryImages || [])].filter(Boolean),
+    descriptionImages: preview.detailImages || [],
+    attributes: (preview.attributes || []).map((a: any) => ({ nameCN: a.key, valueCN: a.value })),
+    skuProps: [
+      {
+        propId: "prop_variants",
+        propNameCN: "Phân loại",
+        values: (preview.variants || []).map((v: any) => ({
+          valueId: v.skuId,
+          valueCN: v.nameVI || v.name,
+          imageUrl: v.imageUrl
+        }))
+      }
+    ],
+    skuMap: (preview.variants || []).reduce((acc: any, v: any) => {
+      acc[v.skuId] = {
+        skuId: v.skuId,
+        attributes: { "Phân loại": v.nameVI || v.name },
+        priceCNY: minCNY || 30,
+        stock: v.stock || 100,
+        imageUrl: v.imageUrl
+      };
+      return acc;
+    }, {}),
+    extractedAt: new Date().toISOString()
+  };
 }
 
 function getMock1688Product(): Raw1688Product {

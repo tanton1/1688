@@ -60,8 +60,9 @@ export const App: React.FC = () => {
     setImporting(true);
     setSuccessMessage(null);
 
+    const platform = product.sourcePlatform || "1688";
     const normalized: Normalized1688Product = {
-      sourcePlatform: "1688",
+      sourcePlatform: platform,
       sourceProductId: product.offerId,
       sourceUrl: product.sourceUrl,
       supplier: product.shop,
@@ -109,13 +110,44 @@ export const App: React.FC = () => {
       });
 
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.product) {
         const title = targetLanguage === "en" ? (data.product.titleEN || data.product.titleVI) : data.product.titleVI;
         setSuccessMessage(
           autoPublish
             ? `✓ Đã đăng bán thành công: ${title}`
             : `✓ Đã lưu thành công vào DRAFT: ${title}`
         );
+
+        // 1. Lưu bản sao vào chrome.storage.local của Extension
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.get(["hub1688_persisted_products"], (store) => {
+            const list = Array.isArray(store?.hub1688_persisted_products) ? store.hub1688_persisted_products : [];
+            const nextList = [data.product, ...list.filter((p: any) => p.id !== data.product.id)];
+            chrome.storage.local.set({ hub1688_persisted_products: nextList });
+          });
+        }
+
+        // 2. Gửi cập nhật trực tiếp tới các tab Admin Hub 1688 đang mở để lưu LocalStorage
+        if (typeof chrome !== "undefined" && chrome.tabs) {
+          chrome.tabs.query({}, (tabs) => {
+            tabs.forEach(tab => {
+              if (tab.id && (tab.url?.includes("vercel.app") || tab.url?.includes("localhost:5173") || tab.url?.includes("localhost:3000"))) {
+                chrome.scripting?.executeScript({
+                  target: { tabId: tab.id },
+                  func: (newProd) => {
+                    try {
+                      const current = JSON.parse(localStorage.getItem("hub1688_persisted_products") || "[]");
+                      const updated = [newProd, ...current.filter((p: any) => p.id !== newProd.id)];
+                      localStorage.setItem("hub1688_persisted_products", JSON.stringify(updated));
+                      window.dispatchEvent(new Event("storage"));
+                    } catch {}
+                  },
+                  args: [data.product]
+                }).catch(() => {});
+              }
+            });
+          });
+        }
       } else {
         setSuccessMessage(`⚠ ${data.message || "Lỗi khi đồng bộ về website"}`);
       }

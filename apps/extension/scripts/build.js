@@ -61,13 +61,25 @@ async function runBuild() {
     service_worker: "src/background/index.js",
     type: "module"
   };
-  manifest.content_scripts = [
-    {
-      matches: ["*://*.1688.com/*"],
-      js: ["src/content/index.js"],
-      run_at: "document_end"
-    }
-  ];
+  if (manifest.content_scripts && manifest.content_scripts[0]) {
+    manifest.content_scripts[0].js = ["src/content/index.js"];
+  } else {
+    manifest.content_scripts = [
+      {
+        matches: [
+          "*://*.1688.com/*",
+          "*://*.taobao.com/*",
+          "*://*.tmall.com/*",
+          "*://*.shopee.vn/*",
+          "*://*.shopee.com/*",
+          "*://*.tiktok.com/*",
+          "*://*.aliexpress.com/*"
+        ],
+        js: ["src/content/index.js"],
+        run_at: "document_end"
+      }
+    ];
+  }
   manifest.side_panel = {
     default_path: "src/sidepanel/index.html"
   };

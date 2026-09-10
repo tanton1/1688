@@ -373,4 +373,30 @@ export class ProductsController {
       supplierCount: new Set(products.map(p => p.supplierName)).size
     });
   }
+
+  /**
+   * Đồng bộ hàng loạt sản phẩm từ Client (Persistence Re-hydration chống mất dữ liệu khi Cold Start)
+   */
+  public async syncBatch(req: Request, res: Response): Promise<void> {
+    const { products } = req.body as { products?: WebProduct[] };
+    let addedCount = 0;
+    if (Array.isArray(products)) {
+      for (const p of products) {
+        if (p && p.id) {
+          if (!inMemoryProducts.has(p.id)) {
+            addedCount++;
+          }
+          inMemoryProducts.set(p.id, p);
+          if (supabaseService.isConfigured()) {
+            supabaseService.saveWebProduct(p).catch(() => {});
+          }
+        }
+      }
+    }
+    res.json({
+      success: true,
+      addedCount,
+      totalCount: inMemoryProducts.size
+    });
+  }
 }

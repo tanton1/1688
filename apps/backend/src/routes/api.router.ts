@@ -45,6 +45,7 @@ apiRouter.post("/sync/cron", (req, res) => syncCtrl.runCronSync(req, res));
 
 // 3. Web Products Management
 apiRouter.get("/products", (req, res) => productsCtrl.listProducts(req, res));
+apiRouter.post("/products/sync-batch", (req, res) => productsCtrl.syncBatch(req, res));
 apiRouter.get("/products/:id", (req, res) => productsCtrl.getProductById(req, res));
 apiRouter.put("/products/:id", (req, res) => productsCtrl.updateProduct(req, res));
 apiRouter.patch("/products/:id/locks", (req, res) => productsCtrl.updateFieldLocks(req, res));
