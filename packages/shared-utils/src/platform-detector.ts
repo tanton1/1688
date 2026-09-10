@@ -145,6 +145,7 @@ export interface ExtractedHtmlMetadata {
   title?: string;
   description?: string;
   images: string[];
+  detailImages?: string[];
   price?: number;
   currency?: "CNY" | "USD" | "VND";
   brand?: string;
@@ -156,7 +157,8 @@ export interface ExtractedHtmlMetadata {
  */
 export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
   const result: ExtractedHtmlMetadata = {
-    images: []
+    images: [],
+    detailImages: []
   };
 
   if (!html || typeof html !== "string") return result;
@@ -245,6 +247,20 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     const c = ogCurrMatch[1].toUpperCase();
     if (c === "VND" || c === "USD" || c === "CNY") result.currency = c as any;
   }
+
+  // 3. Trích xuất ảnh chi tiết dài (Detail & Size Chart Images) từ HTML content
+  const imgRegex = /<img\b[^>]*\b(?:src|data-src|data-original)=["'](https?:\/\/[^"'\s>]+)["'][^>]*>/gi;
+  let imgMatch: RegExpExecArray | null;
+  const detailImgs: string[] = [];
+  while ((imgMatch = imgRegex.exec(html)) !== null) {
+    const url = imgMatch[1];
+    // Loại trừ icon nhỏ, tracking pixel, file gif hoặc banner logo hệ thống
+    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b/i.test(url);
+    if (!isIgnored && !result.images.includes(url) && !detailImgs.includes(url)) {
+      detailImgs.push(url);
+    }
+  }
+  result.detailImages = detailImgs.slice(0, 15);
 
   return result;
 }

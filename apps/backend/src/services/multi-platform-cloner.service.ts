@@ -38,6 +38,7 @@ interface PlatformPresetItem {
   originalPriceMax: number;
   primaryImage: string;
   galleryImages: string[];
+  detailImages?: string[];
   variants: Array<{
     skuId: string;
     name: string;
@@ -66,6 +67,11 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
       "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1564257631407-4deb1f99d992?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800&auto=format&fit=crop"
+    ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&auto=format&fit=crop"
     ],
     variants: [
       { skuId: "TB-01-WHITE-S", name: "Trắng Ngà / Size S", nameVI: "Trắng Ngà - S", originalPrice: 168, stock: 120, imageUrl: "https://images.unsplash.com/photo-1598532163257-ae3c6b2524b6?w=800&auto=format&fit=crop" },
@@ -96,6 +102,10 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
       "https://images.unsplash.com/photo-1548883354-7622d03aca27?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=800&auto=format&fit=crop"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop"
+    ],
     variants: [
       { skuId: "TM-01-BLACK-S", name: "Đen Viền Trắng / Size S", nameVI: "Đen Phối Viền - S", originalPrice: 320, stock: 80, imageUrl: "https://images.unsplash.com/photo-1539533018447-63fcce667883?w=800&auto=format&fit=crop" },
       { skuId: "TM-01-BLACK-M", name: "Đen Viền Trắng / Size M", nameVI: "Đen Phối Viền - M", originalPrice: 320, stock: 150, imageUrl: "https://images.unsplash.com/photo-1539533018447-63fcce667883?w=800&auto=format&fit=crop" },
@@ -122,6 +132,10 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
     galleryImages: [
       "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=800&auto=format&fit=crop"
+    ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&auto=format&fit=crop"
     ],
     variants: [
       { skuId: "SP-01-YELLOW-M", name: "Hoa Nhí Vàng / Size M", nameVI: "Vàng Hoa Nhí - M", originalPrice: 185000, stock: 320, imageUrl: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&auto=format&fit=crop" },
@@ -150,6 +164,9 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
       "https://images.unsplash.com/photo-1618244972963-dbee1a7edc95?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1583744946564-b52ac1c389c8?w=800&auto=format&fit=crop"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=800&auto=format&fit=crop"
+    ],
     variants: [
       { skuId: "TK-01-PINK-M", name: "Hồng Đỗ / Size M", nameVI: "Hồng Pastel - M", originalPrice: 159000, stock: 450, imageUrl: "https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?w=800&auto=format&fit=crop" },
       { skuId: "TK-01-NAVY-M", name: "Xanh Navy / Size M", nameVI: "Xanh Than - M", originalPrice: 179000, stock: 280, imageUrl: "https://images.unsplash.com/photo-1618244972963-dbee1a7edc95?w=800&auto=format&fit=crop" }
@@ -176,6 +193,9 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
       "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop",
       "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=800&auto=format&fit=crop"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1510017803434-a899398421b3?w=800&auto=format&fit=crop"
+    ],
     variants: [
       { skuId: "AE-01-TITAN-ORANGE", name: "Titanium / Dây Cam", nameVI: "Khung Titan - Dây Cam Alpine", originalPrice: 18.5, stock: 350, imageUrl: "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?w=800&auto=format&fit=crop" },
       { skuId: "AE-01-BLACK-BLACK", name: "Đen Nhám / Dây Đen", nameVI: "Đen Nhám - Dây Silicon Đen", originalPrice: 22.0, stock: 500, imageUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop" }
@@ -200,6 +220,9 @@ const PRESET_SAMPLE_CATALOG: Record<string, PlatformPresetItem> = {
     primaryImage: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop",
     galleryImages: [
       "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=800&auto=format&fit=crop"
+    ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?w=800&auto=format&fit=crop"
     ],
     variants: [
       { skuId: "CT-01-BLACK-S", name: "Washed Black / Size S", nameVI: "Đen Phai - S", originalPrice: 290000, stock: 80, imageUrl: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop" },
@@ -295,7 +318,7 @@ export class MultiPlatformClonerService {
       attributes: (preview.rawAttributes || []).map(a => ({ keyVI: a.key, valueVI: a.value, keyCN: a.key, valueCN: a.value })),
       primaryImage: preview.primaryImage,
       galleryImages: preview.galleryImages,
-      detailImages: [],
+      detailImages: preview.detailImages || [],
       variants,
       skuCode,
       minPriceVND,
@@ -319,6 +342,7 @@ export class MultiPlatformClonerService {
       categoryName,
       primaryImage: preview.primaryImage,
       galleryImages: preview.galleryImages,
+      detailImages: preview.detailImages || [],
       attributes: (preview.rawAttributes || []).map(a => ({
         keyCN: a.key,
         valueCN: a.value,
@@ -593,6 +617,7 @@ export class MultiPlatformClonerService {
       estimatedMarginPercent: margin,
       primaryImage: preset.primaryImage,
       galleryImages: preset.galleryImages,
+      detailImages: preset.detailImages || [],
       variants,
       categorySuggested: preset.categoryName,
       rawAttributes: preset.attributes,
@@ -609,6 +634,7 @@ export class MultiPlatformClonerService {
     const rawTitle = extracted.title || "Sản phẩm E-commerce Đa Nền Tảng";
     const primaryImage = extracted.images[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop";
     const galleryImages = extracted.images.slice(1, 5);
+    const detailImages = extracted.detailImages || [];
 
     let currency: "CNY" | "USD" | "VND" = extracted.currency || (platform === "ALIEXPRESS" ? "USD" : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND"));
     const rawPrice = extracted.price || 150;
@@ -668,6 +694,7 @@ export class MultiPlatformClonerService {
       estimatedMarginPercent: margin,
       primaryImage,
       galleryImages,
+      detailImages,
       variants,
       categorySuggested: "Thời trang & Phụ kiện",
       rawAttributes: [

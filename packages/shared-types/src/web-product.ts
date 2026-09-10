@@ -212,6 +212,7 @@ export interface ClonePreviewResponse {
   estimatedMarginPercent: number;
   primaryImage: string;
   galleryImages: string[];
+  detailImages?: string[];
   variants: ClonedVariantPreview[];
   categorySuggested: string;
   rawAttributes?: Array<{ key: string; value: string }>;

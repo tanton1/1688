@@ -331,7 +331,12 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
         }
         </script>
       </head>
-      <body></body>
+      <body>
+        <div class="product-description">
+          <img src="https://img.cdn.com/size-chart-detail.jpg" alt="Size Chart" />
+          <img src="https://img.cdn.com/fabric-zoom.jpg" alt="Fabric" />
+        </div>
+      </body>
     </html>
   `;
 
@@ -341,6 +346,8 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.equal(extracted.currency, "VND");
   assert.equal(extracted.brand, "Boutique Fashion");
   assert.ok(extracted.images.includes("https://img.cdn.com/shirt.jpg"));
+  assert.ok(extracted.detailImages?.includes("https://img.cdn.com/size-chart-detail.jpg"));
+  assert.ok(extracted.detailImages?.includes("https://img.cdn.com/fabric-zoom.jpg"));
 });
 
 test("9. Batch URL Processing & Visual Sourcing Sourcing Margin Engine", (t) => {

@@ -12,7 +12,7 @@ import { GlossaryView } from "./components/GlossaryView";
 import { OrdersView } from "./components/OrdersView";
 import { AuthModal, CurrentUser } from "./components/AuthModal";
 import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
-import { BannerFrameStudioModal } from "./components/BannerFrameStudioModal";
+import { BannerFrameStudioModal, StudioMode } from "./components/BannerFrameStudioModal";
 import { MultiPlatformCloneModal } from "./components/MultiPlatformCloneModal";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
@@ -52,6 +52,8 @@ export const App: React.FC = () => {
   // E-Commerce Banner & Frame Studio State
   const [showBannerModal, setShowBannerModal] = useState(false);
   const [bannerProduct, setBannerProduct] = useState<WebProduct | null>(null);
+  const [bannerSelectedImage, setBannerSelectedImage] = useState<string | undefined>(undefined);
+  const [bannerInitialMode, setBannerInitialMode] = useState<StudioMode>("TRANSLATE");
 
   // Multi-Platform Cloner State
   const [showMultiCloneModal, setShowMultiCloneModal] = useState(false);
@@ -115,6 +117,30 @@ export const App: React.FC = () => {
     if (!target?.id) return;
 
     const updated = { ...target, primaryImage: newImageUrl };
+    await handleSaveProduct(updated);
+    if (selectedProduct?.id === target.id) {
+      setSelectedProduct(updated);
+    }
+  };
+
+  // Áp dụng thay thế ảnh đã dịch / chỉnh sửa vào đúng vị trí ảnh đó (Gallery hoặc Bảng size chi tiết)
+  const handleApplyEditedImage = async (originalImageUrl: string, newImageUrl: string) => {
+    const target = bannerProduct || selectedProduct;
+    if (!target?.id) return;
+
+    let nextPrimary = target.primaryImage;
+    if (target.primaryImage === originalImageUrl) {
+      nextPrimary = newImageUrl;
+    }
+    const nextGallery = (target.galleryImages || []).map(img => (img === originalImageUrl ? newImageUrl : img));
+    const nextDetail = (target.detailImages || []).map(img => (img === originalImageUrl ? newImageUrl : img));
+
+    const updated: WebProduct = {
+      ...target,
+      primaryImage: nextPrimary,
+      galleryImages: nextGallery,
+      detailImages: nextDetail
+    };
     await handleSaveProduct(updated);
     if (selectedProduct?.id === target.id) {
       setSelectedProduct(updated);
@@ -321,21 +347,27 @@ export const App: React.FC = () => {
           setConnectorsProduct(p);
           setShowConnectorsModal(true);
         }}
-        onOpenBannerStudio={(p) => {
+        onOpenBannerStudio={(p, initialImg, mode) => {
           setBannerProduct(p);
+          setBannerSelectedImage(initialImg || p.primaryImage);
+          setBannerInitialMode(mode || "TRANSLATE");
           setShowBannerModal(true);
         }}
       />
 
-      {/* Modal E-Commerce Banner & Frame Studio */}
+      {/* Modal E-Commerce Banner & Frame Studio + AI Dịch Chữ Trên Ảnh */}
       <BannerFrameStudioModal
         isOpen={showBannerModal}
         onClose={() => {
           setShowBannerModal(false);
           setBannerProduct(null);
+          setBannerSelectedImage(undefined);
         }}
         product={bannerProduct || selectedProduct}
+        initialSelectedImage={bannerSelectedImage}
+        initialMode={bannerInitialMode}
         onApplyNewPrimaryImage={handleApplyBannerImage}
+        onApplyEditedImage={handleApplyEditedImage}
         onShowToast={showToast}
       />
 

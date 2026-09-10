@@ -52,7 +52,7 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onSave: (updatedProduct: WebProduct) => void;
   onOpenConnectors?: (product: WebProduct) => void;
-  onOpenBannerStudio?: (product: WebProduct) => void;
+  onOpenBannerStudio?: (product: WebProduct, initialImage?: string, mode?: "TRANSLATE" | "FRAME") => void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -341,15 +341,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             )}
 
             {onOpenBannerStudio && (
-              <button
-                type="button"
-                onClick={() => onOpenBannerStudio(formData)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-xs transition-colors"
-                title="Tạo khung viền khuyến mại Shopee Mall, Flash Sale cho ảnh đại diện"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-pink-600" />
-                <span>Khung Viền Promo</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "TRANSLATE")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg shadow-xs transition-colors"
+                  title="Dịch bảng size (尺码表), thay thế tem mác tiếng Trung sang Tiếng Việt/Tiếng Anh"
+                >
+                  <Languages className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Dịch Chữ Trên Ảnh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "FRAME")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-xs transition-colors"
+                  title="Tạo khung viền khuyến mại Shopee Mall, Flash Sale cho ảnh đại diện"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-pink-600" />
+                  <span>Khung Viền Promo</span>
+                </button>
+              </>
             )}
 
             <button
@@ -1046,6 +1058,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  {/* Ảnh Chính */}
                   <div className="relative rounded-xl border-2 border-orange-500 overflow-hidden group aspect-square">
                     <img
                       src={formData.primaryImage}
@@ -1055,58 +1068,108 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span className="absolute top-1.5 left-1.5 bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
                       Ảnh Chính
                     </span>
+
+                    {onOpenBannerStudio && (
+                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "TRANSLATE")}
+                          className="w-full py-1.5 px-2 bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-bold rounded-lg shadow-xs flex items-center justify-center gap-1 transition-all"
+                        >
+                          <Languages className="w-3.5 h-3.5" />
+                          Dịch Chữ / Sửa Ảnh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "FRAME")}
+                          className="w-full py-1.5 px-2 bg-white/90 hover:bg-white text-slate-800 text-[11px] font-bold rounded-lg shadow-xs flex items-center justify-center gap-1 transition-all"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-pink-600" />
+                          Đóng Khung Viền
+                        </button>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Ảnh Gallery */}
                   {formData.galleryImages.map((img, i) => (
                     <div
                       key={i}
-                      onClick={() => {
-                        const newGallery = formData.galleryImages.filter((_, idx) => idx !== i);
-                        newGallery.push(formData.primaryImage);
-                        setFormData(prev => ({
-                          ...prev,
-                          primaryImage: img,
-                          galleryImages: newGallery
-                        }));
-                      }}
-                      className="relative rounded-xl border border-slate-200 overflow-hidden group aspect-square hover:border-orange-400 cursor-pointer transition-all"
+                      className="relative rounded-xl border border-slate-200 overflow-hidden group aspect-square hover:border-orange-400 transition-all"
                     >
                       <img
                         src={img}
                         alt=""
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
-                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold text-center p-1">
-                        Đặt làm ảnh chính
+                      <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newGallery = formData.galleryImages.filter((_, idx) => idx !== i);
+                            newGallery.push(formData.primaryImage);
+                            setFormData(prev => ({
+                              ...prev,
+                              primaryImage: img,
+                              galleryImages: newGallery
+                            }));
+                          }}
+                          className="w-full py-1 bg-white/90 hover:bg-white text-slate-800 text-[10px] font-bold rounded-md transition-all text-center"
+                        >
+                          Làm ảnh chính
+                        </button>
+                        {onOpenBannerStudio && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenBannerStudio(formData, img, "TRANSLATE")}
+                            className="w-full py-1 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1 transition-all"
+                          >
+                            <Languages className="w-3 h-3" />
+                            Dịch chữ
+                          </button>
+                        )}
                       </div>
+                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 rounded">
+                        #{i + 1}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* 3. Ảnh Chi Tiết Bán Hàng Dài */}
+              {/* 3. Ảnh Chi Tiết Bán Hàng Dài (Detail Images & Bảng size) */}
               <div className="space-y-3 pt-4 border-t border-slate-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900">
-                      Ảnh Chi Tiết Bán Hàng (1688 Long-strip Detail Images: {formData.detailImages?.length || 0} ảnh)
+                    <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                      Ảnh Chi Tiết Bán Hàng & Bảng Size (1688 Detail Images: {formData.detailImages?.length || 0} ảnh)
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.2 rounded-full">
+                        尺码表 & Specs
+                      </span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Ảnh chi tiết dạng dài trong nội dung 1688 (Infographic thông số, Bảng size, Cận cảnh chất liệu vải/da).
+                      Ảnh chi tiết dài (Infographic thông số, Bảng size 尺码表, Cận cảnh chất liệu). Hỗ trợ dịch đè chữ tiếng Trung sang Tiếng Việt/Tiếng Anh.
                     </p>
                   </div>
+
+                  {onOpenBannerStudio && (formData.detailImages?.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenBannerStudio(formData, formData.detailImages?.[0], "TRANSLATE")}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg shadow-xs transition-colors"
+                    >
+                      <Languages className="w-3.5 h-3.5" />
+                      <span>Dịch Bảng Size Trên Ảnh</span>
+                    </button>
+                  )}
                 </div>
 
                 {formData.detailImages && formData.detailImages.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
                     {formData.detailImages.map((dImg, idx) => (
-                      <a
+                      <div
                         key={idx}
-                        href={dImg}
-                        target="_blank"
-                        rel="noreferrer"
                         className="relative group rounded-lg border border-slate-200 overflow-hidden bg-slate-100 aspect-3/4 hover:border-orange-500 transition-all block"
-                        title="Bấm để mở ảnh gốc full size"
                       >
                         <img
                           src={dImg}
@@ -1114,13 +1177,31 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                           loading="lazy"
                         />
-                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
-                          <ExternalLink className="w-4 h-4" />
+                        <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 gap-1.5">
+                          {onOpenBannerStudio && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenBannerStudio(formData, dImg, "TRANSLATE")}
+                              className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1 shadow-xs transition-all"
+                            >
+                              <Languages className="w-3 h-3" />
+                              Dịch Bảng Size
+                            </button>
+                          )}
+                          <a
+                            href={dImg}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="w-full py-1 px-2 bg-white/90 hover:bg-white text-slate-800 text-[10px] font-bold rounded-md flex items-center justify-center gap-1 transition-all"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Mở Full HD
+                          </a>
                         </div>
                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1 rounded">
                           #{idx + 1}
                         </span>
-                      </a>
+                      </div>
                     ))}
                   </div>
                 ) : (
