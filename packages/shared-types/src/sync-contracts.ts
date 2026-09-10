@@ -54,3 +54,35 @@ export interface ImportJobStatus {
     error?: string;
   }>;
 }
+
+export type OrderSourcingStatus = "PENDING_SOURCING" | "ORDERED_1688" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
+
+export interface CustomerOrderItem {
+  skuCode: string;
+  variantName: string;
+  quantity: number;
+  sellingPriceVND: number;
+  costVND?: number;
+  source1688Url?: string;
+  sourceProductId?: string;
+  sourceSkuId?: string;
+  image?: string;
+}
+
+export interface CustomerOrder {
+  id: string;
+  orderNumber: string;
+  platform: "WOOCOMMERCE" | "SHOPIFY" | "MANUAL";
+  customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  items: CustomerOrderItem[];
+  totalAmountVND: number;
+  totalCostVND: number;
+  estimatedProfitVND: number;
+  status: OrderSourcingStatus;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

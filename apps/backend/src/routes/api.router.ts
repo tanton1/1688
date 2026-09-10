@@ -5,6 +5,7 @@ import { ProductsController } from "../controllers/products.controller.js";
 import { PricingController } from "../controllers/pricing.controller.js";
 import { GlossaryController } from "../controllers/glossary.controller.js";
 import { StoreConnectorsController } from "../controllers/store-connectors.controller.js";
+import { OrdersController } from "../controllers/orders.controller.js";
 
 export const apiRouter = Router();
 
@@ -14,6 +15,7 @@ const productsCtrl = new ProductsController();
 const pricingCtrl = new PricingController();
 const glossaryCtrl = new GlossaryController();
 const connectorsCtrl = new StoreConnectorsController();
+const ordersCtrl = new OrdersController();
 
 // 0. Dashboard Stats
 apiRouter.get("/dashboard/stats", (req, res) => productsCtrl.getDashboardStats(req, res));
@@ -24,10 +26,12 @@ apiRouter.post("/import/single", (req, res) => importCtrl.importSingle(req, res)
 apiRouter.post("/import/bulk", (req, res) => importCtrl.importBulk(req, res));
 apiRouter.get("/import/jobs/:jobId", (req, res) => importCtrl.getJobStatus(req, res));
 
-// 2. Sync & Diff Engine
+// 2. Sync, Diff Engine & Background Cron
 apiRouter.post("/sync/trigger-check", (req, res) => syncCtrl.triggerCheck(req, res));
 apiRouter.get("/sync/diff-logs", (req, res) => syncCtrl.getDiffLogs(req, res));
 apiRouter.post("/sync/resolve-diff", (req, res) => syncCtrl.resolveDiff(req, res));
+apiRouter.get("/sync/cron", (req, res) => syncCtrl.runCronSync(req, res));
+apiRouter.post("/sync/cron", (req, res) => syncCtrl.runCronSync(req, res));
 
 // 3. Web Products Management
 apiRouter.get("/products", (req, res) => productsCtrl.listProducts(req, res));
@@ -58,3 +62,11 @@ apiRouter.post("/connectors/telegram/send-alert", (req, res) => connectorsCtrl.s
 
 // 8. AI Marketing Copywriter
 apiRouter.post("/ai/generate-copy", (req, res) => connectorsCtrl.generateAICopy(req, res));
+
+// 9. Customer Orders & 1688 Sourcing Assistant
+apiRouter.get("/orders", (req, res) => ordersCtrl.listOrders(req, res));
+apiRouter.get("/orders/:id", (req, res) => ordersCtrl.getOrderById(req, res));
+apiRouter.post("/orders/webhook", (req, res) => ordersCtrl.createOrderWebhook(req, res));
+apiRouter.patch("/orders/:id/status", (req, res) => ordersCtrl.updateOrderStatus(req, res));
+apiRouter.delete("/orders/:id", (req, res) => ordersCtrl.deleteOrder(req, res));
+

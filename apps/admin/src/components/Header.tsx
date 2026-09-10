@@ -44,6 +44,8 @@ export const Header: React.FC<HeaderProps> = ({
         return { title: "Tổng Quan Hệ Thống", subtitle: "Báo cáo số liệu đồng bộ, sức khỏe listing và cảnh báo biến động" };
       case "PRODUCTS":
         return { title: "Quản Lý Sản Phẩm Đồng Bộ", subtitle: "Danh sách sản phẩm từ 1688, kiểm soát khóa trường và ma trận SKU" };
+      case "ORDERS":
+        return { title: "Trung Tâm Đơn Hàng & Mua Hộ 1688", subtitle: "Quản lý đơn khách đặt từ WooCommerce / Shopify và hỗ trợ đặt hàng nguồn 1688" };
       case "DIFFS":
         return { title: "Trung Tâm Xử Lý Chênh Lệch (Diff)", subtitle: "Theo dõi & duyệt biến động giá, tồn kho từ nguồn 1688 Trung Quốc" };
       case "PRICING":

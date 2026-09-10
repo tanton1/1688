@@ -237,5 +237,23 @@ export const AdminApi = {
       method: "POST",
       body: JSON.stringify({ productId, style, language })
     });
+  },
+
+  // 21. Customer Orders & Sourcing Assistant
+  async getOrders(): Promise<{ orders: any[]; stats: any }> {
+    return request("/api/v1/orders");
+  },
+
+  async updateOrderStatus(id: string, status: string, note?: string): Promise<{ success: boolean; order: any }> {
+    return request(`/api/v1/orders/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, note })
+    });
+  },
+
+  async deleteOrder(id: string): Promise<{ success: boolean }> {
+    return request(`/api/v1/orders/${id}`, {
+      method: "DELETE"
+    });
   }
 };

@@ -9,8 +9,10 @@ import { ProductDetailModal } from "./components/ProductDetailModal";
 import { DiffCenterView } from "./components/DiffCenterView";
 import { PricingRulesView } from "./components/PricingRulesView";
 import { GlossaryView } from "./components/GlossaryView";
+import { OrdersView } from "./components/OrdersView";
 import { AuthModal, CurrentUser } from "./components/AuthModal";
 import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
+import { BannerFrameStudioModal } from "./components/BannerFrameStudioModal";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -45,6 +47,10 @@ export const App: React.FC = () => {
   // Omnichannel Store Connectors State
   const [showConnectorsModal, setShowConnectorsModal] = useState(false);
   const [connectorsProduct, setConnectorsProduct] = useState<WebProduct | null>(null);
+
+  // E-Commerce Banner & Frame Studio State
+  const [showBannerModal, setShowBannerModal] = useState(false);
+  const [bannerProduct, setBannerProduct] = useState<WebProduct | null>(null);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -96,6 +102,18 @@ export const App: React.FC = () => {
       showToast("Đã lưu thông tin sản phẩm và ma trận SKU thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sản phẩm", "error");
+    }
+  };
+
+  // Áp dụng ảnh bìa đóng khung từ Banner Studio
+  const handleApplyBannerImage = async (newImageUrl: string) => {
+    const target = bannerProduct || selectedProduct;
+    if (!target?.id) return;
+
+    const updated = { ...target, primaryImage: newImageUrl };
+    await handleSaveProduct(updated);
+    if (selectedProduct?.id === target.id) {
+      setSelectedProduct(updated);
     }
   };
 
@@ -272,6 +290,10 @@ export const App: React.FC = () => {
             />
           )}
 
+          {currentTab === "ORDERS" && (
+            <OrdersView onShowToast={showToast} />
+          )}
+
           {currentTab === "DIFFS" && (
             <DiffCenterView
               diffLogs={diffLogs}
@@ -294,6 +316,22 @@ export const App: React.FC = () => {
           setConnectorsProduct(p);
           setShowConnectorsModal(true);
         }}
+        onOpenBannerStudio={(p) => {
+          setBannerProduct(p);
+          setShowBannerModal(true);
+        }}
+      />
+
+      {/* Modal E-Commerce Banner & Frame Studio */}
+      <BannerFrameStudioModal
+        isOpen={showBannerModal}
+        onClose={() => {
+          setShowBannerModal(false);
+          setBannerProduct(null);
+        }}
+        product={bannerProduct || selectedProduct}
+        onApplyNewPrimaryImage={handleApplyBannerImage}
+        onShowToast={showToast}
       />
 
       {/* Modal Omnichannel Connectors (WooCommerce, Shopify, Shopee/TikTok CSV & Telegram) */}

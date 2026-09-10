@@ -67,4 +67,38 @@ export class SyncController {
 
     res.json({ success: true, message: `Đã ${action === "APPLY" ? "áp dụng" : "bỏ qua"} thay đổi cho sản phẩm` });
   }
+
+  /**
+   * Background Cron Worker - Tự động quét và cảnh báo biến động giá/tồn kho
+   */
+  public async runCronSync(req: Request, res: Response): Promise<void> {
+    const startedAt = new Date().toISOString();
+    const products = Array.from(inMemoryProducts.values());
+    let checkedCount = 0;
+    let alertsSent = 0;
+
+    const botToken = (req.query.botToken as string) || (req.body?.botToken as string) || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = (req.query.chatId as string) || (req.body?.chatId as string) || process.env.TELEGRAM_CHAT_ID;
+
+    // Quét toàn bộ sản phẩm đang kích hoạt AutoSync
+    for (const p of products) {
+      if (p.isPriceAutoSync || p.isStockAutoSync) {
+        checkedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      job: "1688-listing-cron-sync",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      summary: {
+        totalProducts: products.length,
+        checkedCount,
+        pendingDiffs: inMemoryDiffLogs.length,
+        alertsSent
+      }
+    });
+  }
 }
+

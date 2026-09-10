@@ -4,6 +4,7 @@ import {
   Package,
   RefreshCw,
   DollarSign,
+  ShoppingBag,
   BookOpen,
   Layers,
   ExternalLink,
@@ -11,7 +12,7 @@ import {
   Sparkles
 } from "lucide-react";
 
-export type AdminTab = "DASHBOARD" | "PRODUCTS" | "DIFFS" | "PRICING" | "GLOSSARY";
+export type AdminTab = "DASHBOARD" | "PRODUCTS" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY";
 
 interface SidebarProps {
   currentTab: AdminTab;
@@ -40,6 +41,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: "Sản Phẩm Đồng Bộ",
       icon: Package,
       badge: totalProductsCount > 0 ? totalProductsCount : null
+    },
+    {
+      id: "ORDERS" as AdminTab,
+      label: "Đơn Hàng & Mua Hộ 1688",
+      icon: ShoppingBag,
+      badge: "Mới",
+      badgeColor: "bg-emerald-500 text-white"
     },
     {
       id: "DIFFS" as AdminTab,

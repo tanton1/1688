@@ -49,13 +49,15 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onSave: (updatedProduct: WebProduct) => void;
   onOpenConnectors?: (product: WebProduct) => void;
+  onOpenBannerStudio?: (product: WebProduct) => void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
   onClose,
   onSave,
-  onOpenConnectors
+  onOpenConnectors,
+  onOpenBannerStudio
 }) => {
   if (!product) return null;
 
@@ -310,6 +312,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               >
                 <Share2 className="w-3.5 h-3.5 text-orange-600" />
                 <span>Đẩy Lên Web Bán Hàng</span>
+              </button>
+            )}
+
+            {onOpenBannerStudio && (
+              <button
+                type="button"
+                onClick={() => onOpenBannerStudio(formData)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-xs transition-colors"
+                title="Tạo khung viền khuyến mại Shopee Mall, Flash Sale cho ảnh đại diện"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-pink-600" />
+                <span>Khung Viền Promo</span>
               </button>
             )}
 
