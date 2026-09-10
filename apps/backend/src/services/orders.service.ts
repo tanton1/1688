@@ -1,8 +1,11 @@
 import { CustomerOrder, CustomerOrderItem, OrderSourcingStatus, WebProduct } from "@hub1688/shared-types";
 import { inMemoryProducts } from "../controllers/import.controller.js";
+import crypto from "node:crypto";
+import { ENV } from "../config/env.js";
+import { supabaseService } from "./supabase.service.js";
 
 // Khởi tạo các đơn hàng mẫu để người dùng thấy ngay giá trị thực tế
-export const inMemoryOrders = new Map<string, CustomerOrder>([
+const DEMO_ORDERS: Array<[string, CustomerOrder]> = [
   [
     "ord_1001",
     {
@@ -65,21 +68,31 @@ export const inMemoryOrders = new Map<string, CustomerOrder>([
       updatedAt: new Date(Date.now() - 3600000 * 12).toISOString()
     }
   ]
-]);
+];
+export const inMemoryOrders = new Map<string, CustomerOrder>(ENV.DEMO_MODE ? DEMO_ORDERS : []);
 
 export class OrdersService {
-  public listOrders(): CustomerOrder[] {
+  public async listOrders(): Promise<CustomerOrder[]> {
+    if (supabaseService.isConfigured()) {
+      const persisted = await supabaseService.listOrders();
+      if (persisted) {
+        for (const order of persisted) inMemoryOrders.set(order.id, order);
+        return persisted;
+      }
+      throw new Error("PERSISTENCE_FAILED");
+    }
     return Array.from(inMemoryOrders.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
   }
 
-  public getOrderById(id: string): CustomerOrder | null {
+  public async getOrderById(id: string): Promise<CustomerOrder | null> {
+    if (supabaseService.isConfigured()) await this.listOrders();
     return inMemoryOrders.get(id) || null;
   }
 
-  public createOrder(payload: Partial<CustomerOrder>): CustomerOrder {
-    const id = `ord_${Date.now()}`;
+  public async createOrder(payload: Partial<CustomerOrder>): Promise<CustomerOrder> {
+    const id = crypto.randomUUID();
     const orderNumber = payload.orderNumber || `ORD-#${Date.now().toString().slice(-6)}`;
 
     // Tự động tìm nguồn 1688 từ kho sản phẩm
@@ -132,11 +145,15 @@ export class OrdersService {
     };
 
     inMemoryOrders.set(id, newOrder);
+    if (supabaseService.isConfigured() && !(await supabaseService.saveOrder(newOrder))) {
+      inMemoryOrders.delete(id);
+      throw new Error("PERSISTENCE_FAILED");
+    }
     return newOrder;
   }
 
-  public updateOrderStatus(id: string, status: OrderSourcingStatus, note?: string): CustomerOrder | null {
-    const order = inMemoryOrders.get(id);
+  public async updateOrderStatus(id: string, status: OrderSourcingStatus, note?: string): Promise<CustomerOrder | null> {
+    const order = await this.getOrderById(id);
     if (!order) return null;
 
     order.status = status;
@@ -144,11 +161,14 @@ export class OrdersService {
     order.updatedAt = new Date().toISOString();
 
     inMemoryOrders.set(id, order);
+    if (supabaseService.isConfigured() && !(await supabaseService.saveOrder(order))) throw new Error("PERSISTENCE_FAILED");
     return order;
   }
 
-  public deleteOrder(id: string): boolean {
-    return inMemoryOrders.delete(id);
+  public async deleteOrder(id: string): Promise<boolean> {
+    const memoryDeleted = inMemoryOrders.delete(id);
+    if (supabaseService.isConfigured()) return (await supabaseService.deleteOrder(id)) || memoryDeleted;
+    return memoryDeleted;
   }
 }
 

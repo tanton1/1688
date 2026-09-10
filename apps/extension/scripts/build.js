@@ -46,7 +46,6 @@ async function runBuild() {
       },
       rollupOptions: {
         output: {
-          inlineDynamicImports: true,
           extend: true
         }
       }

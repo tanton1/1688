@@ -67,6 +67,9 @@ export interface CustomerOrderItem {
   sourceProductId?: string;
   sourceSkuId?: string;
   image?: string;
+  // POD Customization data (Tên, avatar, kiểu tóc, lời chúc, ảnh preview đã custom)
+  customizationData?: Record<string, any>;
+  customizedPreviewUrl?: string;
 }
 
 export interface CustomerOrder {
@@ -84,6 +87,9 @@ export interface CustomerOrder {
   paymentMethod?: "COD" | "VIETQR" | "BANK_TRANSFER";
   paymentStatus?: "PENDING" | "PAID";
   note?: string;
+  giftAddonsSelected?: string[];
+  discountCode?: string;
+  discountAmountVND?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,7 +122,12 @@ export interface StorefrontCheckoutRequest {
     quantity: number;
     sellingPriceVND: number;
     image?: string;
+    customizationData?: Record<string, any>;
+    customizedPreviewUrl?: string;
   }>;
+  giftAddonsSelected?: string[];
+  discountCode?: string;
+  discountAmountVND?: number;
 }
 
 

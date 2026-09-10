@@ -14,6 +14,10 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use((req, res, next) => {
   req.requestId = req.header("x-request-id") || crypto.randomUUID();
   res.setHeader("x-request-id", req.requestId);
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    console.log(JSON.stringify({ level: "info", requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt }));
+  });
   next();
 });
 app.use(cors({

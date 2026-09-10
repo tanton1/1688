@@ -14,13 +14,12 @@
     "build:extension": "node apps/extension/scripts/build.js",
     "dev:admin": "npm run dev --workspace=@hub1688/admin",
     "build:vercel": "npm run build --workspace=@hub1688/shared-types && npm run build --workspace=@hub1688/shared-utils && npm run build --workspace=@hub1688/backend && npm run build --workspace=@hub1688/admin",
-    "test": "node --test packages/shared-utils/test/*.test.mjs"
+    "pretest": "npm run build --workspace=@hub1688/shared-types && npm run build --workspace=@hub1688/shared-utils && npm run build --workspace=@hub1688/backend",
+    "test": "node --test packages/shared-utils/test/*.test.mjs apps/backend/test/*.test.mjs"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^5.0.0",
     "rimraf": "^5.0.7",
-    "typescript": "^5.4.5",
-    "vitest": "^5.0.0"
+    "typescript": "^5.4.5"
   },
   "keywords": [
     "1688",
@@ -32,6 +31,9 @@
   ],
   "author": "Antigravity Engineering",
   "license": "MIT",
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "dependencies": {
     "pg": "^8.23.0"
   }

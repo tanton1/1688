@@ -9,6 +9,9 @@ import { StoreCartDrawer, CartItem } from "./StoreCartDrawer";
 import { StoreCheckoutModal } from "./StoreCheckoutModal";
 import { StoreOrderSuccessModal } from "./StoreOrderSuccessModal";
 import { StoreOrderTrackerModal } from "./StoreOrderTrackerModal";
+import { StoreOccasionsNav } from "./StoreOccasionsNav";
+import { StoreSocialProofPopup } from "./StoreSocialProofPopup";
+import { DEMO_MACORNER_PRODUCTS } from "./demoMacornerCatalog";
 import {
   Filter,
   ArrowUpDown,
@@ -50,6 +53,9 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [products, setProducts] = useState<WebProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
+  const [activeOccasion, setActiveOccasion] = useState<string>("all");
+  const [activeRecipient, setActiveRecipient] = useState<string>("all");
+  const [appliedDiscountCode, setAppliedDiscountCode] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"NEWEST" | "PRICE_ASC" | "PRICE_DESC">("NEWEST");
   const [isLoading, setIsLoading] = useState(true);
@@ -127,19 +133,27 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         loadedProducts = getDemoStoreProducts();
       }
 
-      setProducts(loadedProducts);
-      const catSet = new Set(loadedProducts.map(p => p.categoryName).filter(Boolean));
+      // Tích hợp trọn bộ sản phẩm cá nhân hóa Macorner POD cùng các sản phẩm đã đồng bộ
+      const finalCatalog: WebProduct[] = [...DEMO_MACORNER_PRODUCTS];
+      loadedProducts.forEach(p => {
+        if (!finalCatalog.some(existing => existing.id === p.id || existing.slug === p.slug)) {
+          finalCatalog.push(p);
+        }
+      });
+
+      setProducts(finalCatalog);
+      const catSet = new Set(finalCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
 
       if (initialProductId) {
-        const match = loadedProducts.find(p => p.id === initialProductId || p.slug === initialProductId);
+        const match = finalCatalog.find(p => p.id === initialProductId || p.slug === initialProductId);
         if (match) setDetailProduct(match);
       }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu cửa hàng:", err);
-      const demoItems = getDemoStoreProducts();
-      setProducts(demoItems);
-      const catSet = new Set(demoItems.map(p => p.categoryName).filter(Boolean));
+      const fallbackCatalog = [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()];
+      setProducts(fallbackCatalog);
+      const catSet = new Set(fallbackCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
     } finally {
       setIsLoading(false);
@@ -151,8 +165,17 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   }, [initialProductId]);
 
   // Add Item to Cart
-  const handleAddToCart = (variant: WebProductVariant, quantity: number, product: WebProduct) => {
-    const sku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
+  const handleAddToCart = (
+    variant: WebProductVariant,
+    quantity: number,
+    product: WebProduct,
+    customizationData?: Record<string, any>,
+    customizedPreviewUrl?: string,
+    giftAddonsSelected?: string[]
+  ) => {
+    const hasCustom = customizationData && Object.keys(customizationData).length > 0;
+    const baseSku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
+    const sku = hasCustom ? `${baseSku}-CUST-${Date.now().toString(36)}` : baseSku;
     const vName = [variant.colorName, variant.sizeName].filter(Boolean).join(" - ") || variant.sourceSkuId || "Mặc định";
     const price = variant.sellingPriceVND || product.minPriceVND || 0;
 
@@ -168,9 +191,12 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           skuCode: sku,
           variantName: vName,
           productTitle: product.titleVI,
-          image: variant.imageUrl || product.primaryImage,
+          image: customizedPreviewUrl || variant.imageUrl || product.primaryImage,
           priceVND: price,
-          quantity
+          quantity,
+          customizationData,
+          customizedPreviewUrl,
+          giftAddonsSelected
         };
         return [...prev, newItem];
       }
@@ -181,8 +207,15 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   };
 
   // Buy Now (Add to cart and open checkout)
-  const handleBuyNow = (variant: WebProductVariant, quantity: number, product: WebProduct) => {
-    handleAddToCart(variant, quantity, product);
+  const handleBuyNow = (
+    variant: WebProductVariant,
+    quantity: number,
+    product: WebProduct,
+    customizationData?: Record<string, any>,
+    customizedPreviewUrl?: string,
+    giftAddonsSelected?: string[]
+  ) => {
+    handleAddToCart(variant, quantity, product, customizationData, customizedPreviewUrl, giftAddonsSelected);
     setDetailProduct(null);
     setIsCartOpen(false);
     setIsCheckoutOpen(true);
@@ -191,7 +224,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   // Quick Add from Product Card
   const handleQuickAdd = (product: WebProduct) => {
     const defaultVariant = product.variants?.find(v => v.selectedForSale !== false) || product.variants?.[0];
-    if (defaultVariant) {
+    if (defaultVariant && !product.isPersonalized) {
       handleAddToCart(defaultVariant, 1, product);
     } else {
       setDetailProduct(product);
@@ -229,9 +262,19 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const filteredProducts = useMemo(() => {
     return products
       .filter(p => {
+        // Category filter
         if (selectedCategory !== "ALL" && p.categoryName !== selectedCategory) {
           return false;
         }
+        // Occasion filter (Macorner style)
+        if (activeOccasion !== "all" && !p.occasionTags?.includes(activeOccasion)) {
+          return false;
+        }
+        // Recipient filter (Macorner style)
+        if (activeRecipient !== "all" && !p.recipientTags?.includes(activeRecipient)) {
+          return false;
+        }
+        // Search filter
         if (searchTerm.trim()) {
           const q = searchTerm.toLowerCase();
           const matchTitleVI = p.titleVI?.toLowerCase().includes(q);
@@ -246,7 +289,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         if (sortBy === "PRICE_DESC") return (b.minPriceVND || 0) - (a.minPriceVND || 0);
         return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
       });
-  }, [products, selectedCategory, searchTerm, sortBy]);
+  }, [products, selectedCategory, activeOccasion, activeRecipient, searchTerm, sortBy]);
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -272,6 +315,15 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
       {/* 2. Hero Banner */}
       <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />
+
+      {/* 2.5 Occasions & Recipients Filter Bar (Macorner Feature) */}
+      <StoreOccasionsNav
+        activeOccasion={activeOccasion}
+        onSelectOccasion={setActiveOccasion}
+        activeRecipient={activeRecipient}
+        onSelectRecipient={setActiveRecipient}
+        totalProductsCount={products.length}
+      />
 
       {/* 3. Main Catalog Section */}
       <main ref={catalogRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full space-y-6">
@@ -456,6 +508,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           setIsCheckoutOpen(true);
         }}
         config={config}
+        appliedDiscountCode={appliedDiscountCode}
+        onApplyDiscountCode={setAppliedDiscountCode}
       />
 
       <StoreProductDetailModal
@@ -493,6 +547,9 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         initialQuery={trackerOrderNo}
         onClose={() => setIsTrackerOpen(false)}
       />
+
+      {/* Social Proof Realtime Purchases (Macorner Feature) */}
+      <StoreSocialProofPopup products={products} />
     </div>
   );
 };

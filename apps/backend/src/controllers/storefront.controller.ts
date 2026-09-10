@@ -44,7 +44,11 @@ export class StorefrontController {
   /**
    * Lấy thông tin cấu hình cửa hàng công khai cho khách xem
    */
-  public getStoreInfo(req: Request, res: Response): void {
+  public async getStoreInfo(req: Request, res: Response): Promise<void> {
+    if (supabaseService.isConfigured()) {
+      const persisted = await supabaseService.getStorefrontSettings<StorefrontConfig>();
+      if (persisted) currentStorefrontConfig = { ...currentStorefrontConfig, ...persisted };
+    }
     res.json({
       success: true,
       config: currentStorefrontConfig
@@ -54,12 +58,15 @@ export class StorefrontController {
   /**
    * Cập nhật thông tin cửa hàng (Admin)
    */
-  public updateStoreSettings(req: Request, res: Response): void {
+  public async updateStoreSettings(req: Request, res: Response): Promise<void> {
     const updates = req.body as Partial<StorefrontConfig>;
     currentStorefrontConfig = {
       ...currentStorefrontConfig,
       ...updates
     };
+    if (supabaseService.isConfigured() && !(await supabaseService.saveStorefrontSettings(currentStorefrontConfig))) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
+    }
     res.json({
       success: true,
       config: currentStorefrontConfig
@@ -248,7 +255,7 @@ export class StorefrontController {
     };
 
     // Lưu vào bộ nhớ quản lý đơn hàng
-    ordersService.createOrder(newOrder);
+    await ordersService.createOrder(newOrder);
 
     // Tạo mã VietQR nếu chọn chuyển khoản
     let qrCodeUrl: string | undefined;
@@ -297,9 +304,9 @@ export class StorefrontController {
   /**
    * Tra cứu đơn hàng theo mã đơn hoặc số điện thoại (cho khách tự theo dõi đơn)
    */
-  public trackOrder(req: Request, res: Response): void {
+  public async trackOrder(req: Request, res: Response): Promise<void> {
     const { query } = req.params;
-    const orders = ordersService.listOrders();
+    const orders = await ordersService.listOrders();
 
     const matched = orders.filter(o =>
       o.orderNumber.toLowerCase() === query.toLowerCase() ||

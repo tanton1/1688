@@ -304,7 +304,6 @@ export class StoreConnectorsController {
       maskDataUrl,
       rectangles
     });
-
-    res.json(result);
+    res.status(result.success ? 200 : 501).json(result);
   }
 }

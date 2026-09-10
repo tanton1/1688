@@ -137,6 +137,13 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS focus_keywords TEXT[] DEFAULT ARRA
 ALTER TABLE products ADD COLUMN IF NOT EXISTS images_seo JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS faqs_json JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS store_sync_history JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS warranty_policy TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS shipping_policy TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS source_platform VARCHAR(50) NOT NULL DEFAULT '1688';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS source_currency VARCHAR(3) NOT NULL DEFAULT 'CNY';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_media_mirrored BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS mirrored_at TIMESTAMPTZ;
 
 -- 5. BẢNG LIÊN KẾT SẢN PHẨM VỚI NHIỀU NGUỒN (PRODUCT SOURCE LINKS)
 CREATE TABLE IF NOT EXISTS product_source_links (
@@ -172,6 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_product_variants_prod_id ON product_variants(prod
 -- MIGRATION: Bổ sung cột tiếng Anh cho biến thể nếu đã tồn tại
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color_name_en VARCHAR(100);
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size_name_en VARCHAR(100);
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS source_price NUMERIC(14, 2);
 
 -- 7. BẢNG QUY TẮC ĐỊNH GIÁ BÁN LẺ (PRICING RULES)
 CREATE TABLE IF NOT EXISTS pricing_rules (
@@ -225,3 +233,71 @@ VALUES
 ('CLOTHING_PANTS', 'Quần & Legging', 'Quần', 3800, 12000, 30000, 0.35, 2.3, 0.05, 60000, 35.0, TRUE),
 ('ACCESSORIES', 'Phụ kiện thời trang', 'Phụ kiện', 3800, 8000, 30000, 0.15, 2.5, 0.05, 40000, 40.0, TRUE)
 ON CONFLICT (id) DO NOTHING;
+
+-- Persistent operational records. The backend service role is the only data-plane client.
+CREATE TABLE IF NOT EXISTS product_templates (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    category_name VARCHAR(120) NOT NULL,
+    target_platform VARCHAR(30) NOT NULL DEFAULT 'ALL',
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    content_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    variation_json JSONB NOT NULL DEFAULT '{"options":[]}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS customer_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_number VARCHAR(100) UNIQUE NOT NULL,
+    platform VARCHAR(30) NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50),
+    customer_address TEXT,
+    items_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_amount_vnd NUMERIC(14,0) NOT NULL DEFAULT 0,
+    total_cost_vnd NUMERIC(14,0) NOT NULL DEFAULT 0,
+    estimated_profit_vnd NUMERIC(14,0) NOT NULL DEFAULT 0,
+    status VARCHAR(40) NOT NULL DEFAULT 'PENDING_SOURCING',
+    payment_method VARCHAR(30),
+    payment_status VARCHAR(30),
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS import_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    status VARCHAR(30) NOT NULL,
+    total_items INTEGER NOT NULL DEFAULT 0,
+    completed_items INTEGER NOT NULL DEFAULT 0,
+    failed_items INTEGER NOT NULL DEFAULT 0,
+    results_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS storefront_settings (
+    id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+    config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- RLS is enabled on every application table. No browser policy is created: all
+-- writes go through authenticated API endpoints using the server-only service role.
+ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE source_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE source_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_source_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE translation_glossaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE import_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storefront_settings ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;

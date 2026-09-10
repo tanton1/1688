@@ -10,7 +10,12 @@ import {
   TrendingUp,
   Percent,
   CheckCircle2,
-  Info
+  Info,
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
+  X
 } from "lucide-react";
 
 export const PricingRulesView: React.FC = () => {
@@ -19,6 +24,27 @@ export const PricingRulesView: React.FC = () => {
   const [selectedRuleId, setSelectedRuleId] = useState<string>("CLOTHING_SHIRTS");
   const [breakdown, setBreakdown] = useState<PricingBreakdown | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [editing, setEditing] = useState<PricingRuleConfig | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [error, setError] = useState("");
+
+  const openNew = () => {
+    setIsNew(true);
+    setEditing({ id: "", name: "", categoryKeyword: "", exchangeRate: 3800, domesticChinaShipVND: 12000, intlShipPerKgVND: 30000, estimatedWeightKg: 0.3, multiplier: 2.2, platformFeeRate: 0.05, minProfitVND: 50000, minMarginPercent: 35, roundToThousand: true });
+  };
+  const saveRule = async () => {
+    if (!editing) return;
+    setError("");
+    try {
+      const result = isNew ? await AdminApi.createPricingRule(editing) : await AdminApi.updatePricingRule(editing.id, editing);
+      setRules(current => isNew ? [...current, result.rule] : current.map(rule => rule.id === result.rule.id ? result.rule : rule));
+      setEditing(null); setIsNew(false);
+    } catch (err: any) { setError(err.message || "Không thể lưu quy tắc"); }
+  };
+  const deleteRule = async (id: string) => {
+    try { await AdminApi.deletePricingRule(id); setRules(current => current.filter(rule => rule.id !== id)); }
+    catch (err: any) { setError(err.message || "Không thể xóa quy tắc"); }
+  };
 
   useEffect(() => {
     AdminApi.getPricingRules()
@@ -168,9 +194,22 @@ export const PricingRulesView: React.FC = () => {
 
       {/* Danh Sách Các Quy Tắc Định Giá Hiện Có */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 font-bold text-sm text-slate-900">
-          Danh Sách Quy Tắc Ngành Hàng Đang Áp Dụng
+        <div className="p-4 border-b border-slate-200 font-bold text-sm text-slate-900 flex items-center justify-between gap-3">
+          <span>Danh Sách Quy Tắc Ngành Hàng Đang Áp Dụng</span>
+          <button type="button" onClick={openNew} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700"><Plus size={14} />Thêm quy tắc</button>
         </div>
+
+        {error && <div role="alert" className="m-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+        {editing && <div role="dialog" aria-modal="true" aria-labelledby="pricing-editor-title" className="m-4 rounded-xl border border-orange-200 bg-orange-50/50 p-4">
+          <div className="mb-3 flex items-center justify-between"><h3 id="pricing-editor-title" className="text-sm font-bold text-slate-900">{isNew ? "Quy tắc mới" : `Sửa ${editing.name}`}</h3><button type="button" aria-label="Đóng" onClick={() => setEditing(null)}><X size={17} /></button></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {isNew && <label className="text-xs font-semibold text-slate-700">ID<input value={editing.id} onChange={e => setEditing({ ...editing, id: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })} className="mt-1 w-full rounded border p-2 font-mono" /></label>}
+            <label className="text-xs font-semibold text-slate-700">Tên<input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} className="mt-1 w-full rounded border p-2" /></label>
+            <label className="text-xs font-semibold text-slate-700">Từ khóa<input value={editing.categoryKeyword || ""} onChange={e => setEditing({ ...editing, categoryKeyword: e.target.value })} className="mt-1 w-full rounded border p-2" /></label>
+            {(["exchangeRate", "domesticChinaShipVND", "intlShipPerKgVND", "estimatedWeightKg", "multiplier", "platformFeeRate", "minProfitVND", "minMarginPercent"] as const).map(field => <label key={field} className="text-xs font-semibold text-slate-700">{field}<input type="number" step="any" value={editing[field]} onChange={e => setEditing({ ...editing, [field]: Number(e.target.value) })} className="mt-1 w-full rounded border p-2" /></label>)}
+          </div>
+          <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg px-3 py-2 text-xs font-semibold">Hủy</button><button type="button" onClick={saveRule} className="inline-flex items-center gap-1 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white"><Save size={14} />Lưu</button></div>
+        </div>}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -183,6 +222,7 @@ export const PricingRulesView: React.FC = () => {
                 <th className="p-3.5">Hệ Số Nhân</th>
                 <th className="p-3.5">Lợi Nhuận Min</th>
                 <th className="p-3.5 text-center">Margin Tối Thiểu</th>
+                <th className="p-3.5 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -205,6 +245,7 @@ export const PricingRulesView: React.FC = () => {
                       ≥ {rule.minMarginPercent}%
                     </span>
                   </td>
+                  <td className="p-3.5"><div className="flex justify-end gap-1"><button type="button" aria-label={`Sửa ${rule.name}`} onClick={() => { setEditing({ ...rule }); setIsNew(false); }} className="rounded p-2 text-slate-500 hover:bg-slate-100"><Pencil size={14} /></button><button type="button" aria-label={`Xóa ${rule.name}`} onClick={() => deleteRule(rule.id)} className="rounded p-2 text-rose-600 hover:bg-rose-50"><Trash2 size={14} /></button></div></td>
                 </tr>
               ))}
             </tbody>

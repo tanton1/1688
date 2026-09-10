@@ -94,6 +94,8 @@ export const AdminApi = {
     search?: string;
     minQuality?: number;
     sort?: string;
+    page?: number;
+    pageSize?: number;
   }): Promise<{ total: number; items: WebProduct[] }> {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -101,6 +103,8 @@ export const AdminApi = {
     if (params?.search) query.set("search", params.search);
     if (params?.minQuality) query.set("minQuality", params.minQuality.toString());
     if (params?.sort) query.set("sort", params.sort);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.pageSize) query.set("pageSize", String(params.pageSize));
 
     const qs = query.toString();
     return request(`/api/v1/products${qs ? "?" + qs : ""}`);
@@ -187,6 +191,18 @@ export const AdminApi = {
   // 12. Danh sách quy tắc giá
   async getPricingRules(): Promise<{ rules: PricingRuleConfig[] }> {
     return request("/api/v1/pricing/rules");
+  },
+
+  async createPricingRule(rule: PricingRuleConfig): Promise<{ success: boolean; rule: PricingRuleConfig }> {
+    return request("/api/v1/pricing/rules", { method: "POST", body: JSON.stringify(rule) });
+  },
+
+  async updatePricingRule(id: string, updates: Partial<PricingRuleConfig>): Promise<{ success: boolean; rule: PricingRuleConfig }> {
+    return request(`/api/v1/pricing/rules/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(updates) });
+  },
+
+  async deletePricingRule(id: string): Promise<{ success: boolean }> {
+    return request(`/api/v1/pricing/rules/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 
   // 13. Tính toán giá thử nghiệm

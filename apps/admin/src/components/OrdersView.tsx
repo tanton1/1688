@@ -280,6 +280,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onShowToast }) => {
                               <span>•</span>
                               <span>Giá bán: {item.sellingPriceVND.toLocaleString("vi-VN")}đ</span>
                             </div>
+                            {item.customizationData && Object.keys(item.customizationData).length > 0 && (
+                              <div className="mt-1.5 p-2 rounded-lg bg-orange-50 border border-orange-200 text-[10px] space-y-0.5 max-w-xs">
+                                <span className="font-bold text-orange-800 block flex items-center gap-1">
+                                  ✨ Thông số khắc / in theo yêu cầu:
+                                </span>
+                                {Object.entries(item.customizationData).map(([k, val]) => (
+                                  <div key={k} className="flex gap-1 text-slate-700 truncate">
+                                    <span className="font-semibold text-slate-600 shrink-0">{k}:</span>
+                                    <span className="truncate">{String(val)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {item.sourceProductId && (
                               <p className="text-[10px] text-orange-600 font-mono mt-0.5">
                                 Xưởng 1688 Offer #{item.sourceProductId}

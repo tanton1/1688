@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import { ENV } from "../config/env.js";
+import { supabaseService } from "../services/supabase.service.js";
 
 export type AuthRole = "ADMIN" | "SOURCING";
 
@@ -100,6 +101,14 @@ export function requireCronSecret(req: Request, res: Response, next: NextFunctio
   const supplied = bearerToken(req) || req.header("x-cron-secret") || "";
   if (!safeEqual(supplied, ENV.CRON_SECRET)) {
     res.status(401).json({ error: "INVALID_CRON_SECRET" });
+    return;
+  }
+  next();
+}
+
+export function requirePersistence(_req: Request, res: Response, next: NextFunction): void {
+  if (ENV.NODE_ENV === "production" && !supabaseService.isConfigured()) {
+    res.status(503).json({ error: "PERSISTENCE_NOT_CONFIGURED", message: "SUPABASE_SERVICE_ROLE_KEY là bắt buộc trong production" });
     return;
   }
   next();

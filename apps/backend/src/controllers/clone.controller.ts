@@ -93,7 +93,8 @@ export class CloneController {
       const result = await multiPlatformClonerService.find1688SuppliersByImage(req.body);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || "Lỗi tìm kiếm nguồn xưởng 1688" });
+      const status = err?.message === "VISUAL_SOURCING_PROVIDER_NOT_CONFIGURED" ? 501 : 500;
+      res.status(status).json({ success: false, error: err.message || "Lỗi tìm kiếm nguồn xưởng 1688" });
     }
   }
 }

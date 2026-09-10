@@ -1,11 +1,17 @@
 import { Request, Response } from "express";
 import { DEFAULT_GLOSSARY } from "@hub1688/shared-utils";
 import { z } from "zod";
+import { supabaseService } from "../services/supabase.service.js";
+import { ENV } from "../config/env.js";
 
 let inMemoryGlossary: Record<string, string> = { ...DEFAULT_GLOSSARY };
 
 export class GlossaryController {
   public async getGlossary(req: Request, res: Response): Promise<void> {
+    if (supabaseService.isConfigured()) {
+      const persisted = await supabaseService.getGlossary();
+      if (persisted) inMemoryGlossary = ENV.DEMO_MODE ? { ...DEFAULT_GLOSSARY, ...persisted } : persisted;
+    }
     const list = Object.entries(inMemoryGlossary).map(([sourceText, targetText]) => ({
       sourceText,
       targetText
@@ -25,6 +31,9 @@ export class GlossaryController {
       return;
     }
     const { sourceText, targetText } = parsed.data;
+    if (supabaseService.isConfigured() && !(await supabaseService.saveGlossaryTerm(sourceText, targetText))) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
+    }
     inMemoryGlossary[sourceText] = targetText;
     res.json({ success: true, term: { sourceText, targetText } });
   }

@@ -73,6 +73,10 @@ export class PricingEngineService {
     return this.rules.map(rule => ({ ...rule }));
   }
 
+  public replaceRules(rules: PricingRuleConfig[]): void {
+    if (rules.length) this.rules = rules.map(rule => ({ ...rule }));
+  }
+
   public createRule(rule: PricingRuleConfig): PricingRuleConfig {
     if (this.rules.some(existing => existing.id === rule.id)) {
       throw new Error("PRICING_RULE_EXISTS");

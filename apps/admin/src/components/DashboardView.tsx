@@ -193,6 +193,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <img
+                    loading="lazy"
+                    decoding="async"
                     src={product.primaryImage || "https://placehold.co/80x80?text=No+Image"}
                     alt={product.titleVI}
                     className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0"

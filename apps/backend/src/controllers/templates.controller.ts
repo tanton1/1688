@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ProductTemplate } from "@hub1688/shared-types";
+import { supabaseService } from "../services/supabase.service.js";
 
 // In-memory store initialized with 4 rich starter templates
 let templatesStore: ProductTemplate[] = [
@@ -223,6 +224,15 @@ export class TemplatesController {
   // GET /api/v1/templates
   public async getTemplates(req: Request, res: Response): Promise<void> {
     try {
+      if (supabaseService.isConfigured()) {
+        const persisted = await supabaseService.getTemplates();
+        if (persisted === null) throw new Error("PERSISTENCE_FAILED");
+        if (persisted.length) templatesStore = persisted;
+        else {
+          if (!(await supabaseService.replaceTemplates(DEFAULT_TEMPLATES))) throw new Error("PERSISTENCE_FAILED");
+          templatesStore = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+        }
+      }
       const { category, search } = req.query;
       let filtered = [...templatesStore];
 
@@ -253,6 +263,10 @@ export class TemplatesController {
   public async getTemplateById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      if (supabaseService.isConfigured()) {
+        const persisted = await supabaseService.getTemplates();
+        if (persisted) templatesStore = persisted;
+      }
       const tpl = templatesStore.find(t => t.id === id);
       if (!tpl) {
         res.status(404).json({ success: false, error: "Template not found" });
@@ -294,6 +308,12 @@ export class TemplatesController {
         updatedAt: now
       };
 
+      if (supabaseService.isConfigured()) {
+        if (payload.isDefault) {
+          for (const template of templatesStore) if (!(await supabaseService.saveTemplate(template))) throw new Error("PERSISTENCE_FAILED");
+        }
+        if (!(await supabaseService.saveTemplate(newTemplate))) throw new Error("PERSISTENCE_FAILED");
+      }
       templatesStore.unshift(newTemplate);
       res.status(201).json({ success: true, template: newTemplate });
     } catch (error: any) {
@@ -324,6 +344,12 @@ export class TemplatesController {
         updatedAt: new Date().toISOString()
       };
 
+      if (supabaseService.isConfigured()) {
+        if (payload.isDefault) {
+          for (const template of templatesStore) if (!(await supabaseService.saveTemplate(template))) throw new Error("PERSISTENCE_FAILED");
+        }
+        if (!(await supabaseService.saveTemplate(updated))) throw new Error("PERSISTENCE_FAILED");
+      }
       templatesStore[index] = updated;
       res.json({ success: true, template: updated });
     } catch (error: any) {
@@ -335,13 +361,12 @@ export class TemplatesController {
   public async deleteTemplate(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const initialLength = templatesStore.length;
-      templatesStore = templatesStore.filter(t => t.id !== id);
-
-      if (templatesStore.length === initialLength) {
+      if (!templatesStore.some(template => template.id === id)) {
         res.status(404).json({ success: false, error: "Template not found" });
         return;
       }
+      if (supabaseService.isConfigured() && !(await supabaseService.deleteTemplate(id))) throw new Error("PERSISTENCE_FAILED");
+      templatesStore = templatesStore.filter(t => t.id !== id);
 
       res.json({ success: true, message: "Template deleted successfully" });
     } catch (error: any) {
@@ -354,6 +379,7 @@ export class TemplatesController {
     try {
       const now = new Date().toISOString();
       templatesStore = DEFAULT_TEMPLATES.map(template => ({ ...JSON.parse(JSON.stringify(template)), createdAt: now, updatedAt: now }));
+      if (supabaseService.isConfigured() && !(await supabaseService.replaceTemplates(templatesStore))) throw new Error("PERSISTENCE_FAILED");
       res.json({ success: true, total: templatesStore.length, templates: templatesStore });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });

@@ -40,7 +40,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // WooCommerce State
   const [wcConfig, setWcConfig] = useState<WooCommerceConfig>(() => {
-    const saved = localStorage.getItem("hub1688_wc_config");
+    const saved = sessionStorage.getItem("hub1688_wc_config");
     return saved
       ? JSON.parse(saved)
       : { storeUrl: "https://shopdemo.vn", consumerKey: "", consumerSecret: "" };
@@ -48,7 +48,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Shopify State
   const [shopifyConfig, setShopifyConfig] = useState<ShopifyConfig>(() => {
-    const saved = localStorage.getItem("hub1688_shopify_config");
+    const saved = sessionStorage.getItem("hub1688_shopify_config");
     return saved
       ? JSON.parse(saved)
       : { shopDomain: "mystore.myshopify.com", accessToken: "" };
@@ -56,7 +56,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Telegram State
   const [telegramConfig, setTelegramConfig] = useState<TelegramAlertConfig>(() => {
-    const saved = localStorage.getItem("hub1688_telegram_config");
+    const saved = sessionStorage.getItem("hub1688_telegram_config");
     return saved
       ? JSON.parse(saved)
       : { botToken: "", chatId: "", enabled: true, alertOnPriceRise: true, alertOnOutOfStock: true };
@@ -77,7 +77,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Lưu cấu hình WooCommerce
   const handleSaveWC = () => {
-    localStorage.setItem("hub1688_wc_config", JSON.stringify(wcConfig));
+    sessionStorage.setItem("hub1688_wc_config", JSON.stringify(wcConfig));
     onShowToast("Đã lưu thông tin cấu hình WooCommerce!");
   };
 
@@ -115,7 +115,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Lưu cấu hình Shopify
   const handleSaveShopify = () => {
-    localStorage.setItem("hub1688_shopify_config", JSON.stringify(shopifyConfig));
+    sessionStorage.setItem("hub1688_shopify_config", JSON.stringify(shopifyConfig));
     onShowToast("Đã lưu thông tin cấu hình Shopify!");
   };
 
@@ -184,7 +184,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
     setIsProcessing(true);
     try {
-      localStorage.setItem("hub1688_telegram_config", JSON.stringify(telegramConfig));
+      sessionStorage.setItem("hub1688_telegram_config", JSON.stringify(telegramConfig));
       const res = await AdminApi.testTelegram(telegramConfig.botToken, telegramConfig.chatId);
       if (res.success) {
         onShowToast(`Kết nối Bot @${res.botUsername || res.botName} thành công!`);

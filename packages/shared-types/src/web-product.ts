@@ -113,8 +113,58 @@ export interface StoreSyncResult {
 
 export type AICopywritingStyle = "AIDA" | "PAS" | "STORYTELLING" | "SOCIAL_ADS";
 
+export type PersonalizationFieldType = 
+  | "TEXT" 
+  | "TEXTAREA" 
+  | "SELECT" 
+  | "AVATAR_BUILDER" 
+  | "PET_BUILDER" 
+  | "COLOR_SWATCH" 
+  | "NUMBER" 
+  | "CHECKBOX";
+
+export interface PersonalizationOptionItem {
+  id: string;
+  label: string;
+  value: string;
+  previewAssetUrl?: string;
+  thumbnail?: string;
+  priceDeltaVND?: number;
+}
+
+export interface PersonalizationField {
+  id: string;
+  label: string;
+  placeholder?: string;
+  type: PersonalizationFieldType;
+  required?: boolean;
+  maxLength?: number;
+  options?: PersonalizationOptionItem[];
+  defaultValue?: any;
+  group?: string;
+  helpText?: string;
+}
+
+export interface VolumeDiscountTier {
+  minQty: number;
+  discountPercent: number;
+  badgeText: string;
+  isPopular?: boolean;
+}
+
+export interface GiftAddonItem {
+  id: string;
+  title: string;
+  description?: string;
+  priceVND: number;
+  originalPriceVND?: number;
+  image?: string;
+  defaultChecked?: boolean;
+}
+
 export interface WebProduct {
   id?: string;
+  version?: number;
   slug: string;
   skuCode: string;
   
@@ -174,6 +224,18 @@ export interface WebProduct {
   mirroredAt?: string;
 
   variants: WebProductVariant[];
+  
+  // Tính năng cá nhân hóa (POD / Personalized Gifts theo mô hình Macorner)
+  isPersonalized?: boolean;
+  personalizationFields?: PersonalizationField[];
+  customizerMockupTemplateUrl?: string;
+  volumeDiscountTiers?: VolumeDiscountTier[];
+  giftAddons?: GiftAddonItem[];
+  occasionTags?: string[]; // "christmas", "mothers-day", "fathers-day", "anniversary", "memorial", "birthday", "valentines"
+  recipientTags?: string[]; // "for-mom", "for-dad", "for-couples", "for-besties", "for-pet-lovers", "for-grandparents"
+  rating?: number; // Ví dụ 4.9/5.0
+  reviewCount?: number; // Ví dụ 1,280 reviews
+
   sourcePlatform?: SourcePlatform;
   sourceCurrency?: "CNY" | "VND" | "USD";
   sourceProductId: string;

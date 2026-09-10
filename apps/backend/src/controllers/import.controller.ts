@@ -27,6 +27,8 @@ const translationService = new TranslationEngineService();
 const pricingService = new PricingEngineService();
 const skuMappingService = new SkuMappingService();
 
+export const normalizeSourceStock = (stock: number | null | undefined): number => stock ?? 0;
+
 export class ImportController {
   /**
    * Kiểm tra sản phẩm đã từng được import hay chưa để tránh trùng lặp
@@ -155,9 +157,9 @@ export class ImportController {
           costPriceVND: costVND,
           sourcePrice: nv.priceCNY ?? raw.prices?.minPriceCNY,
           sellingPriceVND: sellVND,
-          stockQuantity: nv.stock ?? 0,
+          stockQuantity: normalizeSourceStock(nv.stock),
           imageUrl: nv.imageUrl || normalized.media.images[0] || "",
-          sourceAvailable: (nv.stock ?? 0) > 0,
+          sourceAvailable: normalizeSourceStock(nv.stock) > 0,
           selectedForSale: isSelected
         };
       });

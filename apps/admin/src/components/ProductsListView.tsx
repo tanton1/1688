@@ -340,6 +340,8 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                         <div className="flex items-start gap-3">
                           <div className="relative shrink-0">
                             <img
+                              loading="lazy"
+                              decoding="async"
                               src={product.primaryImage || "https://placehold.co/80x80?text=No+Image"}
                               alt={product.titleVI}
                               className="w-14 h-14 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-90"
@@ -541,6 +543,8 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
               <div>
                 <div className="relative aspect-square overflow-hidden bg-slate-100">
                   <img
+                    loading="lazy"
+                    decoding="async"
                     src={product.primaryImage}
                     alt={product.titleVI}
                     className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"

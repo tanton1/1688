@@ -82,7 +82,9 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           variantName: `${item.productTitle} (${item.variantName})`,
           quantity: item.quantity,
           sellingPriceVND: item.priceVND,
-          image: item.image
+          image: item.customizedPreviewUrl || item.image,
+          customizationData: item.customizationData,
+          customizedPreviewUrl: item.customizedPreviewUrl
         }))
       };
 

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { PricingEngineService } from "../services/pricing.service.js";
 import { z } from "zod";
+import { supabaseService } from "../services/supabase.service.js";
 
 const pricingService = new PricingEngineService();
 
@@ -21,6 +22,10 @@ const ruleSchema = z.object({
 
 export class PricingController {
   public async getRules(req: Request, res: Response): Promise<void> {
+    if (supabaseService.isConfigured()) {
+      const persisted = await supabaseService.getPricingRules();
+      if (persisted) pricingService.replaceRules(persisted);
+    }
     const rules = pricingService.getAllRules();
     res.json({ rules });
   }
@@ -42,11 +47,14 @@ export class PricingController {
       res.status(400).json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() });
       return;
     }
-    try {
-      res.status(201).json({ success: true, rule: pricingService.createRule(parsed.data) });
-    } catch {
+    if (pricingService.getAllRules().some(rule => rule.id === parsed.data.id)) {
       res.status(409).json({ error: "PRICING_RULE_EXISTS" });
+      return;
     }
+    if (supabaseService.isConfigured() && !(await supabaseService.savePricingRule(parsed.data))) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
+    }
+    res.status(201).json({ success: true, rule: pricingService.createRule(parsed.data) });
   }
 
   public async updateRule(req: Request, res: Response): Promise<void> {
@@ -55,15 +63,23 @@ export class PricingController {
       res.status(400).json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() });
       return;
     }
-    const rule = pricingService.updateRule(req.params.id, parsed.data);
-    if (!rule) {
+    const existing = pricingService.getAllRules().find(rule => rule.id === req.params.id);
+    if (!existing) {
       res.status(404).json({ error: "PRICING_RULE_NOT_FOUND" });
       return;
     }
+    const candidate = { ...existing, ...parsed.data, id: req.params.id };
+    if (supabaseService.isConfigured() && !(await supabaseService.savePricingRule(candidate))) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
+    }
+    const rule = pricingService.updateRule(req.params.id, parsed.data)!;
     res.json({ success: true, rule });
   }
 
   public async deleteRule(req: Request, res: Response): Promise<void> {
+    if (supabaseService.isConfigured() && !(await supabaseService.deletePricingRule(req.params.id))) {
+      res.status(404).json({ error: "PRICING_RULE_NOT_FOUND" }); return;
+    }
     const deleted = pricingService.deleteRule(req.params.id);
     if (!deleted) {
       res.status(409).json({ error: "PRICING_RULE_NOT_DELETABLE" });

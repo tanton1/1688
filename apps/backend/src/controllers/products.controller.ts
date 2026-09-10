@@ -29,7 +29,16 @@ export class ProductsController {
    * Danh sách sản phẩm có phân trang, tìm kiếm và lọc
    */
   public async listProducts(req: Request, res: Response): Promise<void> {
-    const { status, category, search, minQuality, sort } = req.query as Record<string, string>;
+    const { status, category, search, minQuality, sort, page: rawPage, pageSize: rawPageSize } = req.query as Record<string, string>;
+    const page = Math.max(1, Number.parseInt(rawPage || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(rawPageSize || "50", 10) || 50));
+
+    if (supabaseService.isConfigured()) {
+      const result = await supabaseService.getProducts({ status, category, search, minQuality: minQuality ? Number(minQuality) : undefined, sort, page, pageSize });
+      if (!result) { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
+      res.json({ ...result, page, pageSize });
+      return;
+    }
 
     // Nạp thêm từ Supabase nếu có dữ liệu mới
     await this.hydrateFromSupabase();
@@ -78,10 +87,8 @@ export class ProductsController {
       items.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
     }
 
-    res.json({
-      total: items.length,
-      items
-    });
+    const total = items.length;
+    res.json({ total, page, pageSize, items: items.slice((page - 1) * pageSize, page * pageSize) });
   }
 
   /**
@@ -123,6 +130,11 @@ export class ProductsController {
     }
 
     const updates = req.body as Partial<WebProduct>;
+    const currentVersion = product.version || 1;
+    if (updates.version !== undefined && updates.version !== currentVersion) {
+      res.status(409).json({ error: "VERSION_CONFLICT", message: "Sản phẩm đã được cập nhật ở phiên khác", currentVersion });
+      return;
+    }
 
     if (updates.titleVI) product.titleVI = updates.titleVI;
     if (updates.titleEN !== undefined) product.titleEN = updates.titleEN;
@@ -167,17 +179,24 @@ export class ProductsController {
     const quality = evaluateProductQuality(product);
     product.qualityScore = quality.totalScore;
     product.updatedAt = new Date().toISOString();
-
-    inMemoryProducts.set(id, product);
+    product.version = currentVersion + 1;
 
     // Lưu bền vững vào Supabase
     if (supabaseService.isConfigured()) {
       try {
-        await supabaseService.updateWebProduct(id, product);
+        const persisted = await supabaseService.updateWebProduct(id, product, currentVersion);
+        if (!persisted) {
+          res.status(409).json({ error: "PERSISTENCE_OR_VERSION_CONFLICT", message: "Không thể lưu vì dữ liệu đã thay đổi" });
+          return;
+        }
       } catch (err) {
         console.error("[updateProduct Supabase error]", err);
+        res.status(503).json({ error: "PERSISTENCE_FAILED" });
+        return;
       }
     }
+
+    inMemoryProducts.set(id, product);
 
     res.json({
       success: true,

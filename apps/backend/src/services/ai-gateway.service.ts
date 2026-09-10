@@ -1,6 +1,7 @@
 import { VisualSourcingMatch, AICopywritingStyle } from "@hub1688/shared-types";
 import { generateAICopywriting } from "@hub1688/shared-utils";
 import { safeFetch } from "../utils/safe-network.js";
+import { ENV } from "../config/env.js";
 
 export interface AiGatewayConfig {
   baseUrl?: string;
@@ -561,6 +562,9 @@ Yêu cầu xuất ra định dạng JSON:
     apiKey?: string;
     model?: string;
   }): Promise<VisualSourcingMatch[]> {
+    if (!ENV.DEMO_MODE) {
+      throw new Error("VISUAL_SOURCING_PROVIDER_NOT_CONFIGURED");
+    }
     const title = params.productTitle || "Sản phẩm tương đồng";
     const sellingPriceVND = params.currentSellingPriceVND || 250000;
     const rawModel = params.model || (this.defaultModel.includes("sol") ? "gpt-5.6-sol" : "gemini-3.7-flash");
@@ -718,28 +722,11 @@ Trả về JSON: { "keywordsCN": ["từ1", "từ2", "từ3"], "suggestedFactoryH
     maskDataUrl?: string;
     rectangles?: Array<{ x: number; y: number; width: number; height: number }>;
   }): Promise<{ success: boolean; resultImageUrl: string; message?: string }> {
-    try {
-      // Nếu có maskDataUrl trả về từ client canvas inpaint, ưu tiên sử dụng
-      if (params.maskDataUrl && params.maskDataUrl.startsWith("data:image/")) {
-        return {
-          success: true,
-          resultImageUrl: params.maskDataUrl,
-          message: "Đã xóa chữ tiếng Trung và tái tạo nền ảnh thành công"
-        };
-      }
-
-      return {
-        success: true,
-        resultImageUrl: params.imageUrl,
-        message: "Hoàn tất xử lý ảnh"
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        resultImageUrl: params.imageUrl,
-        message: err.message
-      };
-    }
+    return {
+      success: false,
+      resultImageUrl: params.imageUrl,
+      message: "INPAINT_PROVIDER_NOT_CONFIGURED"
+    };
   }
 }
 

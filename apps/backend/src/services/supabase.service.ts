@@ -4,7 +4,10 @@ import {
   WebProductVariant,
   Normalized1688Product,
   Raw1688Shop,
-  ExistingProductCheckResult
+  ExistingProductCheckResult,
+  CustomerOrder,
+  PricingRuleConfig,
+  ProductTemplate
 } from "@hub1688/shared-types";
 import { ENV } from "../config/env.js";
 
@@ -13,7 +16,7 @@ export class SupabaseDataService {
   private configured: boolean = false;
 
   constructor() {
-    const key = ENV.SUPABASE_SERVICE_ROLE_KEY || ENV.SUPABASE_ANON_KEY;
+    const key = ENV.SUPABASE_SERVICE_ROLE_KEY;
     if (ENV.SUPABASE_URL && key) {
       this.client = createClient(ENV.SUPABASE_URL, key, {
         auth: { persistSession: false }
@@ -21,12 +24,137 @@ export class SupabaseDataService {
       this.configured = true;
       console.log(`[Supabase] Đã kết nối với Supabase Cloud: ${ENV.SUPABASE_URL}`);
     } else {
-      console.warn("[Supabase] Chưa cấu hình SUPABASE_SERVICE_ROLE_KEY hoặc SUPABASE_ANON_KEY. Chạy ở chế độ fallback memory.");
+      console.warn("[Supabase] Chưa cấu hình SUPABASE_SERVICE_ROLE_KEY. Persistence bị vô hiệu hóa.");
     }
   }
 
   public isConfigured(): boolean {
     return this.configured && this.client !== null;
+  }
+
+  public async listOrders(): Promise<CustomerOrder[] | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("customer_orders").select("*").order("created_at", { ascending: false });
+    if (error || !data) return null;
+    return data.map(row => ({
+      id: row.id, orderNumber: row.order_number, platform: row.platform,
+      customerName: row.customer_name, customerPhone: row.customer_phone,
+      customerAddress: row.customer_address, items: row.items_json || [],
+      totalAmountVND: Number(row.total_amount_vnd) || 0, totalCostVND: Number(row.total_cost_vnd) || 0,
+      estimatedProfitVND: Number(row.estimated_profit_vnd) || 0, status: row.status,
+      paymentMethod: row.payment_method, paymentStatus: row.payment_status,
+      note: row.note, createdAt: row.created_at, updatedAt: row.updated_at
+    })) as CustomerOrder[];
+  }
+
+  public async saveOrder(order: CustomerOrder): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("customer_orders").upsert({
+      id: order.id, order_number: order.orderNumber, platform: order.platform,
+      customer_name: order.customerName, customer_phone: order.customerPhone || null,
+      customer_address: order.customerAddress || null, items_json: order.items,
+      total_amount_vnd: order.totalAmountVND, total_cost_vnd: order.totalCostVND,
+      estimated_profit_vnd: order.estimatedProfitVND, status: order.status,
+      payment_method: order.paymentMethod || null, payment_status: order.paymentStatus || null,
+      note: order.note || null, created_at: order.createdAt, updated_at: order.updatedAt
+    }, { onConflict: "id" });
+    return !error;
+  }
+
+  public async deleteOrder(id: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client.from("customer_orders").delete().eq("id", id).select("id");
+    return !error && Boolean(data?.length);
+  }
+
+  public async getGlossary(): Promise<Record<string, string> | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("translation_glossaries").select("source_text,target_text");
+    if (error || !data) return null;
+    return Object.fromEntries(data.map(row => [row.source_text, row.target_text]));
+  }
+
+  public async saveGlossaryTerm(sourceText: string, targetText: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("translation_glossaries").upsert({ source_text: sourceText, target_text: targetText, updated_at: new Date().toISOString() }, { onConflict: "source_text" });
+    return !error;
+  }
+
+  public async getPricingRules(): Promise<PricingRuleConfig[] | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("pricing_rules").select("*").order("name");
+    if (error || !data) return null;
+    return data.map(row => ({ id: row.id, name: row.name, categoryKeyword: row.category_keyword,
+      exchangeRate: Number(row.exchange_rate), domesticChinaShipVND: Number(row.domestic_china_ship_vnd),
+      intlShipPerKgVND: Number(row.intl_ship_per_kg_vnd), estimatedWeightKg: Number(row.estimated_weight_kg),
+      multiplier: Number(row.multiplier), platformFeeRate: Number(row.platform_fee_rate), minProfitVND: Number(row.min_profit_vnd),
+      minMarginPercent: Number(row.min_margin_percent), roundToThousand: Boolean(row.round_to_thousand) }));
+  }
+
+  public async savePricingRule(rule: PricingRuleConfig): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("pricing_rules").upsert({ id: rule.id, name: rule.name,
+      category_keyword: rule.categoryKeyword || null, exchange_rate: rule.exchangeRate,
+      domestic_china_ship_vnd: rule.domesticChinaShipVND, intl_ship_per_kg_vnd: rule.intlShipPerKgVND,
+      estimated_weight_kg: rule.estimatedWeightKg, multiplier: rule.multiplier, platform_fee_rate: rule.platformFeeRate,
+      min_profit_vnd: rule.minProfitVND, min_margin_percent: rule.minMarginPercent,
+      round_to_thousand: rule.roundToThousand, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    return !error;
+  }
+
+  public async deletePricingRule(id: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client.from("pricing_rules").delete().eq("id", id).select("id");
+    return !error && Boolean(data?.length);
+  }
+
+  public async getTemplates(): Promise<ProductTemplate[] | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("product_templates").select("*").order("updated_at", { ascending: false });
+    if (error || !data) return null;
+    return data.map(row => ({ id: row.id, name: row.name, description: row.description,
+      categoryName: row.category_name, targetPlatform: row.target_platform, isDefault: row.is_default,
+      content: row.content_json || {}, variation: row.variation_json || { options: [] },
+      createdAt: row.created_at, updatedAt: row.updated_at })) as ProductTemplate[];
+  }
+
+  public async saveTemplate(template: ProductTemplate): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("product_templates").upsert({ id: template.id, name: template.name,
+      description: template.description || null, category_name: template.categoryName,
+      target_platform: template.targetPlatform || "ALL", is_default: Boolean(template.isDefault),
+      content_json: template.content, variation_json: template.variation,
+      created_at: template.createdAt, updated_at: template.updatedAt }, { onConflict: "id" });
+    return !error;
+  }
+
+  public async deleteTemplate(id: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client.from("product_templates").delete().eq("id", id).select("id");
+    return !error && Boolean(data?.length);
+  }
+
+  public async replaceTemplates(templates: ProductTemplate[]): Promise<boolean> {
+    if (!this.client) return false;
+    const { error: deleteError } = await this.client.from("product_templates").delete().not("id", "is", null);
+    if (deleteError) return false;
+    for (const template of templates) {
+      if (!(await this.saveTemplate(template))) return false;
+    }
+    return true;
+  }
+
+  public async getStorefrontSettings<T>(): Promise<T | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("storefront_settings").select("config_json").eq("id", true).maybeSingle();
+    if (error || !data) return null;
+    return data.config_json as T;
+  }
+
+  public async saveStorefrontSettings(config: unknown): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("storefront_settings").upsert({ id: true, config_json: config, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    return !error;
   }
 
   /**
@@ -38,13 +166,15 @@ export class SupabaseDataService {
     search?: string;
     minQuality?: number;
     sort?: string;
+    page?: number;
+    pageSize?: number;
   }): Promise<{ total: number; items: WebProduct[] } | null> {
     if (!this.client) return null;
 
     try {
       let query = this.client
         .from("products")
-        .select("*, product_variants(*)");
+        .select("*, product_variants(*)", { count: "exact" });
 
       if (params?.status && params.status !== "ALL") {
         query = query.eq("status", params.status);
@@ -54,6 +184,10 @@ export class SupabaseDataService {
       }
       if (params?.minQuality) {
         query = query.gte("quality_score", params.minQuality);
+      }
+      if (params?.search?.trim()) {
+        const escaped = params.search.trim().replace(/[,%()]/g, "");
+        query = query.or(`title_vi.ilike.%${escaped}%,title_en.ilike.%${escaped}%,sku_code.ilike.%${escaped}%,source_product_id.ilike.%${escaped}%,supplier_name.ilike.%${escaped}%`);
       }
 
       if (params?.sort === "PRICE_ASC") {
@@ -66,27 +200,18 @@ export class SupabaseDataService {
         query = query.order("updated_at", { ascending: false });
       }
 
-      const { data, error } = await query;
+      const page = Math.max(1, params?.page || 1);
+      const pageSize = Math.min(100, Math.max(1, params?.pageSize || 50));
+      query = query.range((page - 1) * pageSize, page * pageSize - 1);
+      const { data, error, count } = await query;
 
       if (error || !data) {
         console.error("[Supabase getProducts error]", error);
         return null;
       }
 
-      let items: WebProduct[] = data.map(this.mapDbRowToWebProduct);
-
-      if (params?.search && params.search.trim()) {
-        const q = params.search.trim().toLowerCase();
-        items = items.filter(p =>
-          p.titleVI.toLowerCase().includes(q) ||
-          (p.titleEN && p.titleEN.toLowerCase().includes(q)) ||
-          p.skuCode.toLowerCase().includes(q) ||
-          p.sourceProductId.toLowerCase().includes(q) ||
-          (p.supplierName && p.supplierName.toLowerCase().includes(q))
-        );
-      }
-
-      return { total: items.length, items };
+      const items: WebProduct[] = data.map(this.mapDbRowToWebProduct);
+      return { total: count || 0, items };
     } catch (err) {
       console.error("[Supabase getProducts exception]", err);
       return null;
@@ -254,6 +379,7 @@ export class SupabaseDataService {
     try {
       const dbRow = {
         id: product.id,
+        version: product.version || 1,
         slug: product.slug,
         sku_code: product.skuCode,
         title_vi: product.titleVI,
@@ -355,13 +481,14 @@ export class SupabaseDataService {
   /**
    * Cập nhật thông tin sản phẩm trên Supabase
    */
-  public async updateWebProduct(id: string, updates: Partial<WebProduct>): Promise<boolean> {
+  public async updateWebProduct(id: string, updates: Partial<WebProduct>, expectedVersion?: number): Promise<boolean> {
     if (!this.client) return false;
 
     try {
       const dbUpdates: Record<string, any> = {
         updated_at: new Date().toISOString()
       };
+      if (updates.version !== undefined) dbUpdates.version = updates.version;
 
       if (updates.titleVI !== undefined) dbUpdates.title_vi = updates.titleVI;
       if (updates.titleEN !== undefined) dbUpdates.title_en = updates.titleEN;
@@ -401,12 +528,14 @@ export class SupabaseDataService {
       if (updates.isPriceAutoSync !== undefined) dbUpdates.is_price_auto_sync = updates.isPriceAutoSync;
       if (updates.isStockAutoSync !== undefined) dbUpdates.is_stock_auto_sync = updates.isStockAutoSync;
 
-      const { error } = await this.client
+      let updateQuery = this.client
         .from("products")
         .update(dbUpdates)
         .eq("id", id);
+      if (expectedVersion !== undefined) updateQuery = updateQuery.eq("version", expectedVersion);
+      const { data: updatedRows, error } = await updateQuery.select("id");
 
-      if (error) {
+      if (error || !updatedRows?.length) {
         console.error("[Supabase updateWebProduct error]", error);
         return false;
       }
@@ -493,6 +622,7 @@ export class SupabaseDataService {
 
     return {
       id: row.id,
+      version: Number(row.version) || 1,
       slug: row.slug,
       skuCode: row.sku_code,
       titleVI: row.title_vi,
