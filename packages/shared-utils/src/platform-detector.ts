@@ -204,12 +204,28 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
       }
 
       if (Array.isArray(shopifyData.images) && shopifyData.images.length > 0) {
-        shopifyData.images.forEach((img: string) => {
-          let clean = img.trim();
+        shopifyData.images.forEach((img: any) => {
+          let rawSrc = typeof img === "string" ? img : img?.src || "";
+          let clean = rawSrc.trim();
           if (clean.startsWith("//")) clean = "https:" + clean;
           if (clean.startsWith("http://")) clean = clean.replace("http://", "https://");
-          if (!result.images.includes(clean)) result.images.push(clean);
+          if (clean && !result.images.includes(clean)) result.images.push(clean);
         });
+      }
+
+      if (shopifyData.description || shopifyData.body_html) {
+        const descHtml = shopifyData.description || shopifyData.body_html;
+        const dImgRegex = /<img\b[^>]*\b(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
+        let dm: RegExpExecArray | null;
+        while ((dm = dImgRegex.exec(descHtml)) !== null) {
+          let u = dm[1].trim();
+          if (u.startsWith("//")) u = "https:" + u;
+          if (u.startsWith("http://")) u = u.replace("http://", "https://");
+          if (!result.detailImages!.includes(u)) result.detailImages!.push(u);
+        }
+      }
+
+      if (result.images.length > 0) {
         return result;
       }
     }

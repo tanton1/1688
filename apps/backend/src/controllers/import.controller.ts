@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import {
   ImportProductPayload,
   WebProduct,
+  WebProductVariant,
   ExistingProductCheckResult,
   BulkImportRequest,
   ImportJobStatus
@@ -125,25 +126,61 @@ export class ImportController {
       normalized.description.rawHtml || ""
     );
 
-    // 4. Sinh ma trận biến thể SKU (Cartesian Product)
-    const rawVariants = skuMappingService.generateVariantsFromRaw(raw, pricingRule);
+    // 4. Xử lý Ma Trận Biến Thể SKU
+    let variants: WebProductVariant[] = [];
+    let minPriceVND = 0;
+    let maxPriceVND = 0;
 
-    // Lọc các variant nếu người dùng chỉ chọn 1 số SKU nhất định
-    const selectedVariants = settings.selectedSkuIds && settings.selectedSkuIds.length > 0
-      ? rawVariants.map(v => ({
-          ...v,
-          selectedForSale: settings.selectedSkuIds!.includes(v.sourceSkuId)
-        }))
-      : rawVariants;
+    if (Array.isArray(normalized.variants) && normalized.variants.length > 0) {
+      // Ưu tiên sử dụng danh sách biến thể được chuẩn hóa từ Extension (đã bóc tách đủ hình ảnh mẫu & SKU)
+      const mappedVariants: WebProductVariant[] = normalized.variants.map((nv, idx) => {
+        const pricing = pricingService.calculate(nv.priceCNY || raw.prices?.minPriceCNY || 30, pricingRule.id);
+        const costVND = pricing.totalCostVND;
+        const sellVND = pricing.finalSellingPriceVND;
+        const isSelected = settings.selectedSkuIds && settings.selectedSkuIds.length > 0
+          ? settings.selectedSkuIds.includes(nv.sourceSkuId)
+          : true;
 
-    // Tính toán min/max price
-    const { variants, minPriceVND, maxPriceVND } = pricingService.applyPricingToVariants(
-      selectedVariants,
-      pricingRule.id
-    );
+        return {
+          id: `v_${Date.now()}_${idx}`,
+          sourceSkuId: nv.sourceSkuId,
+          colorName: nv.colorVI || nv.colorCN || "Mặc định",
+          sizeName: nv.sizeVI || nv.sizeCN || "",
+          colorNameEN: nv.colorVI || nv.colorCN,
+          sizeNameEN: nv.sizeVI || nv.sizeCN,
+          costPriceVND: costVND,
+          sellingPriceVND: sellVND,
+          stockQuantity: nv.stock || 100,
+          imageUrl: nv.imageUrl || normalized.media.images[0] || "",
+          sourceAvailable: (nv.stock || 100) > 0,
+          selectedForSale: isSelected
+        };
+      });
+
+      variants = mappedVariants;
+      minPriceVND = Math.min(...variants.map(v => v.sellingPriceVND));
+      maxPriceVND = Math.max(...variants.map(v => v.sellingPriceVND));
+    } else {
+      // Fallback: Tự động sinh tổ hợp từ rawSnapshot
+      const rawVariants = skuMappingService.generateVariantsFromRaw(raw, pricingRule);
+      const selectedVariants = settings.selectedSkuIds && settings.selectedSkuIds.length > 0
+        ? rawVariants.map(v => ({
+            ...v,
+            selectedForSale: settings.selectedSkuIds!.includes(v.sourceSkuId)
+          }))
+        : rawVariants;
+
+      const applied = pricingService.applyPricingToVariants(
+        selectedVariants,
+        pricingRule.id
+      );
+      variants = applied.variants;
+      minPriceVND = applied.minPriceVND;
+      maxPriceVND = applied.maxPriceVND;
+    }
 
     // Tính toán bảng giá sỉ bậc thang sang VNĐ
-    const priceTiers = (raw.prices.priceTiers || []).map(tier => {
+    const priceTiers = (raw.prices?.priceTiers || []).map(tier => {
       const tierCalc = pricingService.calculate(tier.price, pricingRule.id);
       return {
         minQuantity: tier.minQuantity,
@@ -156,6 +193,17 @@ export class ImportController {
     const productId = `prod_${Date.now()}`;
     const skuCode = `SP-${Date.now().toString().slice(-6)}`;
 
+    const detailImagesList = (normalized.description?.images && normalized.description.images.length > 0)
+      ? normalized.description.images
+      : (raw?.descriptionImages || []);
+
+    const galleryImagesList = [...normalized.media.images.slice(1)];
+    variants.forEach(v => {
+      if (v.imageUrl && !normalized.media.images.includes(v.imageUrl) && !galleryImagesList.includes(v.imageUrl)) {
+        galleryImagesList.push(v.imageUrl);
+      }
+    });
+
     // 5. Tự động sinh trọn gói SEO Metadata (Meta Title, Description, Image Alt, FAQs, JSON-LD)
     const seoPackage = translationService.generateCompleteSEOPackage({
       titleVI: finalTitle,
@@ -163,8 +211,8 @@ export class ImportController {
       categoryName: settings.categoryName || "Thời trang nữ",
       attributes: translatedAttrs,
       primaryImage: normalized.media.images[0] || "",
-      galleryImages: normalized.media.images.slice(1),
-      detailImages: normalized.description.images || [],
+      galleryImages: galleryImagesList,
+      detailImages: detailImagesList,
       variants,
       skuCode,
       minPriceVND,
@@ -194,8 +242,8 @@ export class ImportController {
       
       // Media & Video
       primaryImage: normalized.media.images[0] || "",
-      galleryImages: normalized.media.images.slice(1),
-      detailImages: normalized.description.images || [],
+      galleryImages: galleryImagesList,
+      detailImages: detailImagesList,
       videoUrl: normalized.media.videoUrl || null,
       videoPosterUrl: normalized.media.images[0] || null,
 

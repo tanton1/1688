@@ -100,8 +100,11 @@ export const App: React.FC = () => {
           sourceSkuId: v.sourceSkuId,
           colorCN: v.colorName,
           sizeCN: v.sizeName,
+          colorVI: v.colorName,
+          sizeVI: v.sizeName,
           priceCNY: priceCNY > 0 ? priceCNY : product.prices.minPriceCNY,
-          stock: v.stockQuantity
+          stock: v.stockQuantity,
+          imageUrl: v.imageUrl
         };
       }),
       description: {

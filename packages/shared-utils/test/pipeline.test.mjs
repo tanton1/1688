@@ -662,4 +662,103 @@ test("12. Media Mirroring & Extension Bulk Sourcing Contracts", (t) => {
   assert.equal(bulkItems[1].priceCNY, 42.0);
 });
 
+test("13. Variant Sample Images, Detail Description Images & Synchronization Integrity", (t) => {
+  // 1. Kiểm thử trích xuất detailImages từ mô tả HTML của sản phẩm
+  const mockShopifyHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <script id="ProductJson-12345" type="application/json">
+          {
+            "id": 12345,
+            "title": "Custom Name Halloween Bag",
+            "vendor": "Macorner",
+            "description": "<p>Mô tả chi tiết túi kẹo</p><img src='https://macorner.co/cdn/shop/files/detail_size_chart.jpg' /><img src='https://macorner.co/cdn/shop/files/detail_material.png' />",
+            "images": [
+              { "id": 101, "src": "https://macorner.co/cdn/shop/files/bag_black.jpg" },
+              { "id": 102, "src": "https://macorner.co/cdn/shop/files/bag_orange.jpg" }
+            ],
+            "options": [
+              { "name": "Size", "values": ["Small", "Large"] },
+              { "name": "Color", "values": ["Black", "Orange"] }
+            ],
+            "variants": [
+              { "id": 1, "title": "Small / Black", "price": 2295, "image_id": 101, "option1": "Small", "option2": "Black" },
+              { "id": 2, "title": "Small / Orange", "price": 2295, "image_id": 102, "option1": "Small", "option2": "Orange" },
+              { "id": 3, "title": "Large / Black", "price": 2995, "image_id": 101, "option1": "Large", "option2": "Black" },
+              { "id": 4, "title": "Large / Orange", "price": 2995, "image_id": 102, "option1": "Large", "option2": "Orange" }
+            ]
+          }
+        </script>
+      </head>
+      <body></body>
+    </html>
+  `;
+
+  const parsed = parseHtmlProductMetadata(mockShopifyHtml);
+  assert.equal(parsed.title, "Custom Name Halloween Bag");
+  assert.equal(parsed.variants?.length, 4, "Phải lấy đủ 4 biến thể");
+  assert.equal(parsed.detailImages?.length, 2, "Phải bóc tách được 2 ảnh mô tả chi tiết (bảng size & chất liệu)");
+  assert.ok(parsed.detailImages[0].includes("detail_size_chart.jpg"));
+  assert.ok(parsed.detailImages[1].includes("detail_material.png"));
+
+  // 2. Kiểm thử bảo tồn ảnh mẫu biến thể (Sample images) trong generateCartesianCombinations
+  const skuProps = [
+    {
+      propId: "prop_color",
+      propNameCN: "颜色 (Màu sắc)",
+      values: [
+        { valueId: "col_black", valueCN: "Đen", imageUrl: "https://cbu01.alicdn.com/img/sample_black.jpg" },
+        { valueId: "col_orange", valueCN: "Cam", imageUrl: "https://cbu01.alicdn.com/img/sample_orange.jpg" }
+      ]
+    },
+    {
+      propId: "prop_size",
+      propNameCN: "尺码 (Kích thước)",
+      values: [
+        { valueId: "sz_s", valueCN: "7x9 inch" },
+        { valueId: "sz_l", valueCN: "9x10 inch" }
+      ]
+    }
+  ];
+
+  const skuMap = {
+    "Đen&7x9 inch": {
+      skuId: "SKU_BLACK_S",
+      priceCNY: 30,
+      stock: 120,
+      imageUrl: "https://cbu01.alicdn.com/img/sample_black.jpg"
+    },
+    "Cam&7x9 inch": {
+      skuId: "SKU_ORANGE_S",
+      priceCNY: 30,
+      stock: 90,
+      imageUrl: "https://cbu01.alicdn.com/img/sample_orange.jpg"
+    }
+  };
+
+  const variants = generateCartesianCombinations(skuProps, skuMap, DEFAULT_PRICING_RULE);
+  assert.equal(variants.length, 4, "Tổ hợp 2 màu x 2 size = 4 biến thể");
+  assert.equal(variants[0].imageUrl, "https://cbu01.alicdn.com/img/sample_black.jpg", "Biến thể màu Đen phải giữ ảnh mẫu Đen");
+  assert.equal(variants[1].imageUrl, "https://cbu01.alicdn.com/img/sample_black.jpg", "Biến thể màu Đen size lớn cũng phải giữ ảnh mẫu Đen");
+  assert.equal(variants[2].imageUrl, "https://cbu01.alicdn.com/img/sample_orange.jpg", "Biến thể màu Cam phải giữ ảnh mẫu Cam");
+  assert.equal(variants[3].imageUrl, "https://cbu01.alicdn.com/img/sample_orange.jpg", "Biến thể màu Cam size lớn cũng phải giữ ảnh mẫu Cam");
+
+  // 3. Kiểm thử hợp đồng đồng bộ biến thể: không bị ghi đè thành 1 biến thể duy nhất
+  const normalizedVariants = variants.map(v => ({
+    sourceSkuId: v.sourceSkuId,
+    colorCN: v.colorName,
+    sizeCN: v.sizeName,
+    colorVI: v.colorName,
+    sizeVI: v.sizeName,
+    priceCNY: 30,
+    stock: v.stockQuantity,
+    imageUrl: v.imageUrl
+  }));
+
+  assert.equal(normalizedVariants.length, 4);
+  assert.ok(normalizedVariants.every(v => v.imageUrl && v.imageUrl.startsWith("https://")));
+});
+
+
 

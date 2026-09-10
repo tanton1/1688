@@ -53,9 +53,13 @@ async function extractCommerceProductFromDom(): Promise<any> {
         if (res.ok) {
           const shopifyData = await res.json();
           if (shopifyData && (shopifyData.title || (Array.isArray(shopifyData.variants) && shopifyData.variants.length > 0))) {
+            const imageMap: Record<number, string> = {};
             const cleanImages: string[] = (shopifyData.images || []).map((img: any) => {
               let s = typeof img === "string" ? img : img?.src || "";
               if (s.startsWith("//")) s = "https:" + s;
+              if (typeof img === "object" && img?.id && s) {
+                imageMap[img.id] = s;
+              }
               return s;
             }).filter(Boolean);
 
@@ -64,7 +68,35 @@ async function extractCommerceProductFromDom(): Promise<any> {
               return p >= 100 ? Math.round((p / 100) * 100) / 100 : p;
             };
 
-            const rawVariants = shopifyData.variants || [];
+            const rawVariants = (shopifyData.variants || []).map((v: any) => {
+              let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
+              if (!img && v.image_id && imageMap[v.image_id]) {
+                img = imageMap[v.image_id];
+              }
+              if (img && img.startsWith("//")) img = "https:" + img;
+              return {
+                ...v,
+                featured_image: img ? { src: img } : undefined
+              };
+            });
+
+            // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
+            const detailImages: string[] = [];
+            const descHtml = shopifyData.body_html || shopifyData.description || "";
+            if (descHtml) {
+              const imgMatches = descHtml.match(/<img\b[^>]*\b(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi);
+              if (imgMatches) {
+                imgMatches.forEach((m: string) => {
+                  const srcMatch = m.match(/(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["']/i);
+                  if (srcMatch) {
+                    let u = srcMatch[1].trim();
+                    if (u.startsWith("//")) u = "https:" + u;
+                    if (!detailImages.includes(u)) detailImages.push(u);
+                  }
+                });
+              }
+            }
+
             const prices = rawVariants.map((v: any) => normalizePrice(v.price));
             const priceMin = prices.length > 0 ? Math.min(...prices) : normalizePrice(shopifyData.price);
             const priceMax = prices.length > 0 ? Math.max(...prices) : priceMin;
@@ -73,6 +105,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
               url,
               title: shopifyData.title,
               images: cleanImages.length > 0 ? cleanImages : [shopifyData.featured_image].filter(Boolean),
+              detailImages,
               price: priceMin,
               priceMin,
               priceMax,
@@ -197,10 +230,21 @@ async function extractCommerceProductFromDom(): Promise<any> {
 
     const shopName = schemaProduct?.brand?.name || ogSiteName || window.location.hostname;
 
+    // Trích xuất hình ảnh mô tả DOM (Detail Images)
+    const domDetailImages: string[] = [];
+    doc.querySelectorAll(".product__description img, .rte img, #description img, .description img, [class*='description'] img, .product-description img").forEach((img: any) => {
+      let s = img.getAttribute("data-src") || img.getAttribute("data-lazyload-src") || img.getAttribute("data-original") || img.src;
+      if (s) {
+        if (s.startsWith("//")) s = "https:" + s;
+        if (!JUNK_IMG_REGEX.test(s) && !domDetailImages.includes(s)) domDetailImages.push(s);
+      }
+    });
+
     return {
       url,
       title,
       images: images.slice(0, 15),
+      detailImages: domDetailImages,
       price: price || 22.95,
       currency: currency || "USD",
       shopName,
@@ -278,25 +322,30 @@ export function useProductExtractor() {
             return;
           }
 
-          // [Chiến lược 1]: Gọi Backend AI Cloner Preview (Cực mạnh, hỗ trợ Macorner, Taobao, 1688, Shopee, v.v.)
-          try {
-            const prevRes = await apiFetch("/api/v1/clone/preview", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: tabUrl })
-            });
-            const prevData = await prevRes.json();
-            if (prevData?.success && prevData?.preview && prevData.preview.originalTitle) {
-              setProduct(convertClonePreviewToRawProduct(prevData.preview, tabUrl));
-              setError(null);
-              setLoading(false);
-              return;
+          // [Ưu tiên 1]: Gửi tin nhắn trực tiếp cho Content Script chuyên dụng trên Tab hiện tại
+          // Content script chạy ngay trong trang web người dùng đang xem (có cookie, DOM đầy đủ, không bị anti-bot chặn)
+          if (tab.id) {
+            try {
+              const response = await new Promise<any>((resolve) => {
+                chrome.tabs.sendMessage(tab.id!, { action: "EXTRACT_CURRENT_PRODUCT" }, (res) => {
+                  if (chrome.runtime.lastError) resolve(null);
+                  else resolve(res);
+                });
+              });
+
+              if (response?.success && response.data?.title && (response.data.images?.length > 0 || response.data.skuProps?.length > 0)) {
+                console.log("[Sidepanel] Bóc tách thành công qua Content Script:", response.data);
+                setProduct(response.data);
+                setError(null);
+                setLoading(false);
+                return;
+              }
+            } catch (csErr) {
+              console.warn("[Sidepanel] Content script direct message attempt:", csErr);
             }
-          } catch (beErr) {
-            console.warn("[Sidepanel] Backend preview attempt failed:", beErr);
           }
 
-          // [Chiến lược 2]: Trích xuất trực tiếp DOM trang web qua chrome.scripting.executeScript
+          // [Ưu tiên 2]: Trích xuất trực tiếp DOM trang web qua chrome.scripting.executeScript
           if (tab.id && chrome.scripting) {
             try {
               const results = await chrome.scripting.executeScript({
@@ -305,6 +354,7 @@ export function useProductExtractor() {
               });
               const domData = results?.[0]?.result;
               if (domData && domData.title && domData.title.length > 2) {
+                console.log("[Sidepanel] Bóc tách thành công qua DOM injection:", domData);
                 const domProd = convertDomDataToRawProduct(domData, tabUrl);
                 setProduct(domProd);
                 setError(null);
@@ -316,26 +366,26 @@ export function useProductExtractor() {
             }
           }
 
-          // [Chiến lược 3]: Gửi tin nhắn cho Content Script chuyên dụng
-          if (tab.id) {
-            try {
-              const response = await new Promise<any>((resolve) => {
-                chrome.tabs.sendMessage(tab.id!, { action: "EXTRACT_CURRENT_PRODUCT" }, (res) => {
-                  if (chrome.runtime.lastError) resolve(null);
-                  else resolve(res);
-                });
-              });
-
-              if (response?.success && response.data?.title) {
-                setProduct(response.data);
-                setError(null);
-                setLoading(false);
-                return;
-              }
-            } catch {}
+          // [Ưu tiên 3]: Gọi Backend AI Cloner Preview (Dành cho dán link ngoài hoặc tab bị hạn chế)
+          try {
+            const prevRes = await apiFetch("/api/v1/clone/preview", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: tabUrl })
+            });
+            const prevData = await prevRes.json();
+            if (prevData?.success && prevData?.preview && prevData.preview.originalTitle) {
+              console.log("[Sidepanel] Bóc tách thành công qua Backend Preview:", prevData.preview);
+              setProduct(convertClonePreviewToRawProduct(prevData.preview, tabUrl));
+              setError(null);
+              setLoading(false);
+              return;
+            }
+          } catch (beErr) {
+            console.warn("[Sidepanel] Backend preview attempt failed:", beErr);
           }
 
-          // [Chiến lược 4]: Kiểm tra nếu là trang chủ / danh mục Macorner
+          // [Kiểm tra đặc biệt]: Trang chủ / danh mục Macorner
           if (tabUrl.includes("macorner.co") && !tabUrl.includes("/products/")) {
             setProduct(null);
             setError("Bạn đang ở trang chủ hoặc danh mục Macorner. Vui lòng bấm vào một sản phẩm cụ thể để quét, hoặc dán link sản phẩm vào ô bên trên.");
@@ -343,7 +393,7 @@ export function useProductExtractor() {
             return;
           }
 
-          // [Chiến lược 5]: Fallback 1688 mock nếu đang trên 1688
+          // [Fallback an toàn]: Mock 1688 nếu đang trên 1688 và các phương án đều chưa lấy được
           if (tabUrl.includes("1688.com")) {
             setProduct(getMock1688Product());
             setLoading(false);
@@ -412,7 +462,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       originalPriceMax: originalMax,
       primaryImage: domData.images?.[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
       galleryImages: domData.images?.slice(1) || [],
-      detailImages: [],
+      detailImages: domData.detailImages || [],
       rawOptions: domData.options,
       rawAttributes: [
         { key: "Nguồn xuất xứ", value: domData.shopName || "Website E-commerce" },
@@ -467,6 +517,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       currency: "CNY"
     },
     images: domData.images?.length > 0 ? domData.images : ["https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800"],
+    descriptionImages: domData.detailImages || [],
     attributes: [
       { nameCN: "Nguồn xuất xứ", valueCN: domData.shopName || "Website E-commerce" },
       { nameCN: "Phương thức scan", valueCN: "Tự động trích xuất DOM thời gian thực" }

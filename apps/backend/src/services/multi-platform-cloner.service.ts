@@ -586,11 +586,40 @@ export class MultiPlatformClonerService {
     const sellingVND = Math.round(costVND * 1.4);
     const margin = Math.max(20, Math.round(((sellingVND - costVND) / sellingVND) * 100));
 
+    // Map variant image by featured_image or image_id
+    const imageMap = new Map<number, string>();
+    if (Array.isArray(data.images)) {
+      data.images.forEach((img: any) => {
+        if (typeof img === "object" && img?.id && img?.src) {
+          let s = img.src.trim();
+          if (s.startsWith("//")) s = "https:" + s;
+          imageMap.set(img.id, s);
+        }
+      });
+    }
+
+    // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
+    const detailImages: string[] = [];
+    const descHtml = data.body_html || data.description || "";
+    if (descHtml) {
+      const imgRegex = /<img\b[^>]*\b(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = imgRegex.exec(descHtml)) !== null) {
+        let u = m[1].trim();
+        if (u.startsWith("//")) u = "https:" + u;
+        if (!detailImages.includes(u)) detailImages.push(u);
+      }
+    }
+
     const variants: ClonedVariantPreview[] = rawVariants.map((v, idx) => {
       const vPrice = normalizePrice(v.price);
       const vCostVND = Math.round(vPrice * 25400);
       const vSellingVND = Math.round(vCostVND * 1.4);
-      let img = v.featured_image?.src || primaryImage;
+      let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
+      if (!img && v.image_id && imageMap.has(v.image_id)) {
+        img = imageMap.get(v.image_id);
+      }
+      if (!img) img = primaryImage;
       if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
 
       return {
@@ -628,7 +657,7 @@ export class MultiPlatformClonerService {
       estimatedMarginPercent: margin,
       primaryImage,
       galleryImages,
-      detailImages: [],
+      detailImages,
       variants: variants.length > 0 ? variants : [
         {
           skuId: `SKU-${productId}-01`,
