@@ -174,5 +174,68 @@ export const AdminApi = {
       method: "POST",
       body: JSON.stringify({ chineseTerm, vietnameseTerm })
     });
+  },
+
+  // 16. Omnichannel Connectors - WooCommerce
+  async syncWooCommerce(productId: string, config: any): Promise<{ success: boolean; result: any }> {
+    return request("/api/v1/connectors/woocommerce/sync", {
+      method: "POST",
+      body: JSON.stringify({ productId, config })
+    });
+  },
+
+  // 17. Omnichannel Connectors - Shopify
+  async syncShopify(productId: string, config: any): Promise<{ success: boolean; result: any }> {
+    return request("/api/v1/connectors/shopify/sync", {
+      method: "POST",
+      body: JSON.stringify({ productId, config })
+    });
+  },
+
+  // 18. Omnichannel Connectors - Marketplace CSV Export
+  async exportMarketplaceCSV(productIds: string[], platform: "SHOPEE" | "TIKTOK_SHOP"): Promise<Blob> {
+    const base = getApiBaseUrl();
+    const res = await fetch(`${base}/api/v1/connectors/export-csv`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productIds, platform })
+    });
+    if (!res.ok) {
+      throw new Error(`Xuất CSV thất bại: HTTP ${res.status}`);
+    }
+    return res.blob();
+  },
+
+  // 19. Telegram Alerts
+  async testTelegram(botToken: string, chatId: string): Promise<any> {
+    return request("/api/v1/connectors/telegram/test", {
+      method: "POST",
+      body: JSON.stringify({ botToken, chatId })
+    });
+  },
+
+  async sendTelegramAlert(botToken: string, chatId: string, type: string, data: any): Promise<any> {
+    return request("/api/v1/connectors/telegram/send-alert", {
+      method: "POST",
+      body: JSON.stringify({ botToken, chatId, type, data })
+    });
+  },
+
+  // 20. AI Marketing Copywriter
+  async generateAICopy(productId: string, style?: string, language?: string): Promise<{
+    success: boolean;
+    style: string;
+    language: string;
+    copy: {
+      headline: string;
+      bodyHtml: string;
+      bodyText: string;
+      callToAction: string;
+    };
+  }> {
+    return request("/api/v1/ai/generate-copy", {
+      method: "POST",
+      body: JSON.stringify({ productId, style, language })
+    });
   }
 };

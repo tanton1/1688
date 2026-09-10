@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AdminTab } from "./Sidebar";
+import { CurrentUser } from "./AuthModal";
 import {
   Search,
   PlusCircle,
@@ -7,7 +8,10 @@ import {
   RefreshCw,
   Globe,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Share2,
+  ShieldCheck,
+  User
 } from "lucide-react";
 
 interface HeaderProps {
@@ -16,6 +20,9 @@ interface HeaderProps {
   onRefresh: () => void;
   isRefreshing: boolean;
   onQuickImport: (offerId: string) => void;
+  currentUser: CurrentUser | null;
+  onOpenAuth: () => void;
+  onOpenConnectors: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,7 +30,10 @@ export const Header: React.FC<HeaderProps> = ({
   backendUrl,
   onRefresh,
   isRefreshing,
-  onQuickImport
+  onQuickImport,
+  currentUser,
+  onOpenAuth,
+  onOpenConnectors
 }) => {
   const [quickOfferId, setQuickOfferId] = useState("");
   const [showQuickModal, setShowQuickModal] = useState(false);
@@ -75,6 +85,16 @@ export const Header: React.FC<HeaderProps> = ({
           <span>{isRefreshing ? "Đang tải..." : "Làm mới"}</span>
         </button>
 
+        {/* Omnichannel Connectors Hub */}
+        <button
+          onClick={onOpenConnectors}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-xs transition-all"
+          title="Đồng bộ WooCommerce, Shopify, Shopee, TikTok Shop & Telegram"
+        >
+          <Share2 className="w-3.5 h-3.5 text-orange-600" />
+          <span>Kênh Đẩy Web (API)</span>
+        </button>
+
         {/* Quick Ingest Button */}
         <button
           onClick={() => setShowQuickModal(true)}
@@ -82,6 +102,40 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <PlusCircle className="w-3.5 h-3.5" />
           <span>Kéo Nhanh Từ 1688</span>
+        </button>
+
+        {/* Auth Role Button */}
+        <button
+          onClick={onOpenAuth}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+            currentUser
+              ? currentUser.role === "ADMIN"
+                ? "bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-900"
+                : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-900"
+              : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
+          }`}
+          title="Thông tin phân quyền người dùng"
+        >
+          {currentUser ? (
+            <>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                currentUser.role === "ADMIN" ? "bg-purple-600" : "bg-blue-600"
+              }`}>
+                {currentUser.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="text-left hidden sm:block">
+                <p className="text-[11px] font-bold leading-none">{currentUser.name}</p>
+                <p className="text-[9px] opacity-75 leading-none mt-0.5">
+                  {currentUser.role === "ADMIN" ? "Owner Admin" : "Sourcing"}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <ShieldCheck className="w-3.5 h-3.5 text-orange-600" />
+              <span className="text-xs font-bold">Đăng Nhập</span>
+            </>
+          )}
         </button>
 
         {/* Quick Ingest Modal */}

@@ -63,13 +63,41 @@ CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     slug VARCHAR(255) UNIQUE NOT NULL,
     sku_code VARCHAR(100) UNIQUE NOT NULL,
+    
+    -- Tiếng Việt
     title_vi TEXT NOT NULL,
     ai_seo_title TEXT,
     short_desc_vi TEXT,
     full_desc_vi TEXT,
+
+    -- Tiếng Anh & Ngôn ngữ hiển thị
+    title_en TEXT,
+    short_desc_en TEXT,
+    full_desc_en TEXT,
+    display_language VARCHAR(10) DEFAULT 'VI',
+
     category_name VARCHAR(100) NOT NULL,
     primary_image TEXT NOT NULL,
     gallery_images TEXT[] DEFAULT ARRAY[]::TEXT[],
+    detail_images TEXT[] DEFAULT ARRAY[]::TEXT[],
+    video_url TEXT,
+    video_poster_url TEXT,
+
+    -- Thuộc tính & Thang giá sỉ JSONB
+    attributes_json JSONB DEFAULT '[]'::jsonb,
+    price_tiers_json JSONB DEFAULT '[]'::jsonb,
+
+    -- SEO & Dữ liệu có cấu trúc Google
+    seo_metadata JSONB DEFAULT '{}'::jsonb,
+    meta_title TEXT,
+    meta_description TEXT,
+    focus_keywords TEXT[] DEFAULT ARRAY[]::TEXT[],
+    images_seo JSONB DEFAULT '[]'::jsonb,
+    faqs_json JSONB DEFAULT '[]'::jsonb,
+
+    -- Kênh bán lẻ
+    store_sync_history JSONB DEFAULT '[]'::jsonb,
+
     status VARCHAR(50) DEFAULT 'DRAFT', -- DRAFT, READY_TO_REVIEW, PUBLISHED, ARCHIVED
     quality_score INTEGER DEFAULT 0,
 
@@ -92,6 +120,24 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE INDEX IF NOT EXISTS idx_product_source_id ON products(source_product_id);
 CREATE INDEX IF NOT EXISTS idx_product_status ON products(status);
 
+-- MIGRATION: Bổ sung các cột mới nếu bảng đã tồn tại
+ALTER TABLE products ADD COLUMN IF NOT EXISTS title_en TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS short_desc_en TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS full_desc_en TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS display_language VARCHAR(10) DEFAULT 'VI';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS detail_images TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE products ADD COLUMN IF NOT EXISTS video_url TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS video_poster_url TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS attributes_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS price_tiers_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_title TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_description TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS focus_keywords TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE products ADD COLUMN IF NOT EXISTS images_seo JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS faqs_json JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS store_sync_history JSONB DEFAULT '[]'::jsonb;
+
 -- 5. BẢNG LIÊN KẾT SẢN PHẨM VỚI NHIỀU NGUỒN (PRODUCT SOURCE LINKS)
 CREATE TABLE IF NOT EXISTS product_source_links (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -108,12 +154,12 @@ CREATE TABLE IF NOT EXISTS product_variants (
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     source_variant_id UUID REFERENCES source_variants(id) ON DELETE SET NULL,
     source_sku_id VARCHAR(100) NOT NULL,
-    sku_barcode VARCHAR(100),
     color_name VARCHAR(100),
-    size_name VARCHAR(50),
-    spec_details JSONB,
-    cost_price_vnd NUMERIC(12, 0) NOT NULL DEFAULT 0,
-    selling_price_vnd NUMERIC(12, 0) NOT NULL DEFAULT 0,
+    color_name_en VARCHAR(100),
+    size_name VARCHAR(100),
+    size_name_en VARCHAR(100),
+    cost_price_vnd NUMERIC(12, 0) NOT NULL,
+    selling_price_vnd NUMERIC(12, 0) NOT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
     image_url TEXT,
     source_available BOOLEAN DEFAULT TRUE,
@@ -121,50 +167,41 @@ CREATE TABLE IF NOT EXISTS product_variants (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_variant_product_id ON product_variants(product_id);
-CREATE INDEX IF NOT EXISTS idx_variant_source_sku ON product_variants(source_sku_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_prod_id ON product_variants(product_id);
 
--- 7. BẢNG LỊCH SỬ BIẾN ĐỘNG GIÁ NGUỒN (PRICE & STOCK SNAPSHOTS)
-CREATE TABLE IF NOT EXISTS product_price_snapshots (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    source_product_id UUID NOT NULL REFERENCES source_products(id) ON DELETE CASCADE,
-    price_cny NUMERIC(10, 2) NOT NULL,
-    stock_quantity INTEGER NOT NULL,
-    recorded_at TIMESTAMPTZ DEFAULT NOW()
+-- MIGRATION: Bổ sung cột tiếng Anh cho biến thể nếu đã tồn tại
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color_name_en VARCHAR(100);
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size_name_en VARCHAR(100);
+
+-- 7. BẢNG QUY TẮC ĐỊNH GIÁ BÁN LẺ (PRICING RULES)
+CREATE TABLE IF NOT EXISTS pricing_rules (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category_keyword VARCHAR(100),
+    exchange_rate NUMERIC(10, 2) NOT NULL DEFAULT 3800.00,
+    domestic_china_ship_vnd NUMERIC(12, 0) NOT NULL DEFAULT 12000,
+    intl_ship_per_kg_vnd NUMERIC(12, 0) NOT NULL DEFAULT 30000,
+    estimated_weight_kg NUMERIC(6, 3) NOT NULL DEFAULT 0.35,
+    multiplier NUMERIC(4, 2) NOT NULL DEFAULT 2.2,
+    platform_fee_rate NUMERIC(4, 3) NOT NULL DEFAULT 0.05,
+    min_profit_vnd NUMERIC(12, 0) NOT NULL DEFAULT 50000,
+    min_margin_percent NUMERIC(5, 2) NOT NULL DEFAULT 35.0,
+    round_to_thousand BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_price_snapshots ON product_price_snapshots(source_product_id, recorded_at);
 
--- 8. BẢNG TỪ ĐIỂN DỊCH CHUYÊN NGÀNH (TRANSLATION GLOSSARY)
+-- 8. BẢNG TỪ ĐIỂN DỊCH THUẬT NGỮ E-COMMERCE (TRANSLATION GLOSSARIES)
 CREATE TABLE IF NOT EXISTS translation_glossaries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     source_text VARCHAR(255) UNIQUE NOT NULL,
     target_text VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT 'ALL',
-    is_regex BOOLEAN DEFAULT FALSE,
-    priority INTEGER DEFAULT 1,
+    category VARCHAR(50) DEFAULT 'GENERAL',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. BẢNG CÔNG THỨC ĐỊNH GIÁ (PRICING RULES)
-CREATE TABLE IF NOT EXISTS pricing_rules (
-    id VARCHAR(100) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    category_keyword VARCHAR(100),
-    exchange_rate NUMERIC(8, 2) DEFAULT 3800.00,
-    domestic_china_ship_vnd NUMERIC(10, 0) DEFAULT 12000,
-    intl_ship_per_kg_vnd NUMERIC(10, 0) DEFAULT 30000,
-    estimated_weight_kg NUMERIC(6, 3) DEFAULT 0.350,
-    multiplier NUMERIC(4, 2) DEFAULT 2.20,
-    platform_fee_rate NUMERIC(4, 2) DEFAULT 0.05,
-    min_profit_vnd NUMERIC(10, 0) DEFAULT 50000,
-    min_margin_percent NUMERIC(5, 2) DEFAULT 35.00,
-    round_to_thousand BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 10. BẢNG NHẬT KÝ DIFF & ĐỒNG BỘ (SYNC LOGS)
+-- 9. BẢNG NHẬT KÝ LỆCH GIÁ VÀ TỒN KHO (SYNC LOGS & DIFFS)
 CREATE TABLE IF NOT EXISTS sync_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -188,15 +225,3 @@ VALUES
 ('CLOTHING_PANTS', 'Quần & Legging', 'Quần', 3800, 12000, 30000, 0.35, 2.3, 0.05, 60000, 35.0, TRUE),
 ('ACCESSORIES', 'Phụ kiện thời trang', 'Phụ kiện', 3800, 8000, 30000, 0.15, 2.5, 0.05, 40000, 40.0, TRUE)
 ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO translation_glossaries (source_text, target_text, category)
-VALUES 
-('瑜伽裤', 'Quần Legging Nữ', 'FASHION'),
-('运动内衣', 'Áo Bra Thể Thao', 'FASHION'),
-('黑色', 'Đen', 'COLOR'),
-('白色', 'Trắng', 'COLOR'),
-('粉色', 'Hồng', 'COLOR'),
-('高腰', 'Cạp cao', 'ATTRIBUTE'),
-('速干', 'Nhanh khô', 'ATTRIBUTE'),
-('均码', 'Freesize', 'SIZE')
-ON CONFLICT (source_text) DO NOTHING;

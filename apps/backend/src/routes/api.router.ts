@@ -4,6 +4,7 @@ import { SyncController } from "../controllers/sync.controller.js";
 import { ProductsController } from "../controllers/products.controller.js";
 import { PricingController } from "../controllers/pricing.controller.js";
 import { GlossaryController } from "../controllers/glossary.controller.js";
+import { StoreConnectorsController } from "../controllers/store-connectors.controller.js";
 
 export const apiRouter = Router();
 
@@ -12,6 +13,7 @@ const syncCtrl = new SyncController();
 const productsCtrl = new ProductsController();
 const pricingCtrl = new PricingController();
 const glossaryCtrl = new GlossaryController();
+const connectorsCtrl = new StoreConnectorsController();
 
 // 0. Dashboard Stats
 apiRouter.get("/dashboard/stats", (req, res) => productsCtrl.getDashboardStats(req, res));
@@ -44,3 +46,15 @@ apiRouter.post("/pricing/calculate", (req, res) => pricingCtrl.calculate(req, re
 // 5. Glossary
 apiRouter.get("/glossary", (req, res) => glossaryCtrl.getGlossary(req, res));
 apiRouter.post("/glossary", (req, res) => glossaryCtrl.setTerm(req, res));
+
+// 6. Omnichannel Store Connectors (WooCommerce, Shopify, Shopee, TikTok Shop)
+apiRouter.post("/connectors/woocommerce/sync", (req, res) => connectorsCtrl.syncWooCommerce(req, res));
+apiRouter.post("/connectors/shopify/sync", (req, res) => connectorsCtrl.syncShopify(req, res));
+apiRouter.post("/connectors/export-csv", (req, res) => connectorsCtrl.exportMarketplaceCSV(req, res));
+
+// 7. Telegram Alerts
+apiRouter.post("/connectors/telegram/test", (req, res) => connectorsCtrl.testTelegram(req, res));
+apiRouter.post("/connectors/telegram/send-alert", (req, res) => connectorsCtrl.sendTelegramAlert(req, res));
+
+// 8. AI Marketing Copywriter
+apiRouter.post("/ai/generate-copy", (req, res) => connectorsCtrl.generateAICopy(req, res));

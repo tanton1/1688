@@ -9,6 +9,8 @@ import { ProductDetailModal } from "./components/ProductDetailModal";
 import { DiffCenterView } from "./components/DiffCenterView";
 import { PricingRulesView } from "./components/PricingRulesView";
 import { GlossaryView } from "./components/GlossaryView";
+import { AuthModal, CurrentUser } from "./components/AuthModal";
+import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -22,9 +24,45 @@ export const App: React.FC = () => {
   const [customUrlInput, setCustomUrlInput] = useState(backendUrl);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  // Authentication & Role State
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    const saved = localStorage.getItem("hub1688_user");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    // Mặc định tài khoản Quản Trị Viên (Owner / Admin) để trải nghiệm liền mạch không rào cản
+    return {
+      email: "admin@1688hub.com",
+      name: "Quản Trị Viên (Owner)",
+      role: "ADMIN",
+      isDemo: true
+    };
+  });
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Omnichannel Store Connectors State
+  const [showConnectorsModal, setShowConnectorsModal] = useState(false);
+  const [connectorsProduct, setConnectorsProduct] = useState<WebProduct | null>(null);
+
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleLogin = (user: CurrentUser) => {
+    setCurrentUser(user);
+    localStorage.setItem("hub1688_user", JSON.stringify(user));
+    showToast(
+      `Chào mừng ${user.name} (${user.role === "ADMIN" ? "Quản Trị Viên" : "Sourcing Specialist"})!`
+    );
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem("hub1688_user");
+    showToast("Đã đăng xuất tài khoản!");
   };
 
   // Tải dữ liệu từ backend
@@ -82,8 +120,13 @@ export const App: React.FC = () => {
     }
   };
 
-  // Xóa 1 sản phẩm
+  // Xóa 1 sản phẩm (Yêu cầu quyền Admin)
   const handleDeleteProduct = async (id: string) => {
+    if (currentUser?.role === "SOURCING") {
+      showToast("Tài khoản Chuyên Viên (Sourcing) không có quyền xóa sản phẩm. Yêu cầu quyền Quản Trị Viên (Admin).", "error");
+      return;
+    }
+
     try {
       await AdminApi.deleteProduct(id);
       setProducts(prev => prev.filter(p => p.id !== id));
@@ -106,8 +149,13 @@ export const App: React.FC = () => {
     }
   };
 
-  // Xóa hàng loạt
+  // Xóa hàng loạt (Yêu cầu quyền Admin)
   const handleBulkDelete = async (ids: string[]) => {
+    if (currentUser?.role === "SOURCING") {
+      showToast("Tài khoản Chuyên Viên (Sourcing) không có quyền xóa hàng loạt. Yêu cầu quyền Quản Trị Viên (Admin).", "error");
+      return;
+    }
+
     try {
       await AdminApi.bulkDelete(ids);
       setProducts(prev => prev.filter(p => !ids.includes(p.id!)));
@@ -195,6 +243,12 @@ export const App: React.FC = () => {
           onRefresh={loadData}
           isRefreshing={isRefreshing}
           onQuickImport={handleQuickImport}
+          currentUser={currentUser}
+          onOpenAuth={() => setShowAuthModal(true)}
+          onOpenConnectors={() => {
+            setConnectorsProduct(null);
+            setShowConnectorsModal(true);
+          }}
         />
 
         <main className="p-6 flex-1 overflow-x-hidden">
@@ -236,6 +290,31 @@ export const App: React.FC = () => {
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onSave={handleSaveProduct}
+        onOpenConnectors={(p) => {
+          setConnectorsProduct(p);
+          setShowConnectorsModal(true);
+        }}
+      />
+
+      {/* Modal Omnichannel Connectors (WooCommerce, Shopify, Shopee/TikTok CSV & Telegram) */}
+      <StoreConnectorsModal
+        isOpen={showConnectorsModal}
+        onClose={() => {
+          setShowConnectorsModal(false);
+          setConnectorsProduct(null);
+        }}
+        products={products}
+        selectedProduct={connectorsProduct}
+        onShowToast={showToast}
+      />
+
+      {/* Modal Authentication & Role Management */}
+      <AuthModal
+        isOpen={showAuthModal}
+        currentUser={currentUser}
+        onClose={() => setShowAuthModal(false)}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
       />
 
       {/* Modal Cấu Hình Backend URL */}

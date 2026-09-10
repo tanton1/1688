@@ -26,6 +26,14 @@ import {
   generateProductJsonLd,
   auditListingSEO
 } from "../dist/seo-optimizer.js";
+import {
+  generateMarketingCopy
+} from "../dist/ai-copywriter.js";
+import {
+  buildWooCommercePayload,
+  buildShopifyPayload,
+  buildMarketplaceCSV
+} from "../dist/store-export-builder.js";
 
 test("1. Text Cleaner & Glossary Engine", (t) => {
   const rawTitle = "2026新款 厂家直销 跨境专供 爆款 女士高腰弹力速干瑜伽裤 1688一件代发";
@@ -174,3 +182,99 @@ test("5. SEO Optimizer Engine (Slug, Keywords, Alt, Meta, FAQs, Schema)", (t) =>
   assert.ok(audit.score >= 80, `SEO Score phải đạt chuẩn cao: ${audit.score}`);
   assert.equal(audit.checks.every(c => c.passed), true, "Tất cả tiêu chí SEO phải pass");
 });
+
+test("6. AI Marketing Copywriter Engine", (t) => {
+  const dummyProduct = {
+    titleVI: "Đầm Nữ Vintage Cổ Vuông",
+    titleEN: "Vintage Square-Neck Women Dress",
+    minPriceVND: 250000,
+    attributes: [{ keyVI: "Chất liệu", valueVI: "Lụa tuyết mềm mát" }]
+  };
+
+  // Test AIDA VI
+  const aidaVI = generateMarketingCopy(dummyProduct, "AIDA", "VI");
+  assert.equal(aidaVI.style, "AIDA");
+  assert.ok(aidaVI.headline.includes("ĐỪNG BỎ LỠ"));
+  assert.ok(aidaVI.bodyHtml.includes("ATTENTION"));
+  assert.ok(aidaVI.bodyHtml.includes("250.000"));
+
+  // Test PAS VI
+  const pasVI = generateMarketingCopy(dummyProduct, "PAS", "VI");
+  assert.equal(pasVI.style, "PAS");
+  assert.ok(pasVI.headline.includes("NỖI LO"));
+  assert.ok(pasVI.bodyHtml.includes("PROBLEM"));
+
+  // Test Storytelling EN
+  const storyEN = generateMarketingCopy(dummyProduct, "STORYTELLING", "EN");
+  assert.equal(storyEN.style, "STORYTELLING");
+  assert.ok(storyEN.bodyHtml.includes("story") || storyEN.bodyHtml.includes("Chapter"));
+
+  // Test Social Ads EN
+  const adsEN = generateMarketingCopy(dummyProduct, "SOCIAL_ADS", "EN");
+  assert.equal(adsEN.style, "SOCIAL_ADS");
+  assert.ok(adsEN.headline.length > 0);
+  assert.ok(adsEN.callToAction.length > 0);
+});
+
+test("7. Omnichannel Connectors Payload Builders", (t) => {
+  const dummyProduct = {
+    id: "prod-001",
+    skuCode: "SKU-TEST-001",
+    titleVI: "Áo Thun Cotton Nữ Cao Cấp",
+    titleEN: "Premium Women Cotton T-Shirt",
+    minPriceVND: 180000,
+    maxPriceVND: 220000,
+    shortDescVI: "Áo thun cotton thoáng mát",
+    fullDescVI: "<p>Mô tả chi tiết sản phẩm áo thun</p>",
+    primaryImage: "https://example.com/img1.jpg",
+    galleryImages: ["https://example.com/img2.jpg"],
+    variants: [
+      {
+        sourceSkuId: "sku-01",
+        colorName: "Đen",
+        sizeName: "M",
+        colorNameEN: "Black",
+        sizeNameEN: "M",
+        sellingPriceVND: 180000,
+        stockQuantity: 50,
+        selectedForSale: true
+      },
+      {
+        sourceSkuId: "sku-02",
+        colorName: "Trắng",
+        sizeName: "L",
+        colorNameEN: "White",
+        sizeNameEN: "L",
+        sellingPriceVND: 220000,
+        stockQuantity: 30,
+        selectedForSale: true
+      }
+    ]
+  };
+
+  // WooCommerce Payload
+  const wc = buildWooCommercePayload(dummyProduct);
+  assert.equal(wc.name, "Áo Thun Cotton Nữ Cao Cấp");
+  assert.equal(wc.type, "variable");
+  assert.equal(wc.sku, "SKU-TEST-001");
+  assert.equal(wc.attributes.length, 2);
+
+  // Shopify Payload
+  const shopify = buildShopifyPayload(dummyProduct);
+  assert.equal(shopify.product.title, "Premium Women Cotton T-Shirt");
+  assert.equal(shopify.product.variants.length, 2);
+  assert.equal(shopify.product.options[0].name, "Color");
+
+  // Shopee CSV
+  const shopeeCSV = buildMarketplaceCSV([dummyProduct], "SHOPEE");
+  assert.ok(shopeeCSV.includes("Mã Ngành Hàng"));
+  assert.ok(shopeeCSV.includes("Áo Thun Cotton Nữ Cao Cấp"));
+  assert.ok(shopeeCSV.includes("sku-01"));
+
+  // TikTok Shop CSV
+  const tiktokCSV = buildMarketplaceCSV([dummyProduct], "TIKTOK_SHOP");
+  assert.ok(tiktokCSV.includes("Product Name"));
+  assert.ok(tiktokCSV.includes("Áo Thun Cotton Nữ Cao Cấp"));
+  assert.ok(tiktokCSV.includes("180000"));
+});
+

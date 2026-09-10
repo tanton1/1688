@@ -70,6 +70,45 @@ export interface ProductSEOMetadata {
   seoScore?: number;
 }
 
+export type StoreConnectorType = "WOOCOMMERCE" | "SHOPIFY" | "SHOPEE" | "TIKTOK_SHOP";
+
+export interface WooCommerceConfig {
+  storeUrl: string;
+  siteUrl?: string; // alias for storeUrl
+  consumerKey: string;
+  consumerSecret: string;
+}
+
+export interface ShopifyConfig {
+  shopDomain: string;
+  accessToken: string;
+  apiVersion?: string;
+  currency?: "VND" | "USD";
+  exchangeRateVNDToUSD?: number;
+}
+
+export interface TelegramAlertConfig {
+  botToken: string;
+  chatId: string;
+  enabled: boolean;
+  alertOnPriceRise: boolean;
+  alertOnOutOfStock: boolean;
+}
+
+export interface StoreSyncResult {
+  connectorType: StoreConnectorType;
+  remoteId?: string;
+  externalProductId?: string; // alias
+  remoteUrl?: string;
+  externalUrl?: string; // alias
+  status: "SUCCESS" | "FAILED" | "PENDING";
+  message?: string;
+  errorMessage?: string; // alias
+  syncedAt: string;
+}
+
+export type AICopywritingStyle = "AIDA" | "PAS" | "STORYTELLING" | "SOCIAL_ADS";
+
 export interface WebProduct {
   id?: string;
   slug: string;
@@ -108,6 +147,9 @@ export interface WebProduct {
   focusKeywords?: string[];
   imagesSEO?: ProductImageSEO[];
   faqs?: ProductFAQItem[];
+
+  // Lịch sử đồng bộ kênh bán lẻ (Downstream Sync)
+  storeSyncHistory?: StoreSyncResult[];
 
   status: PublishStatus;
   qualityScore: number;
