@@ -3,6 +3,7 @@ import { inMemoryProducts } from "./import.controller.js";
 import { evaluateProductQuality } from "@hub1688/shared-utils";
 import { WebProduct } from "@hub1688/shared-types";
 import { supabaseService } from "../services/supabase.service.js";
+import { mediaMirrorService } from "../services/media-mirror.service.js";
 
 export class ProductsController {
   /**
@@ -399,4 +400,44 @@ export class ProductsController {
       totalCount: inMemoryProducts.size
     });
   }
+
+  /**
+   * Tải và lưu trữ vĩnh viễn toàn bộ ảnh của sản phẩm lên Supabase Storage / CDN
+   */
+  public async mirrorImages(req: Request, res: Response): Promise<void> {
+    const { id } = req.params;
+    let product = inMemoryProducts.get(id);
+
+    if (!product && supabaseService.isConfigured()) {
+      const dbProd = await supabaseService.getProductById(id);
+      if (dbProd) {
+        product = dbProd;
+      }
+    }
+
+    if (!product) {
+      res.status(404).json({ success: false, error: "Không tìm thấy sản phẩm" });
+      return;
+    }
+
+    try {
+      const { product: mirroredProduct, stats } = await mediaMirrorService.mirrorProductAllImages(product);
+      inMemoryProducts.set(id, mirroredProduct);
+
+      if (supabaseService.isConfigured()) {
+        await supabaseService.saveWebProduct(mirroredProduct);
+      }
+
+      res.json({
+        success: true,
+        message: `Đã lưu trữ vĩnh viễn ${stats.succeeded}/${stats.total} ảnh sản phẩm`,
+        stats,
+        product: mirroredProduct
+      });
+    } catch (err: any) {
+      console.error("[mirrorImages error]", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
 }
+

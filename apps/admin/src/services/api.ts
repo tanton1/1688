@@ -10,7 +10,8 @@ import {
   BatchCloneRequest,
   BatchCloneResponse,
   VisualSourcingRequest,
-  VisualSourcingResponse
+  VisualSourcingResponse,
+  ProductTemplate
 } from "@hub1688/shared-types";
 
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
@@ -301,6 +302,120 @@ export const AdminApi = {
 
   async getVisualSourcingMatches(data: VisualSourcingRequest): Promise<VisualSourcingResponse> {
     return request("/api/v1/clone/visual-sourcing", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  },
+
+  // 23. Product Templates Management (Content & Variation Presets)
+  async getTemplates(category?: string, search?: string): Promise<{ success: boolean; total: number; templates: ProductTemplate[] }> {
+    try {
+      const params = new URLSearchParams();
+      if (category && category !== "ALL") params.append("category", category);
+      if (search) params.append("search", search);
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const res = await request<{ success: boolean; total: number; templates: ProductTemplate[] }>(`/api/v1/templates${query}`);
+      if (res?.templates) {
+        localStorage.setItem("hub1688_cached_templates", JSON.stringify(res.templates));
+      }
+      return res;
+    } catch (err) {
+      console.warn("[AdminApi] Backend templates unreachable, loading from cache:", err);
+      const cached = localStorage.getItem("hub1688_cached_templates");
+      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
+      let filtered = list;
+      if (category && category !== "ALL") {
+        filtered = filtered.filter(t => t.categoryName.toLowerCase().includes(category.toLowerCase()));
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        filtered = filtered.filter(t => t.name.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
+      }
+      return { success: true, total: filtered.length, templates: filtered };
+    }
+  },
+
+  async createTemplate(tpl: Partial<ProductTemplate>): Promise<{ success: boolean; template: ProductTemplate }> {
+    try {
+      return await request("/api/v1/templates", {
+        method: "POST",
+        body: JSON.stringify(tpl)
+      });
+    } catch (err) {
+      // Offline fallback
+      const cached = localStorage.getItem("hub1688_cached_templates");
+      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
+      const newTpl: ProductTemplate = {
+        id: `tpl-${Date.now()}`,
+        name: tpl.name || "Template Mới",
+        description: tpl.description || "",
+        categoryName: tpl.categoryName || "Chung",
+        targetPlatform: tpl.targetPlatform || "ALL",
+        isDefault: Boolean(tpl.isDefault),
+        content: tpl.content || {},
+        variation: tpl.variation || { options: [] },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      if (newTpl.isDefault) {
+        list.forEach(t => { t.isDefault = false; });
+      }
+      list.unshift(newTpl);
+      localStorage.setItem("hub1688_cached_templates", JSON.stringify(list));
+      return { success: true, template: newTpl };
+    }
+  },
+
+  async updateTemplate(id: string, tpl: Partial<ProductTemplate>): Promise<{ success: boolean; template: ProductTemplate }> {
+    try {
+      return await request(`/api/v1/templates/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(tpl)
+      });
+    } catch (err) {
+      const cached = localStorage.getItem("hub1688_cached_templates");
+      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
+      const idx = list.findIndex(t => t.id === id);
+      if (idx !== -1) {
+        if (tpl.isDefault) list.forEach(t => { t.isDefault = false; });
+        list[idx] = { ...list[idx], ...tpl, updatedAt: new Date().toISOString() };
+        localStorage.setItem("hub1688_cached_templates", JSON.stringify(list));
+        return { success: true, template: list[idx] };
+      }
+      throw err;
+    }
+  },
+
+  async deleteTemplate(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      return await request(`/api/v1/templates/${id}`, {
+        method: "DELETE"
+      });
+    } catch (err) {
+      const cached = localStorage.getItem("hub1688_cached_templates");
+      const list: ProductTemplate[] = cached ? JSON.parse(cached) : [];
+      const updated = list.filter(t => t.id !== id);
+      localStorage.setItem("hub1688_cached_templates", JSON.stringify(updated));
+      return { success: true, message: "Deleted from cache" };
+    }
+  },
+
+  async resetDefaultTemplates(): Promise<{ success: boolean; total: number; templates: ProductTemplate[] }> {
+    return request("/api/v1/templates/reset-defaults", {
+      method: "POST"
+    });
+  },
+
+  // 24. Media Mirroring (Lưu trữ ảnh vĩnh viễn trên Supabase/CDN)
+  async mirrorProductImages(productId: string): Promise<{ success: boolean; message: string; stats: any; product: WebProduct }> {
+    return request(`/api/v1/products/${productId}/mirror-images`, {
+      method: "POST"
+    });
+  },
+
+  // 25. AI Inpainting (Xóa chữ tiếng Trung & tem mác trên ảnh)
+  async inpaintImage(data: { imageUrl: string; maskDataUrl?: string; rectangles?: Array<{ x: number; y: number; width: number; height: number }> }): Promise<{ success: boolean; resultImageUrl: string; message?: string }> {
+    return request("/api/v1/ai/inpaint-image", {
       method: "POST",
       body: JSON.stringify(data)
     });

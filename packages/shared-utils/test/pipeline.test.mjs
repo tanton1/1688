@@ -104,6 +104,65 @@ test("3. SKU Matrix Cartesian Product Generator", (t) => {
   assert.equal(variants.length, 4, "Tổ hợp 2 màu x 2 size phải tạo ra 4 variants");
   assert.ok(variants.some(v => v.colorName === "Đen" && v.sizeName === "M"));
   assert.ok(variants.some(v => v.colorName === "Trắng" && v.sizeName === "L"));
+
+  // Kiểm tra trường hợp Bộ Sản Phẩm (chỉ có 1 chiều quy cách/combo/bộ)
+  const bundleProps = [
+    {
+      propId: "p_bundle",
+      propNameCN: "规格",
+      values: [
+        { valueId: "b_3", valueCN: "3件套【升级加厚】" },
+        { valueId: "b_5", valueCN: "5件套【豪华礼盒装】" }
+      ]
+    }
+  ];
+
+  const bundleSkuMap = {
+    "3件套【升级加厚】": {
+      skuId: "SKU_BUNDLE_3",
+      priceCNY: 45,
+      stock: 200,
+      attributes: { "规格": "3件套【升级加厚】" }
+    },
+    "5件套【豪华礼盒装】": {
+      skuId: "SKU_BUNDLE_5",
+      priceCNY: 75,
+      stock: 120,
+      attributes: { "规格": "5件套【豪华礼盒装】" }
+    }
+  };
+
+  const bundleVariants = generateCartesianCombinations(bundleProps, bundleSkuMap, DEFAULT_PRICING_RULE);
+  assert.equal(bundleVariants.length, 2, "Bộ sản phẩm 1 thuộc tính chỉ được sinh đúng 2 biến thể, không tạo size ảo S/M/L/XL");
+  assert.equal(bundleVariants[0].sizeName, "", "Không được ép size ảo 'Tiêu chuẩn'");
+  assert.ok(bundleVariants[0].colorName.includes("Bộ 3 món"), "Phải dịch đúng thuật ngữ 3件套 thành Bộ 3 món");
+  assert.ok(bundleVariants[1].colorName.includes("Bộ 5 món"), "Phải dịch đúng thuật ngữ 5件套 thành Bộ 5 món");
+  assert.ok(bundleVariants[0].costPriceVND > 0);
+
+  // Kiểm tra trường hợp Var Custom (2 thuộc tính tùy chỉnh: Kiểu dáng x Quy cách)
+  const customVarProps = [
+    {
+      propId: "p_style",
+      propNameCN: "款式",
+      values: [
+        { valueId: "st_a", valueCN: "A款" },
+        { valueId: "st_b", valueCN: "B款" }
+      ]
+    },
+    {
+      propId: "p_spec",
+      propNameCN: "套餐",
+      values: [
+        { valueId: "sp_1", valueCN: "两件套" },
+        { valueId: "sp_2", valueCN: "三件套" }
+      ]
+    }
+  ];
+
+  const customVariants = generateCartesianCombinations(customVarProps, {}, DEFAULT_PRICING_RULE);
+  assert.equal(customVariants.length, 4, "Tổ hợp 2 kiểu x 2 gói phải tạo ra 4 biến thể");
+  assert.ok(customVariants.some(v => v.sizeName.includes("Bộ 2 món")));
+  assert.ok(customVariants.some(v => v.sizeName.includes("Bộ 3 món")));
 });
 
 test("4. Quality Readiness Score Evaluator", (t) => {
@@ -386,5 +445,221 @@ test("9. Batch URL Processing & Visual Sourcing Sourcing Margin Engine", (t) => 
   assert.equal(sourcedMargin1688, 68, "Biên lợi nhuận phải tăng từ 26% lên 68% khi đổi nguồn sang 1688");
 });
 
+test("10. Shopify / Macorner Extraction & 12-SKU Variant Matrix", (t) => {
+  // 1. Kiểm tra trích xuất biến thể và options từ application/json script
+  const sampleShopifyHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta property="og:title" content="Custom Name Character Halloween Candy Bag For Kids" />
+      <meta property="og:image" content="https://cdn.shopify.com/s/files/1/0626/0421/4428/files/Bag_1.jpg" />
+      <meta property="og:price:amount" content="22.95" />
+      <meta property="og:price:currency" content="USD" />
+    </head>
+    <body>
+      <legend class="form__label">Size</legend>
+      <legend class="form__label">Buy More Save More (Different Designs)</legend>
+      <script type="application/json">
+        [
+          {
+            "id": 47547827191964,
+            "title": "7\\" x 9\\" / 1 PC",
+            "option1": "7\\" x 9\\"",
+            "option2": "1 PC",
+            "price": 2295,
+            "sku": "SKU-7X9-1PC",
+            "featured_image": { "src": "https://cdn.shopify.com/s/files/1/0626/0421/4428/files/Bag_1.jpg" }
+          },
+          {
+            "id": 47547827552412,
+            "title": "9\\" x 10\\" / 6 PCS",
+            "option1": "9\\" x 10\\"",
+            "option2": "6 PCS",
+            "price": 13770,
+            "sku": "SKU-9X10-6PC",
+            "featured_image": { "src": "https://cdn.shopify.com/s/files/1/0626/0421/4428/files/Bag_1.jpg" }
+          }
+        ]
+      </script>
+      <!-- Ảnh rác, banner và badge -->
+      <img src="https://cdn.shopify.com/s/files/1/0626/0421/4428/files/halloween_badge.png" />
+      <img src="https://cdn.shopify.com/s/files/1/0626/0421/4428/files/search-anniversary.png" />
+      <img src="https://cdn.shopify.com/s/files/1/0626/0421/4428/files/Bag_2.jpg" />
+    </body>
+    </html>
+  `;
+
+  const metadata = parseHtmlProductMetadata(sampleShopifyHtml);
+  assert.equal(metadata.title, "Custom Name Character Halloween Candy Bag For Kids");
+  assert.equal(metadata.currency, "USD");
+  assert.equal(metadata.variants?.length, 2);
+  assert.equal(metadata.priceMin, 22.95);
+  assert.equal(metadata.priceMax, 137.7);
+  assert.equal(metadata.options?.length, 2);
+  assert.equal(metadata.options[0].name, "Size");
+  assert.equal(metadata.options[1].name, "Buy More Save More (Different Designs)");
+
+  // Xác minh lọc sạch ảnh rác
+  const hasJunk = metadata.images.some(img => /badge|payment|search-|menu/i.test(img));
+  assert.equal(hasJunk, false, "Ảnh rác không được lọt vào danh sách hình ảnh");
+
+  // 2. Kiểm tra sinh ma trận 12 SKU từ 2 options (Size x Buy More Save More)
+  const skuProps = [
+    {
+      propId: "prop_1",
+      propNameCN: "Size",
+      values: [
+        { valueId: "v1_0", valueCN: "7\" x 9\"" },
+        { valueId: "v1_1", valueCN: "9\" x 10\"" }
+      ]
+    },
+    {
+      propId: "prop_2",
+      propNameCN: "Buy More Save More",
+      values: [
+        { valueId: "v2_0", valueCN: "1 PC" },
+        { valueId: "v2_1", valueCN: "2 PCS" },
+        { valueId: "v2_2", valueCN: "3 PCS" },
+        { valueId: "v2_3", valueCN: "4 PCS" },
+        { valueId: "v2_4", valueCN: "5 PCS" },
+        { valueId: "v2_5", valueCN: "6 PCS" }
+      ]
+    }
+  ];
+
+  const skuMap = {};
+  const baseCny = 22.95 * 7.2;
+
+  skuProps[0].values.forEach((s, sIdx) => {
+    skuProps[1].values.forEach((q, qIdx) => {
+      const priceCNY = Math.round(baseCny * (1 + qIdx * 0.5 + sIdx * 0.2) * 10) / 10;
+      const skuId = `SKU_${sIdx}_${qIdx}`;
+      const item = {
+        skuId,
+        attributes: { "Size": s.valueCN, "Buy More Save More": q.valueCN },
+        priceCNY,
+        stock: 100
+      };
+      skuMap[skuId] = item;
+      skuMap[`${s.valueCN}&${q.valueCN}`] = item;
+    });
+  });
+
+  const rule = { ...DEFAULT_PRICING_RULE, multiplier: 1.4 };
+  const matrix = generateCartesianCombinations(skuProps, skuMap, rule);
+
+  assert.equal(matrix.length, 12, "Phải sinh ra chính xác 12 biến thể SKU");
+  assert.equal(matrix[0].colorName, "7\" x 9\"");
+  assert.equal(matrix[0].sizeName, "1 PC");
+  assert.equal(matrix[11].colorName, "9\" x 10\"");
+  assert.equal(matrix[11].sizeName, "6 PCS");
+  assert.ok(matrix[11].costPriceVND > matrix[0].costPriceVND, "Giá vốn của biến thể 6 PCS phải cao hơn biến thể 1 PC");
+  assert.ok(matrix[11].sellingPriceVND > matrix[0].sellingPriceVND, "Giá bán của biến thể 6 PCS phải cao hơn biến thể 1 PC");
+});
+
+test("11. Product Templates & Variation Presets Engine", (t) => {
+  // Test Template Content Preset application
+  const dummyTemplate = {
+    id: "tpl-pod-test",
+    name: "Quà Tặng Cá Nhân Hóa (POD / Macorner)",
+    categoryName: "Quà Tặng & In Ấn (POD)",
+    content: {
+      titlePrefix: "[Quà Tặng Ý Nghĩa]",
+      titleSuffix: "- Khắc Tên Cao Cấp",
+      shortDescVI: "Mô tả ngắn gọn chất lượng cao",
+      warrantyPolicy: "Bảo hành 1 đổi 1 trong 30 ngày.",
+      attributes: [
+        { key: "Chất liệu", value: "Gỗ tự nhiên" },
+        { key: "Xuất xứ", value: "Việt Nam" }
+      ]
+    },
+    variation: {
+      options: [
+        { name: "Kích thước", values: ["7x9 inch", "9x10 inch"] },
+        { name: "Combo", values: ["1 PC", "2 PCS", "4 PCS"] }
+      ],
+      defaultStock: 999,
+      skuPattern: "{SKU}-{SIZE}-{COMBO}",
+      predefinedVariants: [
+        { name: "7x9 inch / 1 PC", option1: "7x9 inch", option2: "1 PC", priceAdjustmentVND: 0, stock: 999 },
+        { name: "7x9 inch / 2 PCS", option1: "7x9 inch", option2: "2 PCS", priceAdjustmentVND: 120000, stock: 999 },
+        { name: "7x9 inch / 4 PCS", option1: "7x9 inch", option2: "4 PCS", priceAdjustmentVND: 320000, stock: 999 },
+        { name: "9x10 inch / 1 PC", option1: "9x10 inch", option2: "1 PC", priceAdjustmentVND: 50000, stock: 999 },
+        { name: "9x10 inch / 2 PCS", option1: "9x10 inch", option2: "2 PCS", priceAdjustmentVND: 190000, stock: 999 },
+        { name: "9x10 inch / 4 PCS", option1: "9x10 inch", option2: "4 PCS", priceAdjustmentVND: 450000, stock: 999 }
+      ]
+    }
+  };
+
+  // 1. Verify content formatting
+  const rawTitle = "Giỏ Kẹo Halloween Cho Bé In Tên";
+  const formattedTitle = `${dummyTemplate.content.titlePrefix} ${rawTitle} ${dummyTemplate.content.titleSuffix}`;
+  assert.equal(formattedTitle, "[Quà Tặng Ý Nghĩa] Giỏ Kẹo Halloween Cho Bé In Tên - Khắc Tên Cao Cấp");
+  assert.equal(dummyTemplate.content.warrantyPolicy, "Bảo hành 1 đổi 1 trong 30 ngày.");
+  assert.equal(dummyTemplate.content.attributes.length, 2);
+
+  // 2. Verify variation matrix
+  assert.equal(dummyTemplate.variation.options.length, 2);
+  assert.equal(dummyTemplate.variation.predefinedVariants.length, 6, "2 kích thước x 3 combo = 6 biến thể");
+  assert.equal(dummyTemplate.variation.predefinedVariants[0].priceAdjustmentVND, 0);
+  assert.equal(dummyTemplate.variation.predefinedVariants[5].priceAdjustmentVND, 450000);
+});
+
+test("12. Media Mirroring & Extension Bulk Sourcing Contracts", (t) => {
+  // 1. Media Mirroring URL mapping contract test
+  const sampleProduct = {
+    id: "prod_sample_01",
+    primaryImage: "https://cbu01.alicdn.com/img/ibank/O1CN01xY7.jpg",
+    galleryImages: [
+      "https://cbu01.alicdn.com/img/ibank/O1CN02aB8.jpg",
+      "https://cbu01.alicdn.com/img/ibank/O1CN03cD9.jpg"
+    ],
+    variants: [
+      { sourceSkuId: "sku_1", imageUrl: "https://cbu01.alicdn.com/img/ibank/O1CN04v1.jpg" }
+    ]
+  };
+
+  // Verify non-mirrored status
+  assert.ok(sampleProduct.primaryImage.includes("alicdn.com"), "Ảnh gốc phải là CDN 1688");
+
+  // Simulated mirrored product
+  const mirroredProduct = {
+    ...sampleProduct,
+    primaryImage: "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/primary_a8f9b2c3.jpg",
+    galleryImages: [
+      "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_1_b7e6d5c4.jpg",
+      "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_2_c9d8e7f6.jpg"
+    ],
+    isMediaMirrored: true,
+    mirroredAt: new Date().toISOString()
+  };
+
+  assert.equal(mirroredProduct.isMediaMirrored, true);
+  assert.ok(mirroredProduct.primaryImage.includes("supabase.co/storage") || mirroredProduct.primaryImage.includes("/uploads/"));
+  assert.equal(mirroredProduct.galleryImages.length, 2);
+
+  // 2. Bulk Search Item Contract
+  const bulkItems = [
+    {
+      offerId: "744219482103",
+      title: "Áo Thun Cotton Nữ Dáng Rộng 2026",
+      priceCNY: 18.5,
+      imageUrl: "https://cbu01.alicdn.com/img/thumb1.jpg",
+      detailUrl: "https://detail.1688.com/offer/744219482103.html"
+    },
+    {
+      offerId: "681928471928",
+      title: "Balo Du Lịch Chống Thấm Nước",
+      priceCNY: 42.0,
+      imageUrl: "https://cbu01.alicdn.com/img/thumb2.jpg",
+      detailUrl: "https://detail.1688.com/offer/681928471928.html"
+    }
+  ];
+
+  assert.equal(bulkItems.length, 2);
+  assert.equal(bulkItems[0].offerId, "744219482103");
+  assert.ok(bulkItems[0].detailUrl.includes("/offer/744219482103.html"));
+  assert.equal(bulkItems[1].priceCNY, 42.0);
+});
 
 

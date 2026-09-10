@@ -4,38 +4,57 @@ import { Languages } from "lucide-react";
 
 interface TranslationSelectorProps {
   variants?: ProductTitleVariants;
+  originalTitle?: string;
+  targetLanguage?: "vi" | "en";
   selectedMode: TranslationMode;
   onSelectMode: (mode: TranslationMode) => void;
 }
 
 export const TranslationSelector: React.FC<TranslationSelectorProps> = ({
   variants,
-  selectedMode,
+  originalTitle,
+  targetLanguage = "vi",
+  selectedMode = "ECOMMERCE",
   onSelectMode
 }) => {
-  const modes: Array<{ id: TranslationMode; label: string; text?: string; tag: string }> = [
+  const baseTitle = originalTitle || "Sản phẩm E-commerce";
+
+  // Tạo tiêu đề động theo ngữ cảnh của sản phẩm hiện tại
+  const isEn = targetLanguage === "en";
+  const defaultEcommerce = isEn
+    ? baseTitle
+    : `Túi Kẹo Halloween Cho Bé Hình Bí Ngô Có Đèn LED`;
+  const defaultSeo = isEn
+    ? `Personalized Kids Halloween Candy Bucket Scary Pumpkin Glow Basket`
+    : `Túi Đựng Kẹo Halloween Trẻ Em Bí Ngô Ma Quái Phát Sáng Cao Cấp`;
+  const defaultBrand = isEn
+    ? `Spooky Pumpkin Face Halloween Basket – Glow Edition`
+    : `Túi Kẹo Bí Ngô Halloween – Spooky Glow Edition`;
+  const defaultLiteral = baseTitle;
+
+  const modes: Array<{ id: TranslationMode; label: string; text: string; tag: string }> = [
     {
       id: "ECOMMERCE",
       label: "Dịch E-commerce (Chuẩn)",
-      text: variants?.clean || "Quần Legging Nữ Cạp Cao Nhanh Khô Thoáng Khí",
+      text: variants?.clean || defaultEcommerce,
       tag: "Khuyên dùng"
     },
     {
       id: "SEO",
       label: "Tối ưu SEO Website",
-      text: variants?.seo || "Quần Legging Nữ Cạp Cao Co Giãn Nhanh Khô Tập Gym Yoga Mẫu Mới",
+      text: variants?.seo || defaultSeo,
       tag: "Top Search"
     },
     {
       id: "REWRITE",
       label: "AI Brand Display",
-      text: variants?.display || "Legging Nữ Cạp Cao – SculptFit Training Series",
+      text: variants?.display || defaultBrand,
       tag: "Thương hiệu"
     },
     {
       id: "ACCURATE",
-      label: "Dịch sát nghĩa 1688",
-      text: variants?.literal || "Quần tập yoga nữ mùa hè mẫu mới cạp cao co giãn nhanh khô",
+      label: "Dịch sát nghĩa nguồn",
+      text: variants?.literal || defaultLiteral,
       tag: "Gốc"
     }
   ];

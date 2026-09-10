@@ -9,6 +9,7 @@ import { generateAICopywriting } from "@hub1688/shared-utils";
 import { storeConnectorsService } from "../services/store-connectors.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { supabaseService } from "../services/supabase.service.js";
+import { aiGatewayService } from "../services/ai-gateway.service.js";
 import { inMemoryProducts } from "./import.controller.js";
 
 export class StoreConnectorsController {
@@ -92,12 +93,12 @@ export class StoreConnectorsController {
   }
 
   /**
-   * Xuất file CSV chuẩn sàn TMĐT (Shopee hoặc TikTok Shop)
+   * Xuất file CSV chuẩn sàn TMĐT (Shopee, TikTok Shop, Shopify, WooCommerce, Haravan)
    */
   public async exportMarketplaceCSV(req: Request, res: Response): Promise<void> {
     const { productIds, platform } = req.body as {
       productIds: string[];
-      platform: "SHOPEE" | "TIKTOK_SHOP";
+      platform: "SHOPEE" | "TIKTOK_SHOP" | "SHOPIFY" | "WOOCOMMERCE" | "HARAVAN";
     };
 
     if (!Array.isArray(productIds) || productIds.length === 0) {
@@ -116,7 +117,7 @@ export class StoreConnectorsController {
       return;
     }
 
-    const targetPlatform = platform === "TIKTOK_SHOP" ? "TIKTOK_SHOP" : "SHOPEE";
+    const targetPlatform = platform || "SHOPEE";
     const csvContent = storeConnectorsService.exportCSV(products, targetPlatform);
 
     const filename = `${targetPlatform.toLowerCase()}_products_export_${Date.now()}.csv`;
@@ -196,13 +197,15 @@ export class StoreConnectorsController {
   }
 
   /**
-   * Tạo bài viết bán hàng AI Copywriting (AIDA, PAS, Storytelling, Social Ads)
+   * Tạo bài viết bán hàng AI Copywriting (AIDA, PAS, Storytelling, Social Ads) bằng ChatGPT/Gemini
    */
   public async generateAICopy(req: Request, res: Response): Promise<void> {
-    const { productId, style, language } = req.body as {
+    const { productId, style, language, apiKey, model } = req.body as {
       productId: string;
       style?: AICopywritingStyle;
       language?: "VI" | "EN";
+      apiKey?: string;
+      model?: string;
     };
 
     if (!productId) {
@@ -216,11 +219,16 @@ export class StoreConnectorsController {
       return;
     }
 
-    const copyResult = generateAICopywriting(
+    const headerKey = req.headers["x-ai-api-key"] as string | undefined;
+    const headerModel = req.headers["x-ai-model"] as string | undefined;
+
+    const copyResult = await aiGatewayService.generateEcommerceCopy({
       product,
-      style || "AIDA",
-      language || "VI"
-    );
+      style: style || "AIDA",
+      language: language || "VI",
+      apiKey: apiKey || headerKey,
+      model: model || headerModel
+    });
 
     res.json({
       success: true,
@@ -229,5 +237,81 @@ export class StoreConnectorsController {
       language: language || "VI",
       copy: copyResult
     });
+  }
+
+  /**
+   * Dịch chữ tiếng Trung trên hình ảnh sản phẩm bằng AI Vision (ChatGPT/Gemini OCR)
+   */
+  public async translateImage(req: Request, res: Response): Promise<void> {
+    const { imageUrl, apiKey, model } = req.body as {
+      imageUrl: string;
+      apiKey?: string;
+      model?: string;
+    };
+
+    if (!imageUrl) {
+      res.status(400).json({ error: "imageUrl là bắt buộc" });
+      return;
+    }
+
+    const headerKey = req.headers["x-ai-api-key"] as string | undefined;
+    const headerModel = req.headers["x-ai-model"] as string | undefined;
+
+    const result = await aiGatewayService.translateImageChineseText({
+      imageUrl,
+      apiKey: apiKey || headerKey,
+      model: model || headerModel
+    });
+
+    res.json(result);
+  }
+
+  /**
+   * Lấy cấu hình AI hiện tại từ Backend (đã ẩn key an toàn)
+   */
+  public getAiConfig(req: Request, res: Response): void {
+    const config = aiGatewayService.getMaskedConfig();
+    res.json(config);
+  }
+
+  /**
+   * Lưu cấu hình AI Key & Model trực tiếp vào Backend (không lộ ra client)
+   */
+  public updateAiConfig(req: Request, res: Response): void {
+    const { apiKey, geminiKey, openAiKey, imageKey, model, baseUrl } = req.body as {
+      apiKey?: string;
+      geminiKey?: string;
+      openAiKey?: string;
+      imageKey?: string;
+      model?: string;
+      baseUrl?: string;
+    };
+
+    const result = aiGatewayService.updateBackendConfig({ apiKey, geminiKey, openAiKey, imageKey, model, baseUrl });
+    res.json(result);
+  }
+
+  /**
+   * Xóa chữ / tem mác tiếng Trung trên ảnh sản phẩm (AI Inpainting / Text Eraser)
+   */
+  public async inpaintImage(req: Request, res: Response): Promise<void> {
+    const { imageUrl, maskDataUrl, rectangles } = req.body as {
+      imageUrl?: string;
+      maskDataUrl?: string;
+      rectangles?: Array<{ x: number; y: number; width: number; height: number }>;
+    };
+
+    if (!imageUrl) {
+      res.status(400).json({ success: false, error: "imageUrl là bắt buộc" });
+      return;
+    }
+
+    const result = await aiGatewayService.inpaintImage({
+      imageUrl,
+      maskDataUrl,
+      rectangles
+    });
+
+    res.json(result);
   }
 }

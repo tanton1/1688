@@ -141,6 +141,8 @@ export interface WebProduct {
   // Thuộc tính chi tiết & Bảng giá sỉ bậc thang
   attributes?: ProductAttributeItem[];
   priceTiers?: ProductPriceTierItem[];
+  warrantyPolicy?: string;
+  shippingPolicy?: string;
 
   // SEO & Dữ liệu có cấu trúc Google
   seo?: ProductSEOMetadata;
@@ -164,6 +166,10 @@ export interface WebProduct {
   isImagesLocked: boolean;
   isPriceAutoSync: boolean;
   isStockAutoSync: boolean;
+
+  // Media Mirroring (Host ảnh vĩnh viễn trên Supabase/CDN)
+  isMediaMirrored?: boolean;
+  mirroredAt?: string;
 
   variants: WebProductVariant[];
   sourcePlatform?: SourcePlatform;
@@ -190,6 +196,9 @@ export interface ClonedVariantPreview {
   skuId: string;
   name: string;
   nameVI?: string;
+  option1?: string;
+  option2?: string;
+  option3?: string;
   originalPrice: number;
   priceVND: number;
   stock: number;
@@ -216,6 +225,7 @@ export interface ClonePreviewResponse {
   variants: ClonedVariantPreview[];
   categorySuggested: string;
   rawAttributes?: Array<{ key: string; value: string }>;
+  rawOptions?: Array<{ name: string; values: string[] }>;
   qualityScorePreview: number;
 }
 
@@ -281,4 +291,73 @@ export interface VisualSourcingResponse {
   matches: VisualSourcingMatch[];
 }
 
+export interface TemplateContentPreset {
+  titlePrefix?: string;
+  titleSuffix?: string;
+  titleFormula?: string;
+  shortDescVI?: string;
+  shortDescEN?: string;
+  fullDescVI?: string;
+  fullDescEN?: string;
+  attributes?: Array<{ key: string; value: string }>;
+  warrantyPolicy?: string;
+  shippingPolicy?: string;
+  focusKeywords?: string[];
+  faqs?: Array<{ question: string; answer: string }>;
+}
 
+export interface TemplateVariationOption {
+  name: string;
+  values: string[];
+}
+
+export interface TemplateVariationPreset {
+  options: TemplateVariationOption[];
+  defaultStock?: number;
+  skuPattern?: string;
+  predefinedVariants?: Array<{
+    name: string;
+    option1?: string;
+    option2?: string;
+    priceAdjustmentVND?: number;
+    stock?: number;
+  }>;
+}
+
+export interface ProductTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  categoryName: string;
+  targetPlatform?: "ALL" | "SHOPIFY" | "WOOCOMMERCE" | "SHOPEE" | "TIKTOK_SHOP";
+  isDefault?: boolean;
+  content: TemplateContentPreset;
+  variation: TemplateVariationPreset;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkSearchItem {
+  offerId: string;
+  title: string;
+  imageUrl: string;
+  priceCNY: number;
+  salesCount?: number;
+  repurchaseRate?: number;
+  shopName?: string;
+  location?: string;
+  detailUrl: string;
+  alreadyImported?: boolean;
+}
+
+export interface ImageInpaintRequest {
+  imageUrl: string;
+  maskDataUrl?: string;
+  rectangles?: Array<{ x: number; y: number; width: number; height: number }>;
+}
+
+export interface ImageInpaintResponse {
+  success: boolean;
+  resultImageUrl: string;
+  message?: string;
+}

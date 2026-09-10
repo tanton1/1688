@@ -12,7 +12,10 @@ import {
 import {
   buildWooCommercePayload,
   buildShopifyPayload,
-  buildMarketplaceCSV
+  buildMarketplaceCSV,
+  buildShopifyCSV,
+  buildWooCommerceCSV,
+  buildHaravanCSV
 } from "@hub1688/shared-utils";
 import { supabaseService } from "./supabase.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
@@ -159,13 +162,25 @@ export class StoreConnectorsService {
   }
 
   /**
-   * Xuất danh sách sản phẩm thành file CSV chuẩn sàn TMĐT (Shopee / TikTok Shop)
+   * Xuất danh sách sản phẩm thành file CSV chuẩn sàn TMĐT (Shopee, TikTok Shop, Shopify, WooCommerce, Haravan)
    */
   public exportCSV(
     products: WebProduct[],
-    platform: "SHOPEE" | "TIKTOK_SHOP"
+    platform: "SHOPEE" | "TIKTOK_SHOP" | "SHOPIFY" | "WOOCOMMERCE" | "HARAVAN"
   ): string {
-    return buildMarketplaceCSV(products, platform);
+    switch (platform) {
+      case "SHOPIFY":
+        return buildShopifyCSV(products);
+      case "WOOCOMMERCE":
+        return buildWooCommerceCSV(products);
+      case "HARAVAN":
+        return buildHaravanCSV(products);
+      case "TIKTOK_SHOP":
+        return buildMarketplaceCSV(products, "TIKTOK_SHOP");
+      case "SHOPEE":
+      default:
+        return buildMarketplaceCSV(products, "SHOPEE");
+    }
   }
 
   /**

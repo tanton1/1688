@@ -15,17 +15,25 @@ import {
   generateCartesianCombinations
 } from "@hub1688/shared-utils";
 import { CheckCircle, Zap, SlidersHorizontal, Loader2, Video, Globe, Play, Search, AlertCircle } from "lucide-react";
-import { getApiBaseUrl } from "../shared/config.js";
+import { apiFetch } from "../shared/config.js";
 
 export const App: React.FC = () => {
   const { product, loading, error, currentUrl, refresh, extractByCustomUrl } = useProductExtractor();
   const [inputUrl, setInputUrl] = useState<string>("");
   const [importMode, setImportMode] = useState<"QUICK" | "ADVANCED">("QUICK");
+  const [advancedTab, setAdvancedTab] = useState<"PREVIEW" | "TRANSLATION" | "SKU" | "PRICING">("PREVIEW");
   const [translationMode, setTranslationMode] = useState<TranslationMode>("ECOMMERCE");
   const [targetLanguage, setTargetLanguage] = useState<"vi" | "en">("vi");
   const [multiplier, setMultiplier] = useState<number>(2.2);
   const [importing, setImporting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Tự động điền link của tab web đang xem vào thanh URL để người dùng dễ kiểm soát
+  React.useEffect(() => {
+    if (currentUrl && (!inputUrl || inputUrl.startsWith("http"))) {
+      setInputUrl(currentUrl);
+    }
+  }, [currentUrl]);
 
   // Khởi tạo variants và pricing breakdown
   const rule = { ...DEFAULT_PRICING_RULE, multiplier };
@@ -80,13 +88,22 @@ export const App: React.FC = () => {
         videoUrl: product.videoUrl
       },
       attributes: (product.attributes || []).map(a => ({ keyCN: a.nameCN, valueCN: a.valueCN })),
-      variants: variants.map(v => ({
-        sourceSkuId: v.sourceSkuId,
-        colorCN: v.colorName,
-        sizeCN: v.sizeName,
-        priceCNY: product.prices.minPriceCNY,
-        stock: v.stockQuantity
-      })),
+      variants: variants.map(v => {
+        const skuItem = product.skuMap
+          ? (product.skuMap[v.sourceSkuId] || Object.values(product.skuMap).find(item => item.skuId === v.sourceSkuId || item.specId === v.sourceSkuId))
+          : undefined;
+        const priceCNY = skuItem?.priceCNY && skuItem.priceCNY > 0
+          ? skuItem.priceCNY
+          : (v.costPriceVND && v.costPriceVND > 0 ? Math.round((v.costPriceVND / 3800) * 10) / 10 : product.prices.minPriceCNY);
+
+        return {
+          sourceSkuId: v.sourceSkuId,
+          colorCN: v.colorName,
+          sizeCN: v.sizeName,
+          priceCNY: priceCNY > 0 ? priceCNY : product.prices.minPriceCNY,
+          stock: v.stockQuantity
+        };
+      }),
       description: {
         images: product.descriptionImages || []
       },
@@ -94,8 +111,7 @@ export const App: React.FC = () => {
     };
 
     try {
-      const baseUrl = await getApiBaseUrl();
-      const res = await fetch(`${baseUrl}/api/v1/import/single`, {
+      const res = await apiFetch("/api/v1/import/single", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -313,14 +329,19 @@ export const App: React.FC = () => {
               <QuickImportCard
                 product={product}
                 onImport={(opts) => executeImport(false)}
-                onPreview={() => setImportMode("ADVANCED")}
+                onPreview={() => {
+                  setAdvancedTab("PREVIEW");
+                  setImportMode("ADVANCED");
+                }}
                 importing={importing}
               />
             ) : (
               <AdvancedImportTabs
                 product={product}
+                initialTab={advancedTab}
                 translationMode={translationMode}
                 onTranslationModeChange={setTranslationMode}
+                targetLanguage={targetLanguage}
                 pricingBreakdown={pricingBreakdown}
                 multiplier={multiplier}
                 onMultiplierChange={setMultiplier}

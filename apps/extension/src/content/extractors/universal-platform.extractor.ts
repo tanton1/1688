@@ -40,14 +40,17 @@ export class UniversalPlatformExtractor {
     // D. Video (nếu có)
     const videoUrl = this.extractVideo();
 
-    // E. Thông tin Shop / Nhà cung cấp
+    // E. Ảnh mô tả chi tiết (Detail description images)
+    const descriptionImages = this.extractDescriptionImages(platform);
+
+    // F. Thông tin Shop / Nhà cung cấp
     const shop = this.extractShop(platform, productId);
 
-    // F. Thuộc tính kỹ thuật
+    // G. Thuộc tính kỹ thuật
     const attributes = this.extractAttributes(platform);
 
-    // G. Biến thể SKU
-    const { skuProps, skuMap } = this.extractVariants(platform, minPriceCNY);
+    // H. Biến thể SKU
+    const { skuProps, skuMap } = this.extractVariants(platform, minPriceCNY, originalCurrency);
 
     return {
       offerId: productId,
@@ -66,6 +69,7 @@ export class UniversalPlatformExtractor {
       },
       images,
       videoUrl,
+      descriptionImages,
       attributes,
       skuProps,
       skuMap,
@@ -117,12 +121,13 @@ export class UniversalPlatformExtractor {
 
   private static extractImages(platform: SourcePlatform): string[] {
     const images: string[] = [];
+    const JUNK_IMG_REGEX = /(?:icon|logo|badge|banner|trust|payment|flag|avatar|review|rating|star|arrow|svg|rec_|recommend|related|cart|checkout|halloween_badge|search-|img-menu|default-img|footer|header|menu|\/assets\/)/i;
 
     const addImg = (src: string | null | undefined) => {
       if (!src) return;
       let clean = src.trim();
       if (clean.startsWith("//")) clean = "https:" + clean;
-      if (clean.startsWith("http://") || clean.startsWith("https://")) {
+      if ((clean.startsWith("http://") || clean.startsWith("https://")) && !JUNK_IMG_REGEX.test(clean)) {
         // Loại bỏ thumbnail query params để lấy ảnh gốc độ phân giải cao
         clean = clean.replace(/_\d+x\d+.*$/, "").replace(/\.32x32\..*$/, ".800x800.");
         if (!images.includes(clean)) {
@@ -141,13 +146,14 @@ export class UniversalPlatformExtractor {
 
     // 3. Platform-specific gallery images
     const gallerySelectors = [
-      // Shopify & Custom Commerce (e.g. Macorner, CottonOn, etc.)
+      // Shopify & Custom Commerce (chỉ chọn ảnh bên trong gallery sản phẩm chính)
       ".product__media img",
       ".product-single__photo img",
       ".product-single__media img",
       ".product__modal-opener img",
-      "img[src*='/cdn/shop/']",
-      "img[src*='cdn.shopify.com']",
+      ".product-gallery img",
+      ".pdp-image-gallery img",
+      "[data-media-id] img",
       // Shopee
       ".product-briefing img",
       "._2J7wog img",
@@ -157,7 +163,6 @@ export class UniversalPlatformExtractor {
       ".PicGallery--thumbnails--1M-6x19 img",
       ".tb-thumb img",
       // TikTok Shop
-      "img[src*='tiktokcdn']",
       ".product-gallery img",
       // AliExpress
       ".images--wrap--wFkP-6p img",
@@ -165,25 +170,28 @@ export class UniversalPlatformExtractor {
       ".gallery-wrap img",
       // Generic product images
       ".gallery img",
-      ".product-images img",
-      "main img"
+      ".product-images img"
     ];
 
     for (const sel of gallerySelectors) {
       const els = document.querySelectorAll(sel);
       els.forEach(el => {
+        // Bỏ qua nếu ảnh nằm trong vùng gợi ý, thanh toán, menu, footer
+        if (el.closest?.(".recommendations, .related-products, .product-recommendations, footer, header, nav, .cart, .announcement-bar")) return;
         const img = el as HTMLImageElement;
         const src = img.getAttribute("data-src") || img.getAttribute("zoom-src") || img.src;
         addImg(src);
       });
-      if (images.length >= 6) break;
+      if (images.length >= 8) break;
     }
 
-    // 4. Nếu vẫn chưa có ảnh, quét toàn bộ img có kích thước lớn (> 180px)
+    // 4. Nếu vẫn chưa có ảnh, quét các img có kích thước lớn (> 220px) ngoài header/footer/recommendation
     if (images.length === 0) {
-      document.querySelectorAll("img").forEach(img => {
-        if (img.naturalWidth > 180 || img.width > 180) {
-          addImg(img.src);
+      document.querySelectorAll("main img, #content img, .main-content img").forEach(img => {
+        const el = img as HTMLImageElement;
+        if (el.closest?.(".recommendations, .related-products, .product-recommendations, footer, header, nav, .cart, .announcement-bar")) return;
+        if (el.naturalWidth > 220 || el.width > 220) {
+          addImg(el.src);
         }
       });
     }
@@ -194,6 +202,49 @@ export class UniversalPlatformExtractor {
     }
 
     return images.slice(0, 10);
+  }
+
+  private static extractDescriptionImages(platform: SourcePlatform): string[] {
+    const descImages: string[] = [];
+    const JUNK_IMG_REGEX = /(?:icon|logo|badge|banner|trust|payment|flag|avatar|review|rating|star|arrow|svg|rec_|recommend|related|cart|checkout|halloween_badge|search-|img-menu|default-img|footer|header|menu|\/assets\/)/i;
+
+    const addDescImg = (src: string | null | undefined) => {
+      if (!src) return;
+      let clean = src.trim();
+      if (clean.startsWith("//")) clean = "https:" + clean;
+      if ((clean.startsWith("http://") || clean.startsWith("https://")) && !JUNK_IMG_REGEX.test(clean)) {
+        clean = clean.replace(/_\d+x\d+.*$/, "").replace(/\.32x32\..*$/, ".800x800.");
+        if (!descImages.includes(clean)) {
+          descImages.push(clean);
+        }
+      }
+    };
+
+    const descSelectors = [
+      ".product__description img",
+      ".product-single__description img",
+      "[data-product-description] img",
+      ".product-description img",
+      ".rte img",
+      "#description img",
+      ".description img",
+      "#product-description img",
+      ".product-detail-tab img",
+      "#desc-lazyload-container img",
+      ".content-detail img",
+      "[class*='detail-desc'] img",
+      "[class*='desc-item'] img",
+      "[data-e2e='product-description'] img",
+      ".woocommerce-product-details__short-description img",
+      "#tab-description img"
+    ];
+
+    document.querySelectorAll(descSelectors.join(", ")).forEach(img => {
+      const el = img as HTMLImageElement;
+      addDescImg(el.getAttribute("data-src") || el.getAttribute("data-lazyload-src") || el.getAttribute("data-original") || el.src);
+    });
+
+    return descImages.slice(0, 15);
   }
 
   private static extractPriceInfo(platform: SourcePlatform): {
@@ -383,10 +434,156 @@ export class UniversalPlatformExtractor {
     return attrs.slice(0, 10);
   }
 
-  private static extractVariants(platform: SourcePlatform, basePriceCNY: number): {
+  private static extractVariants(
+    platform: SourcePlatform,
+    basePriceCNY: number,
+    currency: "USD" | "VND" | "CNY" = "USD"
+  ): {
     skuProps: Raw1688SkuProp[];
     skuMap: Record<string, Raw1688SkuItem>;
   } {
+    const toCny = (p: number) => {
+      if (typeof p !== "number" || isNaN(p)) return basePriceCNY;
+      return currency === "VND"
+        ? Math.round((p / 3800) * 10) / 10
+        : currency === "USD"
+        ? Math.round(p * 7.2 * 10) / 10
+        : p;
+    };
+
+    // 1. Thử quét variants từ thẻ script application/json (Shopify Dawn / 2.0 / WooCommerce)
+    let parsedVariants: any[] = [];
+    try {
+      const jsonScripts = document.querySelectorAll('script[type="application/json"]');
+      for (const s of jsonScripts) {
+        try {
+          const parsed = JSON.parse(s.textContent || "");
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id && (parsed[0].title || parsed[0].price !== undefined)) {
+            parsedVariants = parsed;
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
+
+    // 2. Thử quét từ thẻ select[name="id"] của Shopify form
+    if (parsedVariants.length === 0) {
+      try {
+        const select = document.querySelector('select[name="id"]');
+        if (select) {
+          const options = select.querySelectorAll("option");
+          if (options.length > 1) {
+            parsedVariants = Array.from(options).map((opt, idx) => {
+              const text = opt.textContent?.trim() || "";
+              const val = opt.value || `v_${idx}`;
+              const parts = text.split(" - ");
+              const title = parts[0]?.trim() || text;
+              const priceMatch = text.match(/\$\s*([0-9.,]+)/);
+              const price = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : basePriceCNY;
+              const optParts = title.split("/").map(s => s.trim());
+
+              return {
+                id: val,
+                title,
+                option1: optParts[0] || title,
+                option2: optParts[1] || null,
+                price
+              };
+            });
+          }
+        }
+      } catch {}
+    }
+
+    if (parsedVariants.length > 0) {
+      const opt1Vals = [...new Set(parsedVariants.map(v => v.option1).filter(Boolean))] as string[];
+      const opt2Vals = [...new Set(parsedVariants.map(v => v.option2).filter(Boolean))] as string[];
+
+      let skuProps: Raw1688SkuProp[] = [];
+      const skuMap: Record<string, Raw1688SkuItem> = {};
+
+      if (opt1Vals.length > 0 && opt2Vals.length > 0) {
+        skuProps = [
+          {
+            propId: "prop_1",
+            propNameCN: "Kích thước",
+            values: opt1Vals.map((val, idx) => ({ valueId: `v1_${idx}`, valueCN: val }))
+          },
+          {
+            propId: "prop_2",
+            propNameCN: "Quy cách",
+            values: opt2Vals.map((val, idx) => ({ valueId: `v2_${idx}`, valueCN: val }))
+          }
+        ];
+
+        parsedVariants.forEach((v: any) => {
+          let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
+          if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+          const vPriceCNY = toCny(vPrice);
+          let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
+          if (img && img.startsWith("//")) img = "https:" + img;
+
+          const skuItem: Raw1688SkuItem = {
+            skuId: String(v.id),
+            attributes: {
+              "Kích thước": v.option1 || "",
+              "Quy cách": v.option2 || ""
+            },
+            priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
+            stock: 100,
+            imageUrl: img
+          };
+
+          skuMap[String(v.id)] = skuItem;
+          if (v.option1 && v.option2) {
+            skuMap[`${v.option1}&${v.option2}`] = skuItem;
+            skuMap[`${v.option1}>${v.option2}`] = skuItem;
+            skuMap[`${v.option1};${v.option2}`] = skuItem;
+            skuMap[`${v.option1} ${v.option2}`] = skuItem;
+            skuMap[`${v.option1}_${v.option2}`] = skuItem;
+            skuMap[`${v.option1} / ${v.option2}`] = skuItem;
+          }
+          if (v.title) skuMap[v.title] = skuItem;
+        });
+
+        return { skuProps, skuMap };
+      } else {
+        skuProps = [
+          {
+            propId: "prop_variants",
+            propNameCN: "Phân loại",
+            values: parsedVariants.map((v: any) => ({
+              valueId: String(v.id),
+              valueCN: v.title || v.name || "Phân loại",
+              imageUrl: v.featured_image?.src
+            }))
+          }
+        ];
+
+        parsedVariants.forEach((v: any) => {
+          let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
+          if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+          const vPriceCNY = toCny(vPrice);
+          let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
+          if (img && img.startsWith("//")) img = "https:" + img;
+
+          const skuItem: Raw1688SkuItem = {
+            skuId: String(v.id),
+            attributes: { "Phân loại": v.title || v.name || "Phân loại" },
+            priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
+            stock: 100,
+            imageUrl: img
+          };
+
+          skuMap[String(v.id)] = skuItem;
+          if (v.title) skuMap[v.title] = skuItem;
+        });
+
+        return { skuProps, skuMap };
+      }
+    }
+
+    // Fallback: 1 phân loại tiêu chuẩn mặc định
     const skuProps: Raw1688SkuProp[] = [
       {
         propId: "prop_option",

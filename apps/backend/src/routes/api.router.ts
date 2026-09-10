@@ -7,6 +7,7 @@ import { GlossaryController } from "../controllers/glossary.controller.js";
 import { StoreConnectorsController } from "../controllers/store-connectors.controller.js";
 import { OrdersController } from "../controllers/orders.controller.js";
 import { cloneController } from "../controllers/clone.controller.js";
+import { templatesController } from "../controllers/templates.controller.js";
 
 export const apiRouter = Router();
 
@@ -51,6 +52,7 @@ apiRouter.put("/products/:id", (req, res) => productsCtrl.updateProduct(req, res
 apiRouter.patch("/products/:id/locks", (req, res) => productsCtrl.updateFieldLocks(req, res));
 apiRouter.post("/products/:id/publish", (req, res) => productsCtrl.publishProduct(req, res));
 apiRouter.delete("/products/:id", (req, res) => productsCtrl.deleteProduct(req, res));
+apiRouter.post("/products/:id/mirror-images", (req, res) => productsCtrl.mirrorImages(req, res));
 apiRouter.post("/products/bulk-publish", (req, res) => productsCtrl.bulkPublish(req, res));
 apiRouter.post("/products/bulk-delete", (req, res) => productsCtrl.bulkDelete(req, res));
 
@@ -71,8 +73,12 @@ apiRouter.post("/connectors/export-csv", (req, res) => connectorsCtrl.exportMark
 apiRouter.post("/connectors/telegram/test", (req, res) => connectorsCtrl.testTelegram(req, res));
 apiRouter.post("/connectors/telegram/send-alert", (req, res) => connectorsCtrl.sendTelegramAlert(req, res));
 
-// 8. AI Marketing Copywriter
+// 8. AI Marketing Copywriter & Multimodal Vision (ChatGPT Luna/Sol 5.6 & Gemini Flash 6,7,8)
+apiRouter.get("/ai/config", (req, res) => connectorsCtrl.getAiConfig(req, res));
+apiRouter.post("/ai/config", (req, res) => connectorsCtrl.updateAiConfig(req, res));
 apiRouter.post("/ai/generate-copy", (req, res) => connectorsCtrl.generateAICopy(req, res));
+apiRouter.post("/ai/translate-image", (req, res) => connectorsCtrl.translateImage(req, res));
+apiRouter.post("/ai/inpaint-image", (req, res) => connectorsCtrl.inpaintImage(req, res));
 
 // 9. Customer Orders & 1688 Sourcing Assistant
 apiRouter.get("/orders", (req, res) => ordersCtrl.listOrders(req, res));
@@ -80,4 +86,13 @@ apiRouter.get("/orders/:id", (req, res) => ordersCtrl.getOrderById(req, res));
 apiRouter.post("/orders/webhook", (req, res) => ordersCtrl.createOrderWebhook(req, res));
 apiRouter.patch("/orders/:id/status", (req, res) => ordersCtrl.updateOrderStatus(req, res));
 apiRouter.delete("/orders/:id", (req, res) => ordersCtrl.deleteOrder(req, res));
+
+// 10. Product Content & Variation Templates
+apiRouter.get("/templates", (req, res) => templatesController.getTemplates(req, res));
+apiRouter.get("/templates/:id", (req, res) => templatesController.getTemplateById(req, res));
+apiRouter.post("/templates", (req, res) => templatesController.createTemplate(req, res));
+apiRouter.put("/templates/:id", (req, res) => templatesController.updateTemplate(req, res));
+apiRouter.delete("/templates/:id", (req, res) => templatesController.deleteTemplate(req, res));
+apiRouter.post("/templates/reset-defaults", (req, res) => templatesController.resetDefaults(req, res));
+
 

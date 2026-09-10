@@ -147,13 +147,17 @@ export interface ExtractedHtmlMetadata {
   images: string[];
   detailImages?: string[];
   price?: number;
+  priceMin?: number;
+  priceMax?: number;
   currency?: "CNY" | "USD" | "VND";
   brand?: string;
   schemaProduct?: any;
+  options?: Array<{ name: string; values: string[] }>;
+  variants?: Array<any>;
 }
 
 /**
- * Trích xuất OpenGraph, Meta tags và JSON-LD Schema.org từ nội dung HTML
+ * Trích xuất OpenGraph, Meta tags, Shopify JSON và JSON-LD Schema.org từ nội dung HTML
  */
 export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
   const result: ExtractedHtmlMetadata = {
@@ -163,7 +167,122 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
 
   if (!html || typeof html !== "string") return result;
 
-  // 1. Trích xuất JSON-LD Schema.org
+  // 1. Thử trích xuất Shopify Product JSON nhúng (Thường có trong <script id="ProductJson-..."> hoặc data-product-json)
+  try {
+    const shopifyJsonRegex = /<script\b[^>]*\b(?:id=["']ProductJson-[^"']*["']|data-product-json|class=["'][^"']*product-json[^"']*["'])[^>]*>([\s\S]*?)<\/script>/i;
+    const shopifyMatch = html.match(shopifyJsonRegex);
+    let shopifyData: any = null;
+
+    if (shopifyMatch) {
+      try {
+        shopifyData = JSON.parse(shopifyMatch[1]);
+      } catch {}
+    }
+
+    if (!shopifyData) {
+      // Regex quét biến product = {...} hoặc "product": {"id":...}
+      const rawProductMatch = html.match(/(?:window\.product\s*=\s*|var\s+product\s*=\s*)(\{[\s\S]*?"title":[\s\S]*?"variants":\s*\[[\s\S]*?\});/i);
+      if (rawProductMatch) {
+        try {
+          shopifyData = JSON.parse(rawProductMatch[1]);
+        } catch {}
+      }
+    }
+
+    if (shopifyData && shopifyData.title && Array.isArray(shopifyData.variants)) {
+      result.title = shopifyData.title;
+      result.brand = shopifyData.vendor || "Macorner";
+      result.description = shopifyData.description || "";
+      result.options = shopifyData.options;
+      result.variants = shopifyData.variants;
+
+      if (shopifyData.price) {
+        result.price = shopifyData.price > 1000 ? shopifyData.price / 100 : shopifyData.price;
+        result.priceMin = shopifyData.price_min ? (shopifyData.price_min > 1000 ? shopifyData.price_min / 100 : shopifyData.price_min) : result.price;
+        result.priceMax = shopifyData.price_max ? (shopifyData.price_max > 1000 ? shopifyData.price_max / 100 : shopifyData.price_max) : result.price;
+        result.currency = "USD";
+      }
+
+      if (Array.isArray(shopifyData.images) && shopifyData.images.length > 0) {
+        shopifyData.images.forEach((img: string) => {
+          let clean = img.trim();
+          if (clean.startsWith("//")) clean = "https:" + clean;
+          if (clean.startsWith("http://")) clean = clean.replace("http://", "https://");
+          if (!result.images.includes(clean)) result.images.push(clean);
+        });
+        return result;
+      }
+    }
+  } catch {}
+
+  // 1b. Trích xuất JSON mảng biến thể Shopify trong <script type="application/json"> (thường gặp ở theme Dawn / 2.0 như Macorner)
+  if (!result.variants || result.variants.length === 0) {
+    try {
+      const jsonScriptsRegex = /<script\b[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi;
+      let sMatch: RegExpExecArray | null;
+      while ((sMatch = jsonScriptsRegex.exec(html)) !== null) {
+        try {
+          const parsed = JSON.parse(sMatch[1].trim());
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id && (parsed[0].title || parsed[0].price !== undefined)) {
+            result.variants = parsed;
+            const prices = parsed
+              .map(v => typeof v.price === "number" ? (v.price > 1000 ? v.price / 100 : v.price) : 0)
+              .filter(p => p > 0);
+            if (prices.length > 0) {
+              result.priceMin = Math.min(...prices);
+              result.priceMax = Math.max(...prices);
+              if (!result.price) result.price = result.priceMin;
+              if (!result.currency) result.currency = "USD";
+            }
+
+            // Lấy ảnh từ các biến thể nếu có
+            parsed.forEach(v => {
+              let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : null);
+              if (img) {
+                if (img.startsWith("//")) img = "https:" + img;
+                if (!result.images.includes(img)) result.images.push(img);
+              }
+            });
+
+            // Tổng hợp options từ option1, option2, option3
+            const opt1Vals = [...new Set(parsed.map(v => v.option1).filter(Boolean))] as string[];
+            const opt2Vals = [...new Set(parsed.map(v => v.option2).filter(Boolean))] as string[];
+            const opt3Vals = [...new Set(parsed.map(v => v.option3).filter(Boolean))] as string[];
+
+            const labelMatches = [...html.matchAll(/<(?:legend|label)\b[^>]*class=["'][^"']*(?:form__label|label)[^"']*["'][^>]*>([^<]+)<\/(?:legend|label)>/gi)]
+              .map(m => decodeHtmlEntities(m[1]).trim())
+              .filter(l => l && !/quantity|số lượng|email|password/i.test(l));
+
+            const options: Array<{ name: string; values: string[] }> = [];
+            if (opt1Vals.length > 0) {
+              options.push({
+                name: labelMatches[0] || (opt1Vals.some(v => /"|cm|inch|size|[smlx]/i.test(v)) ? "Size" : "Option 1"),
+                values: opt1Vals
+              });
+            }
+            if (opt2Vals.length > 0) {
+              options.push({
+                name: labelMatches[1] || (opt2Vals.some(v => /pc|set|pack|combo/i.test(v)) ? "Buy More Save More" : "Option 2"),
+                values: opt2Vals
+              });
+            }
+            if (opt3Vals.length > 0) {
+              options.push({
+                name: labelMatches[2] || "Option 3",
+                values: opt3Vals
+              });
+            }
+            if (options.length > 0) {
+              result.options = options;
+            }
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // 2. Trích xuất JSON-LD Schema.org
   const jsonLdRegex = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let jsonMatch: RegExpExecArray | null;
   while ((jsonMatch = jsonLdRegex.exec(html)) !== null) {
@@ -204,7 +323,7 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     }
   }
 
-  // 2. Trích xuất OpenGraph Meta Tags nếu chưa có từ JSON-LD
+  // 3. Trích xuất OpenGraph Meta Tags nếu chưa có từ JSON-LD
   const ogTitleMatch = html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["']/i) ||
                        html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*property=["']og:title["']/i);
   if (!result.title && ogTitleMatch) {
@@ -259,7 +378,7 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     if (c === "VND" || c === "USD" || c === "CNY") result.currency = c as any;
   }
 
-  // 3. Trích xuất ảnh chi tiết dài (Detail & Gallery Images) từ HTML content
+  // 4. Trích xuất ảnh chi tiết dài (Detail & Gallery Images) từ HTML content
   const imgRegex = /<img\b[^>]*\b(?:src|data-src|data-original)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
   let imgMatch: RegExpExecArray | null;
   const detailImgs: string[] = [];
@@ -268,15 +387,23 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     if (url.startsWith("//")) url = "https:" + url;
     if (url.startsWith("http://")) url = url.replace("http://", "https://");
 
-    // Loại trừ icon nhỏ, tracking pixel, file gif hoặc banner logo hệ thống
-    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b|\.svg\b/i.test(url);
+    // Loại trừ icon nhỏ, tracking pixel, banner, logo, review stars, recommendation items
+    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b|\.svg\b|recommend|related|cart|payment|trust|rating|review|halloween_badge|search-|img-menu|default-img|footer|header|menu|\/assets\//i.test(url);
     if (!isIgnored && !result.images.includes(url) && !detailImgs.includes(url)) {
-      // Làm sạch URL ảnh Shopify (bỏ thumbnail query params để lấy ảnh gốc)
       const cleanUrl = url.replace(/_([0-9]+x[0-9]*|small|compact|medium|large|grande|pico)(\.[a-zA-Z0-9]+)/, "$2");
       detailImgs.push(cleanUrl);
     }
   }
   result.detailImages = detailImgs.slice(0, 15);
+
+  if (result.images.length <= 1 && detailImgs.length > 0) {
+    for (const dImg of detailImgs) {
+      if (!result.images.includes(dImg)) {
+        result.images.push(dImg);
+      }
+      if (result.images.length >= 8) break;
+    }
+  }
 
   return result;
 }

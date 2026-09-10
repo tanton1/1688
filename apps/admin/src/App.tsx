@@ -14,6 +14,7 @@ import { AuthModal, CurrentUser } from "./components/AuthModal";
 import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
 import { BannerFrameStudioModal, StudioMode } from "./components/BannerFrameStudioModal";
 import { MultiPlatformCloneModal } from "./components/MultiPlatformCloneModal";
+import { TemplatesView } from "./components/TemplatesView";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -428,6 +429,8 @@ export const App: React.FC = () => {
           {currentTab === "PRICING" && <PricingRulesView />}
 
           {currentTab === "GLOSSARY" && <GlossaryView />}
+
+          {currentTab === "TEMPLATES" && <TemplatesView />}
         </main>
       </div>
 

@@ -9,10 +9,11 @@ import {
   Layers,
   ExternalLink,
   Settings,
-  Sparkles
+  Sparkles,
+  LayoutTemplate
 } from "lucide-react";
 
-export type AdminTab = "DASHBOARD" | "PRODUCTS" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY";
+export type AdminTab = "DASHBOARD" | "PRODUCTS" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY" | "TEMPLATES";
 
 interface SidebarProps {
   currentTab: AdminTab;
@@ -67,6 +68,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: "Từ Điển Dịch AI",
       icon: BookOpen,
       badge: null
+    },
+    {
+      id: "TEMPLATES" as AdminTab,
+      label: "Mẫu Đăng Bán",
+      icon: LayoutTemplate,
+      badge: "Mới",
+      badgeColor: "bg-indigo-500 text-white"
     }
   ];
 

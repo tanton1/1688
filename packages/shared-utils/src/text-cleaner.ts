@@ -75,7 +75,59 @@ export const DEFAULT_GLOSSARY: Record<string, string> = {
   "聚酯纤维": "Polyester",
   "雪纺": "Vải Voan Chiffon",
   "亚麻": "Vải Linen",
-  "真丝": "Lụa Tơ Tằm"
+  "真丝": "Lụa Tơ Tằm",
+
+  // Bộ sản phẩm, Combo, Quy cách & Biến thể tùy chỉnh (Var Custom)
+  "套装": "Bộ sản phẩm",
+  "两件套": "Bộ 2 món",
+  "三件套": "Bộ 3 món",
+  "四件套": "Bộ 4 món",
+  "五件套": "Bộ 5 món",
+  "六件套": "Bộ 6 món",
+  "七件套": "Bộ 7 món",
+  "八件套": "Bộ 8 món",
+  "九件套": "Bộ 9 món",
+  "十件套": "Bộ 10 món",
+  "十二件套": "Bộ 12 món",
+  "件套": "Món / Chi tiết",
+  "组合": "Combo",
+  "套餐": "Combo / Gói",
+  "套餐一": "Gói 1",
+  "套餐二": "Gói 2",
+  "套餐三": "Gói 3",
+  "规格": "Quy cách",
+  "款式": "Kiểu dáng",
+  "型号": "Model",
+  "容量": "Dung tích",
+  "尺寸": "Kích thước",
+  "包装": "Quy cách đóng gói",
+  "包装规格": "Quy cách đóng gói",
+  "标准版": "Bản tiêu chuẩn",
+  "升级版": "Bản nâng cấp",
+  "豪华版": "Bản cao cấp",
+  "旗舰版": "Bản cao cấp nhất",
+  "基础版": "Bản cơ bản",
+  "基础款": "Mẫu cơ bản",
+  "单件": "Đơn chiếc",
+  "整套": "Nguyên bộ",
+  "礼盒装": "Hộp quà tặng",
+  "盒装": "Hộp",
+  "袋装": "Túi",
+  "瓶装": "Chai",
+  "罐装": "Hũ / Lon",
+  "支装": "Cây / Chiếc",
+  "带盖": "Kèm nắp",
+  "不带盖": "Không nắp",
+  "带收纳盒": "Kèm hộp đựng",
+  "含赠品": "Kèm quà tặng",
+  "无赠品": "Không quà tặng",
+  "加长": "Dài hơn",
+  "定制": "Tùy chỉnh (Custom)",
+  "定制款": "Mẫu tùy chỉnh",
+  "来图定制": "Tùy chỉnh theo yêu cầu",
+  "自定义": "Tùy chỉnh",
+  "颜色分类": "Phân loại",
+  "尺码/规格": "Kích thước / Quy cách"
 };
 
 // Từ điển dịch sang Tiếng Anh chuẩn E-commerce (Shopify / Amazon)
@@ -134,7 +186,42 @@ export const DEFAULT_GLOSSARY_EN: Record<string, string> = {
   "货号": "Item No.",
   "尺码": "Size",
   "尺寸": "Dimensions",
-  "颜色": "Color"
+  "颜色": "Color",
+
+  // Bundles, Sets, Specs & Custom Variants
+  "套装": "Set",
+  "两件套": "2-Piece Set",
+  "三件套": "3-Piece Set",
+  "四件套": "4-Piece Set",
+  "五件套": "5-Piece Set",
+  "六件套": "6-Piece Set",
+  "七件套": "7-Piece Set",
+  "八件套": "8-Piece Set",
+  "九件套": "9-Piece Set",
+  "十件套": "10-Piece Set",
+  "十二件套": "12-Piece Set",
+  "件套": "Piece Set",
+  "组合": "Combo",
+  "套餐": "Bundle",
+  "规格": "Specification",
+  "款式": "Style",
+  "型号": "Model",
+  "容量": "Capacity",
+  "标准版": "Standard Edition",
+  "升级版": "Upgraded Edition",
+  "豪华版": "Deluxe Edition",
+  "旗舰版": "Flagship Edition",
+  "基础版": "Basic Edition",
+  "单件": "Single Piece",
+  "整套": "Full Set",
+  "礼盒装": "Gift Box",
+  "盒装": "Boxed",
+  "袋装": "Bagged",
+  "瓶装": "Bottled",
+  "带收纳盒": "With Storage Box",
+  "定制": "Custom",
+  "定制款": "Custom Edition",
+  "自定义": "Custom"
 };
 
 /**
@@ -162,7 +249,20 @@ export function applyGlossary(
   const merged = { ...DEFAULT_GLOSSARY, ...customGlossary };
   let result = text;
   
-  // Sắp xếp các từ khóa dài trước để tránh bị nuốt chữ
+  // 1. Dịch mẫu số lượng động cho Bộ sản phẩm, Combo, Quy cách đóng gói (vd: 3件套 -> Bộ 3 món)
+  result = result.replace(/(\d+)\s*件套/g, "Bộ $1 món");
+  result = result.replace(/(\d+)\s*个装/g, "Hộp $1 chiếc");
+  result = result.replace(/(\d+)\s*支装/g, "Hộp $1 cây");
+  result = result.replace(/(\d+)\s*只装/g, "Hộp $1 chiếc");
+  result = result.replace(/(\d+)\s*双装/g, "Set $1 đôi");
+  result = result.replace(/(\d+)\s*条装/g, "Set $1 chiếc");
+  result = result.replace(/(\d+)\s*本装/g, "Set $1 cuốn");
+  result = result.replace(/(\d+)\s*包装/g, "Set $1 gói");
+  result = result.replace(/(\d+)\s*瓶装/g, "Lốc $1 chai");
+  result = result.replace(/(\d+)\s*盒装/g, "Set $1 hộp");
+  result = result.replace(/(\d+)\s*件/g, "$1 món");
+
+  // 2. Sắp xếp các từ khóa dài trước để tránh bị nuốt chữ
   const keys = Object.keys(merged).sort((a, b) => b.length - a.length);
   for (const key of keys) {
     if (result.includes(key)) {
@@ -183,6 +283,12 @@ export function applyGlossaryEN(
   const merged = { ...DEFAULT_GLOSSARY_EN, ...customGlossary };
   let result = text;
   
+  result = result.replace(/(\d+)\s*件套/g, "$1-Piece Set");
+  result = result.replace(/(\d+)\s*个装/g, "Pack of $1");
+  result = result.replace(/(\d+)\s*支装/g, "Pack of $1");
+  result = result.replace(/(\d+)\s*双装/g, "$1 Pairs Set");
+  result = result.replace(/(\d+)\s*包装/g, "Pack of $1");
+
   const keys = Object.keys(merged).sort((a, b) => b.length - a.length);
   for (const key of keys) {
     if (result.includes(key)) {

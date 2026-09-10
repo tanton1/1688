@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch } from "@hub1688/shared-types";
+import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import {
   generateSlug,
@@ -44,7 +44,9 @@ import {
   Share2,
   FileText,
   Factory,
-  RefreshCw
+  RefreshCw,
+  LayoutTemplate,
+  CloudDownload
 } from "lucide-react";
 
 interface ProductDetailModalProps {
@@ -97,6 +99,166 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [newKeywordInput, setNewKeywordInput] = useState("");
   const [showJsonLdModal, setShowJsonLdModal] = useState(false);
   const [copiedJsonLd, setCopiedJsonLd] = useState(false);
+
+  // Product Template State & Actions
+  const [showApplyTemplateModal, setShowApplyTemplateModal] = useState(false);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<ProductTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [applyContentOption, setApplyContentOption] = useState(true);
+  const [applyVariationOption, setApplyVariationOption] = useState(true);
+  const [templateSaveName, setTemplateSaveName] = useState("");
+  const [templateSaveCategory, setTemplateSaveCategory] = useState(product.categoryName || "Quà Tặng & In Ấn (POD)");
+  const [templateToast, setTemplateToast] = useState<string | null>(null);
+
+  const handleOpenApplyTemplate = async () => {
+    try {
+      const res = await AdminApi.getTemplates();
+      if (res.success && res.templates && res.templates.length > 0) {
+        setAvailableTemplates(res.templates);
+        const defaultTpl = res.templates.find(t => t.isDefault) || res.templates[0];
+        setSelectedTemplateId(defaultTpl.id);
+      }
+    } catch (err) {
+      console.error("Lỗi nạp templates:", err);
+    }
+    setShowApplyTemplateModal(true);
+  };
+
+  const handleApplySelectedTemplate = () => {
+    const tpl = availableTemplates.find(t => t.id === selectedTemplateId);
+    if (!tpl) return;
+
+    setFormData(prev => {
+      const next = { ...prev };
+      if (applyContentOption && tpl.content) {
+        let baseTitle = next.titleVI || "";
+        const cleanTitle = baseTitle.replace(/^\[[^\]]+\]\s*/, "").replace(/\s*-[^-]+$/, "").trim();
+        const prefix = tpl.content.titlePrefix ? `${tpl.content.titlePrefix} ` : "";
+        const suffix = tpl.content.titleSuffix ? ` ${tpl.content.titleSuffix}` : "";
+        next.titleVI = `${prefix}${cleanTitle || baseTitle}${suffix}`.trim();
+
+        if (tpl.content.shortDescVI) next.shortDescVI = tpl.content.shortDescVI;
+        if (tpl.content.shortDescEN) next.shortDescEN = tpl.content.shortDescEN;
+        if (tpl.content.fullDescVI) next.fullDescVI = tpl.content.fullDescVI;
+        if (tpl.content.fullDescEN) next.fullDescEN = tpl.content.fullDescEN;
+
+        if (tpl.content.attributes && tpl.content.attributes.length > 0) {
+          const newAttrs = [...(next.attributes || [])];
+          for (const pa of tpl.content.attributes) {
+            const existingIdx = newAttrs.findIndex(a => a.keyVI === pa.key || a.keyCN === pa.key);
+            if (existingIdx !== -1) {
+              newAttrs[existingIdx] = { ...newAttrs[existingIdx], valueVI: pa.value };
+            } else {
+              newAttrs.push({ keyCN: pa.key, valueCN: pa.value, keyVI: pa.key, valueVI: pa.value });
+            }
+          }
+          next.attributes = newAttrs;
+        }
+
+        if (tpl.content.warrantyPolicy) next.warrantyPolicy = tpl.content.warrantyPolicy;
+        if (tpl.content.shippingPolicy) next.shippingPolicy = tpl.content.shippingPolicy;
+        if (tpl.content.focusKeywords && tpl.content.focusKeywords.length > 0) {
+          next.focusKeywords = Array.from(new Set([...(next.focusKeywords || []), ...tpl.content.focusKeywords]));
+        }
+      }
+      return next;
+    });
+
+    if (applyVariationOption && tpl.variation?.predefinedVariants && tpl.variation.predefinedVariants.length > 0) {
+      const baseCost = variants[0]?.costPriceVND || 50000;
+      const baseSell = variants[0]?.sellingPriceVND || 100000;
+      const primaryImg = formData.primaryImage;
+
+      const newVariants: WebProductVariant[] = tpl.variation.predefinedVariants.map((pv, idx) => {
+        const priceAdj = pv.priceAdjustmentVND || 0;
+        return {
+          sourceSkuId: `${formData.sourceProductId || "VAR"}-${idx + 1}`,
+          sizeName: pv.option1,
+          colorName: pv.option2,
+          specDetails: {
+            [tpl.variation.options[0]?.name || "Option 1"]: pv.option1 || "",
+            ...(pv.option2 ? { [tpl.variation.options[1]?.name || "Option 2"]: pv.option2 } : {})
+          },
+          costPriceVND: baseCost + priceAdj,
+          sellingPriceVND: baseSell + priceAdj,
+          stockQuantity: pv.stock || tpl.variation.defaultStock || 999,
+          imageUrl: primaryImg,
+          sourceAvailable: true,
+          selectedForSale: true
+        };
+      });
+      setVariants(newVariants);
+    }
+
+    setShowApplyTemplateModal(false);
+    setTemplateToast(`Đã áp dụng template "${tpl.name}" thành công!`);
+    setTimeout(() => setTemplateToast(null), 3500);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!templateSaveName.trim()) return;
+    try {
+      const newTpl: Partial<ProductTemplate> = {
+        name: templateSaveName.trim(),
+        categoryName: templateSaveCategory,
+        description: `Template lưu từ sản phẩm ${formData.titleVI.substring(0, 40)}...`,
+        content: {
+          titlePrefix: formData.titleVI.match(/^\[([^\]]+)\]/)?.[0] || "",
+          shortDescVI: formData.shortDescVI,
+          shortDescEN: formData.shortDescEN,
+          fullDescVI: formData.fullDescVI,
+          fullDescEN: formData.fullDescEN,
+          attributes: formData.attributes?.map(a => ({ key: a.keyVI || a.keyCN, value: a.valueVI || a.valueCN })) || [],
+          warrantyPolicy: formData.warrantyPolicy,
+          shippingPolicy: formData.shippingPolicy,
+          focusKeywords: formData.focusKeywords
+        },
+        variation: {
+          options: [
+            {
+              name: "Phân loại",
+              values: Array.from(new Set(variants.map(v => v.sizeName || v.colorName || "Mặc định").filter(Boolean)))
+            }
+          ],
+          defaultStock: 999,
+          predefinedVariants: variants.map(v => ({
+            name: `${v.sizeName || ""} ${v.colorName || ""}`.trim() || "Tiêu Chuẩn",
+            option1: v.sizeName,
+            option2: v.colorName,
+            priceAdjustmentVND: Math.max(0, v.sellingPriceVND - (variants[0]?.sellingPriceVND || 0)),
+            stock: v.stockQuantity
+          }))
+        }
+      };
+      await AdminApi.createTemplate(newTpl);
+      setShowSaveTemplateModal(false);
+      setTemplateToast(`Đã lưu thành Template mới "${templateSaveName}"!`);
+      setTimeout(() => setTemplateToast(null), 3500);
+    } catch (err: any) {
+      alert("Lỗi lưu template: " + err.message);
+    }
+  };
+
+  // Lưu trữ ảnh vĩnh viễn (Media Mirror CDN)
+  const [isMirroring, setIsMirroring] = useState(false);
+
+  const handleMirrorImages = async () => {
+    if (!formData.id) return;
+    setIsMirroring(true);
+    try {
+      const res = await AdminApi.mirrorProductImages(formData.id);
+      if (res.success && res.product) {
+        setFormData(res.product);
+        setTemplateToast(res.message || "Đã lưu trữ vĩnh viễn toàn bộ ảnh lên CDN!");
+        setTimeout(() => setTemplateToast(null), 3500);
+      }
+    } catch (err: any) {
+      alert("Lỗi lưu trữ ảnh: " + err.message);
+    } finally {
+      setIsMirroring(false);
+    }
+  };
 
   // Tính toán điểm SEO thời gian thực
   const seoAudit = useMemo(() => {
@@ -363,6 +525,31 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </button>
               </>
             )}
+
+            {/* Template Actions */}
+            <button
+              type="button"
+              onClick={handleOpenApplyTemplate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors"
+              title="Áp dụng mẫu nội dung & biến thể chuẩn cho sản phẩm này"
+            >
+              <LayoutTemplate className="w-3.5 h-3.5 text-indigo-600" />
+              <span>⚡ Áp Dụng Template</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTemplateSaveName(formData.titleVI.slice(0, 30));
+                setShowSaveTemplateModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-xs transition-colors"
+              title="Lưu nội dung và biến thể sản phẩm này thành mẫu tái sử dụng"
+            >
+              <Save className="w-3.5 h-3.5 text-slate-500" />
+              <span>Lưu Mẫu</span>
+            </button>
+
 
             <button
               onClick={handleSave}
@@ -1049,12 +1236,34 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               {/* 2. Bộ Sưu Tập Ảnh Sản Phẩm */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-900">
-                    Ảnh Đại Diện & Album Ảnh Trưng Bày ({formData.galleryImages.length + 1} ảnh)
-                  </h3>
-                  <span className="text-[11px] text-slate-500">
-                    Bấm vào ảnh gallery để chọn làm ảnh đại diện chính
-                  </span>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                      Ảnh Đại Diện & Album Ảnh Trưng Bày ({formData.galleryImages.length + 1} ảnh)
+                      {formData.isMediaMirrored ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Đã Lưu Trữ CDN
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                          Ảnh Nguồn Gốc
+                        </span>
+                      )}
+                    </h3>
+                    <span className="text-[11px] text-slate-500">
+                      Bấm vào ảnh gallery để chọn làm ảnh đại diện chính
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleMirrorImages}
+                    disabled={isMirroring}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors disabled:opacity-50"
+                    title="Tải và host vĩnh viễn toàn bộ ảnh lên CDN Supabase/Server, chống vỡ ảnh khi 1688 chặn hotlink"
+                  >
+                    <CloudDownload className="w-4 h-4 text-indigo-600" />
+                    <span>{isMirroring ? "Đang Lưu CDN..." : "☁️ Lưu Trữ Ảnh Vĩnh Viễn"}</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -2059,6 +2268,218 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Template Toast */}
+      {templateToast && (
+        <div className="fixed bottom-6 right-6 z-60 bg-indigo-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-indigo-700 flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-5">
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>{templateToast}</span>
+        </div>
+      )}
+
+      {/* Modal: Áp Dụng Template Lên Sản Phẩm */}
+      {showApplyTemplateModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-indigo-50/50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-600 text-white rounded-lg">
+                  <LayoutTemplate className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Chọn Mẫu Template Áp Dụng
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Tự động điền nội dung tiêu chuẩn hoặc ma trận biến thể cho sản phẩm này
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApplyTemplateModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Danh Sách Template Khả Dụng ({availableTemplates.length}):
+                </label>
+                {availableTemplates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    onClick={() => setSelectedTemplateId(tpl.id)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-3 ${
+                      selectedTemplateId === tpl.id
+                        ? "border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-xs text-slate-900">{tpl.name}</span>
+                        <span className="px-2 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                          {tpl.categoryName}
+                        </span>
+                        {tpl.isDefault && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                            Mặc định
+                          </span>
+                        )}
+                      </div>
+                      {tpl.description && (
+                        <p className="text-xs text-slate-500 line-clamp-1">{tpl.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500">
+                        <span>📝 Tiêu đề: <b className="text-indigo-600">{tpl.content?.titlePrefix || ""}</b> ... <b className="text-teal-600">{tpl.content?.titleSuffix || ""}</b></span>
+                        <span>🔀 Biến thể: <b className="text-purple-600">{tpl.variation?.predefinedVariants?.length || 0} SKU</b></span>
+                      </div>
+                    </div>
+                    <div className="mt-1">
+                      <input
+                        type="radio"
+                        checked={selectedTemplateId === tpl.id}
+                        onChange={() => setSelectedTemplateId(tpl.id)}
+                        className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Scope Options */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <span className="text-xs font-bold text-slate-700 block">Tùy Chọn Thành Phần Áp Dụng:</span>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={applyContentOption}
+                    onChange={(e) => setApplyContentOption(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600"
+                  />
+                  <span>Áp dụng <b>Nội Dung Sẵn</b> (Tiền tố/Hậu tố tiêu đề, Mô tả ngắn, Mô tả chi tiết, Bảo hành, Thuộc tính)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={applyVariationOption}
+                    onChange={(e) => setApplyVariationOption(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600"
+                  />
+                  <span>Áp dụng <b>Ma Trận Biến Thể Mẫu</b> (Thay thế hoặc tạo mới danh sách SKU phân loại & giá chênh lệch)</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="p-4 px-6 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowApplyTemplateModal(false)}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleApplySelectedTemplate}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-200"
+              >
+                <Check className="w-4 h-4" />
+                Áp Dụng Ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Lưu Thành Template Mới */}
+      {showSaveTemplateModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-600 text-white rounded-lg">
+                  <Save className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Lưu Thành Mẫu Template Mới
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Lưu cấu trúc nội dung và ma trận biến thể này để tái sử dụng
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSaveTemplateModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Tên Template Mới <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={templateSaveName}
+                  onChange={(e) => setTemplateSaveName(e.target.value)}
+                  placeholder="Ví dụ: Mẫu Quà Tặng 2026..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Ngành Hàng
+                </label>
+                <input
+                  type="text"
+                  value={templateSaveCategory}
+                  onChange={(e) => setTemplateSaveCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-slate-700">
+                <span className="font-semibold block mb-1">Dữ liệu sẽ được lưu:</span>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-600">
+                  <li>Tiêu đề, mô tả ngắn và mô tả chi tiết hiện tại</li>
+                  <li>{formData.attributes?.length || 0} thông số kỹ thuật</li>
+                  <li>{variants.length} phân loại biến thể & cấu trúc chênh lệch giá</li>
+                  <li>Chính sách bảo hành & giao hàng</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-4 px-6 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveTemplateModal(false)}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAsTemplate}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-200"
+              >
+                <Check className="w-4 h-4" />
+                Lưu Template
               </button>
             </div>
           </div>

@@ -23,6 +23,7 @@ import {
 import { TranslationEngineService } from "./translation.service.js";
 import { PricingEngineService } from "./pricing.service.js";
 import { supabaseService } from "./supabase.service.js";
+import { aiGatewayService } from "./ai-gateway.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
 
 interface PlatformPresetItem {
@@ -264,6 +265,20 @@ export class MultiPlatformClonerService {
 
     // 2. Thử fetch và trích xuất dữ liệu trực tiếp từ URL
     try {
+      // 2a. Đối với các trang Shopify (như Macorner và các shop Shopify khác), gọi endpoint JSON chính thức
+      if (url.includes("/products/")) {
+        try {
+          const cleanProductUrl = url.split("?")[0].replace(/\/$/, "");
+          const shopifyJsonUrl = `${cleanProductUrl}.js`;
+          const shopifyRes = await this.fetchJson(shopifyJsonUrl);
+          if (shopifyRes && (shopifyRes.title || (Array.isArray(shopifyRes.variants) && shopifyRes.variants.length > 0))) {
+            return this.formatShopifyJsonToPreviewResponse(url, platform, productId, shopifyRes);
+          }
+        } catch (shopifyErr) {
+          // Fallback tiếp tục fetch HTML bình thường
+        }
+      }
+
       const html = await this.fetchPageHtml(url);
       const extracted = parseHtmlProductMetadata(html);
 
@@ -292,19 +307,32 @@ export class MultiPlatformClonerService {
     const skuCode = `CL-${Date.now().toString().slice(-6)}`;
 
     // Tạo variants hoàn chỉnh
-    const variants: WebProductVariant[] = preview.variants.map((v, idx) => ({
-      id: `v_${Date.now()}_${idx}`,
-      sourceVariantId: v.skuId,
-      sourceSkuId: v.skuId,
-      colorName: v.nameVI || v.name,
-      colorNameEN: v.name,
-      costPriceVND: preview.estimatedCostVND,
-      sellingPriceVND: v.priceVND || preview.estimatedSellingPriceVND,
-      stockQuantity: v.stock || 100,
-      imageUrl: v.imageUrl || preview.primaryImage,
-      sourceAvailable: true,
-      selectedForSale: true
-    }));
+    const variants: WebProductVariant[] = preview.variants.map((v, idx) => {
+      let vCostVND = preview.estimatedCostVND;
+      if (typeof v.originalPrice === "number" && v.originalPrice > 0) {
+        if (preview.currency === "USD") {
+          vCostVND = Math.round(v.originalPrice * 25400);
+        } else if (preview.currency === "CNY") {
+          vCostVND = this.pricingService.calculate(v.originalPrice).totalCostVND;
+        } else {
+          vCostVND = Math.round(v.originalPrice * 0.7);
+        }
+      }
+
+      return {
+        id: `v_${Date.now()}_${idx}`,
+        sourceVariantId: v.skuId,
+        sourceSkuId: v.skuId,
+        colorName: v.nameVI || v.name,
+        colorNameEN: v.name,
+        costPriceVND: vCostVND,
+        sellingPriceVND: v.priceVND || preview.estimatedSellingPriceVND,
+        stockQuantity: v.stock || 100,
+        imageUrl: v.imageUrl || preview.primaryImage,
+        sourceAvailable: true,
+        selectedForSale: true
+      };
+    });
 
     // Tính toán min/max price
     const minPriceVND = Math.min(...variants.map(v => v.sellingPriceVND));
@@ -468,72 +496,11 @@ export class MultiPlatformClonerService {
       }
     }
 
-    // Mô phỏng / thuật toán phân tích nguồn xưởng 1688 tương đồng bằng hình ảnh & danh mục
-    const factory1PriceCNY = 16.5; // ~62.700đ
-    const factory1VND = Math.round(factory1PriceCNY * 3800);
-    const estCost1 = factory1VND + 18000;
-    const margin1 = Math.round(((sellingPriceVND - estCost1) / sellingPriceVND) * 100);
-
-    const factory2PriceCNY = 14.8; // ~56.240đ
-    const factory2VND = Math.round(factory2PriceCNY * 3800);
-    const estCost2 = factory2VND + 18000;
-    const margin2 = Math.round(((sellingPriceVND - estCost2) / sellingPriceVND) * 100);
-
-    const factory3PriceCNY = 19.0; // ~72.200đ
-    const factory3VND = Math.round(factory3PriceCNY * 3800);
-    const estCost3 = factory3VND + 18000;
-    const margin3 = Math.round(((sellingPriceVND - estCost3) / sellingPriceVND) * 100);
-
-    const matches: VisualSourcingMatch[] = [
-      {
-        offerId: "684920194821",
-        sourceUrl: "https://detail.1688.com/offer/684920194821.html",
-        titleCN: "源头实力工厂直供 爆款高品质同款",
-        titleVI: `[Xưởng Nguồn 1688] ${targetTitle} - Tiêu Chuẩn Xuất Khẩu Cao Cấp`,
-        shopName: "Quảng Châu Kim Lực May Mặc Co., Ltd",
-        location: "Quảng Châu, Quảng Đông",
-        moq: 2,
-        factoryPriceCNY: factory1PriceCNY,
-        factoryPriceVND: factory1VND,
-        currentProductSellingPriceVND: sellingPriceVND,
-        estimatedMarginWith1688: Math.max(35, margin1),
-        similarityScore: 98,
-        primaryImage: targetImage,
-        repurchaseRate: 43.5
-      },
-      {
-        offerId: "719384918204",
-        sourceUrl: "https://detail.1688.com/offer/719384918204.html",
-        titleCN: "义乌超级源头产业带工厂 一件代发",
-        titleVI: `[Siêu Xưởng Nghĩa Ô] ${targetTitle} - Hỗ Trợ Giao Hàng 1 Chiếc`,
-        shopName: "Nghĩa Ô Thịnh Vượng E-Commerce Factory",
-        location: "Nghĩa Ô, Chiết Giang",
-        moq: 1,
-        factoryPriceCNY: factory2PriceCNY,
-        factoryPriceVND: factory2VND,
-        currentProductSellingPriceVND: sellingPriceVND,
-        estimatedMarginWith1688: Math.max(35, margin2),
-        similarityScore: 94,
-        primaryImage: targetImage,
-        repurchaseRate: 38.2
-      },
-      {
-        offerId: "659283748192",
-        sourceUrl: "https://detail.1688.com/offer/659283748192.html",
-        titleCN: "专柜品质定制 OEM/ODM 深度验厂",
-        titleVI: `[Xưởng OEM Chuyên Nghiệp] ${targetTitle} - Nhận Gia Công Đóng Logo Riêng`,
-        shopName: "Hàng Châu Tơ Lụa & Dệt May Flagship Co.",
-        location: "Hàng Châu, Chiết Giang",
-        moq: 5,
-        factoryPriceCNY: factory3PriceCNY,
-        factoryPriceVND: factory3VND,
-        currentProductSellingPriceVND: sellingPriceVND,
-        estimatedMarginWith1688: Math.max(35, margin3),
-        similarityScore: 91,
-        primaryImage: targetImage,
-        repurchaseRate: 46.8
-      }
-    ];
+    const matches = await aiGatewayService.reverseVisual1688Search({
+      imageUrl: targetImage,
+      productTitle: targetTitle,
+      currentSellingPriceVND: sellingPriceVND
+    });
 
     return {
       success: true,
@@ -560,6 +527,128 @@ export class MultiPlatformClonerService {
     clearTimeout(timeout);
     if (!response.ok) throw new Error(`HTTP status ${response.status}`);
     return await response.text();
+  }
+
+  private async fetchJson(url: string): Promise<any> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`HTTP status ${response.status}`);
+    return await response.json();
+  }
+
+  private formatShopifyJsonToPreviewResponse(
+    sourceUrl: string,
+    platform: SourcePlatform,
+    productId: string,
+    data: any
+  ): ClonePreviewResponse {
+    const rawTitle = data.title || "Shopify Product";
+    const rawImages: string[] = (Array.isArray(data.images) ? data.images : [])
+      .map((img: any) => {
+        let clean = (typeof img === "string" ? img : img?.src || "").trim();
+        if (clean.startsWith("//")) clean = "https:" + clean;
+        return clean;
+      })
+      .filter(Boolean);
+
+    const primaryImage = rawImages[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+    const galleryImages = rawImages.slice(1);
+
+    const rawVariants: any[] = Array.isArray(data.variants) ? data.variants : [];
+
+    // Chuẩn hóa đơn vị cents sang USD nếu cần (ví dụ: 2295 -> 22.95)
+    const normalizePrice = (p: number) => {
+      if (typeof p !== "number" || isNaN(p)) return 22.95;
+      return p >= 100 ? Math.round((p / 100) * 100) / 100 : p;
+    };
+
+    const minPrice = rawVariants.length > 0
+      ? Math.min(...rawVariants.map(v => normalizePrice(v.price)))
+      : (data.price ? normalizePrice(data.price) : 22.95);
+
+    const maxPrice = rawVariants.length > 0
+      ? Math.max(...rawVariants.map(v => normalizePrice(v.price)))
+      : minPrice;
+
+    const currency: "USD" | "VND" | "CNY" = "USD";
+    const costVND = Math.round(minPrice * 25400);
+    const sellingVND = Math.round(costVND * 1.4);
+    const margin = Math.max(20, Math.round(((sellingVND - costVND) / sellingVND) * 100));
+
+    const variants: ClonedVariantPreview[] = rawVariants.map((v, idx) => {
+      const vPrice = normalizePrice(v.price);
+      const vCostVND = Math.round(vPrice * 25400);
+      const vSellingVND = Math.round(vCostVND * 1.4);
+      let img = v.featured_image?.src || primaryImage;
+      if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
+
+      return {
+        skuId: String(v.id || v.sku || `SKU-${idx}`),
+        name: v.title || `Biến thể ${idx + 1}`,
+        nameVI: v.title || `Biến thể ${idx + 1}`,
+        option1: v.option1,
+        option2: v.option2,
+        option3: v.option3,
+        originalPrice: vPrice,
+        priceVND: vSellingVND,
+        stock: 100,
+        imageUrl: img
+      };
+    });
+
+    const rawOptions = (data.options || []).map((o: any) => ({
+      name: typeof o === "string" ? o : o.name,
+      values: Array.isArray(o.values) ? o.values : []
+    }));
+
+    return {
+      sourcePlatform: platform,
+      sourceProductId: String(data.id || productId),
+      sourceUrl,
+      originalTitle: rawTitle,
+      translatedTitleVI: rawTitle,
+      translatedTitleEN: rawTitle,
+      supplierName: data.vendor || "Macorner",
+      currency,
+      originalPriceMin: minPrice,
+      originalPriceMax: maxPrice,
+      estimatedCostVND: costVND,
+      estimatedSellingPriceVND: sellingVND,
+      estimatedMarginPercent: margin,
+      primaryImage,
+      galleryImages,
+      detailImages: [],
+      variants: variants.length > 0 ? variants : [
+        {
+          skuId: `SKU-${productId}-01`,
+          name: "Tiêu Chuẩn (Mặc Định)",
+          nameVI: "Phiên Bản Tiêu Chuẩn",
+          originalPrice: minPrice,
+          priceVND: sellingVND,
+          stock: 100,
+          imageUrl: primaryImage
+        }
+      ],
+      rawOptions,
+      categorySuggested: "Quà tặng & Phụ kiện",
+      rawAttributes: [
+        { key: "Nguồn gốc", value: platform },
+        { key: "Thương hiệu", value: data.vendor || "Macorner" },
+        ...(rawOptions.map((o: any) => ({ key: o.name, value: o.values.join(", ") })))
+      ],
+      qualityScorePreview: 92
+    };
   }
 
   private formatPresetToPreviewResponse(preset: PlatformPresetItem, sourceUrl: string): ClonePreviewResponse {
@@ -633,25 +722,27 @@ export class MultiPlatformClonerService {
   ): ClonePreviewResponse {
     const rawTitle = extracted.title || "Sản phẩm E-commerce Đa Nền Tảng";
     const primaryImage = extracted.images[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop";
-    const galleryImages = extracted.images.slice(1, 5);
+    const galleryImages = extracted.images.slice(1);
     const detailImages = extracted.detailImages || [];
 
     let currency: "CNY" | "USD" | "VND" = extracted.currency || (platform === "ALIEXPRESS" ? "USD" : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND"));
     const rawPrice = extracted.price || 150;
+    const priceMin = extracted.priceMin || rawPrice;
+    const priceMax = extracted.priceMax || rawPrice;
 
     let costVND = 0;
     let sellingVND = 0;
 
     if (currency === "CNY") {
-      const calc = this.pricingService.calculate(rawPrice);
+      const calc = this.pricingService.calculate(priceMin);
       costVND = calc.totalCostVND;
       sellingVND = calc.finalSellingPriceVND;
     } else if (currency === "USD") {
-      costVND = Math.round(rawPrice * 25400);
+      costVND = Math.round(priceMin * 25400);
       sellingVND = Math.round(costVND * 1.4);
     } else {
-      costVND = Math.round(rawPrice * 0.7);
-      sellingVND = rawPrice;
+      costVND = Math.round(priceMin * 0.7);
+      sellingVND = priceMin;
     }
 
     const margin = Math.max(20, Math.round(((sellingVND - costVND) / sellingVND) * 100));
@@ -666,17 +757,53 @@ export class MultiPlatformClonerService {
       titleEN = this.translationService.generateTitleVariantsEN(rawTitle, "Fashion").clean;
     }
 
-    const variants: ClonedVariantPreview[] = [
-      {
-        skuId: `SKU-${productId}-01`,
-        name: "Tiêu Chuẩn (Mặc Định)",
-        nameVI: "Phiên Bản Tiêu Chuẩn",
-        originalPrice: rawPrice,
-        priceVND: sellingVND,
-        stock: 100,
-        imageUrl: primaryImage
-      }
-    ];
+    let variants: ClonedVariantPreview[] = [];
+    if (Array.isArray(extracted.variants) && extracted.variants.length > 0) {
+      variants = extracted.variants.map((v: any, idx: number) => {
+        let vPrice = typeof v.price === "number" ? v.price : rawPrice;
+        if (vPrice > 1000 && currency === "USD") vPrice = vPrice / 100;
+        let vCostVND = costVND;
+        let vSellingVND = sellingVND;
+        if (currency === "CNY") {
+          const c = this.pricingService.calculate(vPrice);
+          vCostVND = c.totalCostVND;
+          vSellingVND = c.finalSellingPriceVND;
+        } else if (currency === "USD") {
+          vCostVND = Math.round(vPrice * 25400);
+          vSellingVND = Math.round(vCostVND * 1.4);
+        } else {
+          vCostVND = Math.round(vPrice * 0.7);
+          vSellingVND = vPrice;
+        }
+        let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : primaryImage);
+        if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
+
+        return {
+          skuId: String(v.id || v.sku || `SKU-${idx}`),
+          name: v.title || v.name || `Biến thể ${idx + 1}`,
+          nameVI: v.title || v.name || `Biến thể ${idx + 1}`,
+          option1: v.option1,
+          option2: v.option2,
+          option3: v.option3,
+          originalPrice: vPrice,
+          priceVND: vSellingVND,
+          stock: 100,
+          imageUrl: img
+        };
+      });
+    } else {
+      variants = [
+        {
+          skuId: `SKU-${productId}-01`,
+          name: "Tiêu Chuẩn (Mặc Định)",
+          nameVI: "Phiên Bản Tiêu Chuẩn",
+          originalPrice: rawPrice,
+          priceVND: sellingVND,
+          stock: 100,
+          imageUrl: primaryImage
+        }
+      ];
+    }
 
     return {
       sourcePlatform: platform,
@@ -687,8 +814,8 @@ export class MultiPlatformClonerService {
       translatedTitleEN: titleEN,
       supplierName: extracted.brand || `${platform} Seller`,
       currency,
-      originalPriceMin: rawPrice,
-      originalPriceMax: rawPrice,
+      originalPriceMin: priceMin,
+      originalPriceMax: priceMax,
       estimatedCostVND: costVND,
       estimatedSellingPriceVND: sellingVND,
       estimatedMarginPercent: margin,
@@ -696,12 +823,13 @@ export class MultiPlatformClonerService {
       galleryImages,
       detailImages,
       variants,
+      rawOptions: extracted.options,
       categorySuggested: "Thời trang & Phụ kiện",
       rawAttributes: [
         { key: "Nguồn gốc", value: platform },
         { key: "Thương hiệu", value: extracted.brand || "OEM" }
       ],
-      qualityScorePreview: 82
+      qualityScorePreview: 85
     };
   }
 

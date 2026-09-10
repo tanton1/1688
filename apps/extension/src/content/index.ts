@@ -3,7 +3,7 @@ import { UniversalPlatformExtractor } from "./extractors/universal-platform.extr
 import { injectSourceOverlay } from "./overlay/source-overlay.js";
 import { injectBulkSelectionBar } from "./overlay/bulk-checkbox.js";
 import { ExistingProductCheckResult } from "@hub1688/shared-types";
-import { getApiBaseUrl } from "../shared/config.js";
+import { apiFetch } from "../shared/config.js";
 
 console.log("[1688 Hub] Multi-Platform Content Script đã nạp thành công (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress)!");
 
@@ -14,24 +14,18 @@ function runPageDetection() {
 
   if (pageType === "DETAIL" && effectiveId) {
     // Kiểm tra sản phẩm đã có trên Web chưa
-    getApiBaseUrl()
-      .then(baseUrl => {
-        fetch(`${baseUrl}/api/v1/sync/check-existing`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceProductIds: [effectiveId] })
-        })
-          .then(res => res.json())
-          .then(data => {
-            const existingInfo: ExistingProductCheckResult = data.results?.[0] || { exists: false, sourceProductId: effectiveId };
-            injectSourceOverlay(effectiveId, existingInfo);
-          })
-          .catch(err => {
-            console.warn("[1688 Hub] Check existing warning, fallback to default overlay:", err);
-            injectSourceOverlay(effectiveId);
-          });
+    apiFetch("/api/v1/sync/check-existing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceProductIds: [effectiveId] })
+    })
+      .then(res => res.json())
+      .then(data => {
+        const existingInfo: ExistingProductCheckResult = data.results?.[0] || { exists: false, sourceProductId: effectiveId };
+        injectSourceOverlay(effectiveId, existingInfo);
       })
-      .catch(() => {
+      .catch(err => {
+        console.warn("[1688 Hub] Check existing warning, fallback to default overlay:", err);
         injectSourceOverlay(effectiveId);
       });
   } else if (pageType === "SEARCH" || pageType === "SHOP") {

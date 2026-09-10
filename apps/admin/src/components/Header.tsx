@@ -54,6 +54,10 @@ export const Header: React.FC<HeaderProps> = ({
         return { title: "Cấu Hình Quy Tắc Định Giá", subtitle: "Công thức tính giá vốn VNĐ, tỷ giá tệ NDT và mô phỏng giá bán tự động" };
       case "GLOSSARY":
         return { title: "Từ Điển Thuật Ngữ E-Commerce", subtitle: "Quy chuẩn dịch thuật chuyên ngành thời trang & phụ kiện" };
+      case "TEMPLATES":
+        return { title: "Quản Lý Mẫu Đăng Bán (Templates)", subtitle: "Thiết lập cấu trúc nội dung sẵn và ma trận biến thể mẫu để áp dụng 1-click" };
+      default:
+        return { title: "1688 Hub Admin", subtitle: "Hệ thống quản trị đồng bộ & đăng bán đa kênh" };
     }
   };
 
