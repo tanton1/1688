@@ -2,7 +2,10 @@ import {
   ProductTitleVariants,
   TranslationMode,
   Raw1688Attribute,
-  ProductAttributeItem
+  ProductAttributeItem,
+  ProductSEOMetadata,
+  ProductImageSEO,
+  ProductFAQItem
 } from "@hub1688/shared-types";
 import {
   clean1688Title,
@@ -10,7 +13,14 @@ import {
   applyGlossaryEN,
   DEFAULT_GLOSSARY,
   DEFAULT_GLOSSARY_EN,
-  normalizeSizeProp
+  normalizeSizeProp,
+  generateSlug,
+  extractSEOKeywords,
+  generateSEOMeta,
+  generateImageAltTags,
+  generateProductFAQs,
+  generateProductJsonLd,
+  auditListingSEO
 } from "@hub1688/shared-utils";
 
 export class TranslationEngineService {
@@ -32,7 +42,7 @@ export class TranslationEngineService {
     const translatedLiteral = applyGlossary(cleanedCN, this.customGlossary);
     const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
     const seoTitle = `${cleanTitle} – Cao Cấp, Bền Đẹp, Chuẩn Form`;
-    const displayTitle = `${cleanTitle} (Mẫu Mới)`;
+    const displayTitle = `${cleanTitle} (Mẫu Mới 2026)`;
 
     return {
       original: rawTitleCN,
@@ -51,7 +61,7 @@ export class TranslationEngineService {
     const translatedLiteral = applyGlossaryEN(cleanedCN);
     const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
     const seoTitle = `${cleanTitle} - Premium Quality & Modern Design`;
-    const displayTitle = `${cleanTitle} (New Arrival)`;
+    const displayTitle = `${cleanTitle} (New Arrival 2026)`;
 
     return {
       original: rawTitleCN,
@@ -100,7 +110,7 @@ export class TranslationEngineService {
   }
 
   /**
-   * Tái cấu trúc mô tả sản phẩm Tiếng Việt
+   * Tái cấu trúc mô tả sản phẩm Tiếng Việt chuẩn Semantic SEO H1-H3
    */
   public generateStructuredDescription(
     titleVI: string,
@@ -163,6 +173,92 @@ ${titleEN} features contemporary craftsmanship, premium comfort, and an elegant 
 • Tumble dry low or air dry in shade.
 • Do not bleach or use harsh chemicals.
     `.trim();
+  }
+
+  /**
+   * Tự động sinh trọn gói gói tối ưu SEO cho sản phẩm (Slug, Meta, Thẻ ALT, FAQ, JSON-LD)
+   */
+  public generateCompleteSEOPackage(params: {
+    titleVI: string;
+    titleEN: string;
+    categoryName: string;
+    attributes: ProductAttributeItem[];
+    primaryImage: string;
+    galleryImages?: string[];
+    detailImages?: string[];
+    variants?: any[];
+    skuCode?: string;
+    minPriceVND?: number;
+    maxPriceVND?: number;
+    supplierName?: string;
+  }): {
+    slug: string;
+    metaTitle: string;
+    metaDescription: string;
+    focusKeywords: string[];
+    imagesSEO: ProductImageSEO[];
+    faqs: ProductFAQItem[];
+    seo: ProductSEOMetadata;
+  } {
+    const {
+      titleVI,
+      titleEN,
+      categoryName,
+      attributes,
+      primaryImage,
+      galleryImages = [],
+      detailImages = [],
+      variants = [],
+      skuCode = `SKU-${Date.now().toString().slice(-6)}`,
+      minPriceVND = 0,
+      maxPriceVND = 0,
+      supplierName = "1688 Direct Hub"
+    } = params;
+
+    const slug = generateSlug(titleVI);
+    const metaVI = generateSEOMeta(titleVI, categoryName, attributes, "VI");
+    const metaEN = generateSEOMeta(titleEN, categoryName, attributes, "EN");
+    const focusKeywordsVI = extractSEOKeywords(titleVI, categoryName, "VI");
+    const focusKeywordsEN = extractSEOKeywords(titleEN, categoryName, "EN");
+    const imagesSEO = generateImageAltTags(titleVI, primaryImage, galleryImages, detailImages, variants);
+    const faqs = generateProductFAQs(titleVI, categoryName, "VI");
+
+    const jsonLdSchema = generateProductJsonLd({
+      titleVI,
+      titleEN,
+      skuCode,
+      categoryName,
+      primaryImage,
+      galleryImages,
+      minPriceVND,
+      maxPriceVND,
+      supplierName,
+      variants,
+      slug
+    });
+
+    const seo: ProductSEOMetadata = {
+      metaTitleVI: metaVI.metaTitle,
+      metaTitleEN: metaEN.metaTitle,
+      metaDescriptionVI: metaVI.metaDescription,
+      metaDescriptionEN: metaEN.metaDescription,
+      focusKeywordsVI,
+      focusKeywordsEN,
+      imagesSEO,
+      faqs,
+      jsonLdSchema,
+      seoScore: 95
+    };
+
+    return {
+      slug,
+      metaTitle: metaVI.metaTitle,
+      metaDescription: metaVI.metaDescription,
+      focusKeywords: focusKeywordsVI,
+      imagesSEO,
+      faqs,
+      seo
+    };
   }
 
   private formatEcommerceTitle(text: string): string {

@@ -154,12 +154,28 @@ export class ImportController {
     });
 
     const productId = `prod_${Date.now()}`;
-    const slug = `${finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString().slice(-4)}`;
+    const skuCode = `SP-${Date.now().toString().slice(-6)}`;
+
+    // 5. Tự động sinh trọn gói SEO Metadata (Meta Title, Description, Image Alt, FAQs, JSON-LD)
+    const seoPackage = translationService.generateCompleteSEOPackage({
+      titleVI: finalTitle,
+      titleEN: finalTitleEN,
+      categoryName: settings.categoryName || "Thời trang nữ",
+      attributes: translatedAttrs,
+      primaryImage: normalized.media.images[0] || "",
+      galleryImages: normalized.media.images.slice(1),
+      detailImages: normalized.description.images || [],
+      variants,
+      skuCode,
+      minPriceVND,
+      maxPriceVND,
+      supplierName: normalized.supplier.shopName
+    });
 
     const newProduct: WebProduct = {
       id: productId,
-      slug,
-      skuCode: `SP-${Date.now().toString().slice(-6)}`,
+      slug: `${seoPackage.slug}-${Date.now().toString().slice(-4)}`,
+      skuCode,
       
       // Tiếng Việt
       titleVI: finalTitle,
@@ -186,6 +202,14 @@ export class ImportController {
       // Thuộc tính chi tiết & Bảng giá sỉ
       attributes: translatedAttrs,
       priceTiers: priceTiers.length > 0 ? priceTiers : undefined,
+
+      // SEO & Rich Snippets Google
+      seo: seoPackage.seo,
+      metaTitle: seoPackage.metaTitle,
+      metaDescription: seoPackage.metaDescription,
+      focusKeywords: seoPackage.focusKeywords,
+      imagesSEO: seoPackage.imagesSEO,
+      faqs: seoPackage.faqs,
 
       status: settings.autoPublish ? "PUBLISHED" : "DRAFT",
       qualityScore: 0,

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-// Import modules from shared-utils source (or we can test functions directly)
+// Import modules from shared-utils source
 import {
   clean1688Title,
   applyGlossary,
@@ -17,6 +17,15 @@ import {
 import {
   evaluateProductQuality
 } from "../dist/quality-evaluator.js";
+import {
+  generateSlug,
+  extractSEOKeywords,
+  generateSEOMeta,
+  generateImageAltTags,
+  generateProductFAQs,
+  generateProductJsonLd,
+  auditListingSEO
+} from "../dist/seo-optimizer.js";
 
 test("1. Text Cleaner & Glossary Engine", (t) => {
   const rawTitle = "2026新款 厂家直销 跨境专供 爆款 女士高腰弹力速干瑜伽裤 1688一件代发";
@@ -106,4 +115,62 @@ test("4. Quality Readiness Score Evaluator", (t) => {
   const evalResult = evaluateProductQuality(dummyProduct);
   assert.ok(evalResult.totalScore >= 80, `Điểm chất lượng phải cao: ${evalResult.totalScore}`);
   assert.equal(evalResult.canPublish, true, "Sản phẩm đủ điều kiện publish");
+});
+
+test("5. SEO Optimizer Engine (Slug, Keywords, Alt, Meta, FAQs, Schema)", (t) => {
+  // Test Slug Generator
+  const slug = generateSlug("Đầm Hoa Nhí Vintage Dáng Xòe Tay Phồng Cổ Vuông Tiểu Thư 2026!");
+  assert.equal(slug, "dam-hoa-nhi-vintage-dang-xoe-tay-phong-co-vuong-tieu-thu-2026");
+
+  // Test Keywords Extraction
+  const keywordsVI = extractSEOKeywords("Đầm Hoa Nhí Vintage Dáng Xòe", "Đầm & Váy", "VI");
+  assert.ok(keywordsVI.length >= 3);
+  assert.ok(keywordsVI.some(k => k.includes("đầm hoa nhí")));
+
+  // Test Meta Generation
+  const meta = generateSEOMeta("Đầm Hoa Nhí Vintage Dáng Xòe", "Đầm & Váy", [{ keyVI: "Chất liệu", valueVI: "Voan Chiffon" }], "VI");
+  assert.ok(meta.metaTitle.includes("Đầm Hoa Nhí"));
+  assert.ok(meta.metaDescription.includes("Voan Chiffon"));
+  assert.ok(meta.metaDescription.length > 100 && meta.metaDescription.length <= 165);
+
+  // Test Image Alt Tags
+  const alts = generateImageAltTags(
+    "Đầm Hoa Nhí Vintage",
+    "https://img.alicdn.com/primary.jpg",
+    ["https://img.alicdn.com/gallery1.jpg"],
+    ["https://img.alicdn.com/detail1.jpg"]
+  );
+  assert.equal(alts.length, 3);
+  assert.ok(alts[0].alt.includes("Ảnh đại diện"));
+  assert.ok(alts[1].alt.includes("Góc chụp chi tiết #1"));
+  assert.ok(alts[2].alt.includes("Size Chart"));
+
+  // Test FAQs
+  const faqs = generateProductFAQs("Đầm Hoa Nhí", "Đầm", "VI");
+  assert.ok(faqs.length >= 3);
+  assert.ok(faqs[0].question.includes("kích cỡ"));
+
+  // Test JSON-LD Schema
+  const jsonLd = generateProductJsonLd({
+    titleVI: "Đầm Hoa Nhí Vintage",
+    skuCode: "SKU-TEST-001",
+    minPriceVND: 250000,
+    maxPriceVND: 290000,
+    primaryImage: "https://img.alicdn.com/primary.jpg"
+  });
+  assert.equal(jsonLd["@type"], "Product");
+  assert.equal(jsonLd.sku, "SKU-TEST-001");
+  assert.equal(jsonLd.offers.lowPrice, 250000);
+
+  // Test SEO Audit
+  const audit = auditListingSEO({
+    titleVI: "Đầm Hoa Nhí Vintage Dáng Xòe Cổ Vuông Phồng Cao Cấp",
+    slug: "dam-hoa-nhi-vintage",
+    metaDescription: meta.metaDescription,
+    imagesSEO: alts,
+    focusKeywords: keywordsVI,
+    faqs
+  });
+  assert.ok(audit.score >= 80, `SEO Score phải đạt chuẩn cao: ${audit.score}`);
+  assert.equal(audit.checks.every(c => c.passed), true, "Tất cả tiêu chí SEO phải pass");
 });

@@ -1,5 +1,14 @@
-import React, { useState } from "react";
-import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
+import React, { useState, useMemo } from "react";
+import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem } from "@hub1688/shared-types";
+import {
+  generateSlug,
+  extractSEOKeywords,
+  generateSEOMeta,
+  generateImageAltTags,
+  generateProductFAQs,
+  generateProductJsonLd,
+  auditListingSEO
+} from "@hub1688/shared-utils";
 import {
   X,
   Save,
@@ -19,7 +28,17 @@ import {
   Download,
   Copy,
   Languages,
-  ListChecks
+  ListChecks,
+  Globe,
+  Search,
+  Tag,
+  Plus,
+  Trash2,
+  Code,
+  HelpCircle,
+  Monitor,
+  Smartphone,
+  Check
 } from "lucide-react";
 
 interface ProductDetailModalProps {
@@ -35,12 +54,38 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 }) => {
   if (!product) return null;
 
-  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "quality">("content");
+  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality">("content");
   const [editLang, setEditLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
-  const [formData, setFormData] = useState<WebProduct>({ ...product });
+  const [formData, setFormData] = useState<WebProduct>(() => {
+    const p = { ...product };
+    // Khởi tạo các trường SEO nếu chưa có
+    if (!p.slug) p.slug = generateSlug(p.titleVI);
+    if (!p.metaTitle) p.metaTitle = generateSEOMeta(p.titleVI, p.categoryName, p.attributes, "VI").metaTitle;
+    if (!p.metaDescription) p.metaDescription = generateSEOMeta(p.titleVI, p.categoryName, p.attributes, "VI").metaDescription;
+    if (!p.focusKeywords || p.focusKeywords.length === 0) {
+      p.focusKeywords = extractSEOKeywords(p.titleVI, p.categoryName, "VI");
+    }
+    if (!p.imagesSEO || p.imagesSEO.length === 0) {
+      p.imagesSEO = generateImageAltTags(p.titleVI, p.primaryImage, p.galleryImages, p.detailImages || [], p.variants);
+    }
+    if (!p.faqs || p.faqs.length === 0) {
+      p.faqs = generateProductFAQs(p.titleVI, p.categoryName, "VI");
+    }
+    return p;
+  });
+
   const [variants, setVariants] = useState<WebProductVariant[]>([...product.variants]);
   const [isSaving, setIsSaving] = useState(false);
   const [customVideoInput, setCustomVideoInput] = useState("");
+  const [serpDevice, setSerpDevice] = useState<"desktop" | "mobile">("desktop");
+  const [newKeywordInput, setNewKeywordInput] = useState("");
+  const [showJsonLdModal, setShowJsonLdModal] = useState(false);
+  const [copiedJsonLd, setCopiedJsonLd] = useState(false);
+
+  // Tính toán điểm SEO thời gian thực
+  const seoAudit = useMemo(() => {
+    return auditListingSEO(formData);
+  }, [formData]);
 
   // Cập nhật trường thông tin cơ bản
   const handleFieldChange = (field: keyof WebProduct, value: any) => {
@@ -58,7 +103,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     next[index] = { ...next[index], [field]: value };
     setVariants(next);
 
-    // Tính lại min/max price
     const validPrices = next.filter(v => v.selectedForSale).map(v => v.sellingPriceVND);
     if (validPrices.length > 0) {
       setFormData(prev => ({
@@ -76,12 +120,87 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     setVariants(next);
   };
 
+  // Thêm từ khóa SEO
+  const handleAddKeyword = () => {
+    const kw = newKeywordInput.trim().toLowerCase();
+    if (kw && !formData.focusKeywords?.includes(kw)) {
+      const nextKw = [...(formData.focusKeywords || []), kw];
+      handleFieldChange("focusKeywords", nextKw);
+      setNewKeywordInput("");
+    }
+  };
+
+  // Xóa từ khóa SEO
+  const handleRemoveKeyword = (kwToRemove: string) => {
+    const nextKw = (formData.focusKeywords || []).filter(k => k !== kwToRemove);
+    handleFieldChange("focusKeywords", nextKw);
+  };
+
+  // Cập nhật thẻ ALT của ảnh
+  const handleUpdateImageAlt = (url: string, newAlt: string) => {
+    const nextImagesSEO = (formData.imagesSEO || []).map(img => {
+      if (img.url === url) {
+        return { ...img, alt: newAlt };
+      }
+      return img;
+    });
+    handleFieldChange("imagesSEO", nextImagesSEO);
+  };
+
+  // Tự động điền lại thẻ ALT chuẩn SEO
+  const handleAutoGenerateAlts = () => {
+    const newAlts = generateImageAltTags(
+      editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI),
+      formData.primaryImage,
+      formData.galleryImages,
+      formData.detailImages || [],
+      variants
+    );
+    handleFieldChange("imagesSEO", newAlts);
+  };
+
+  // Tự động tối ưu lại toàn bộ SEO (AI Re-optimize)
+  const handleAutoOptimizeSEO = () => {
+    const activeTitle = editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI);
+    const meta = generateSEOMeta(activeTitle, formData.categoryName, formData.attributes, editLang);
+    const keywords = extractSEOKeywords(activeTitle, formData.categoryName, editLang);
+    const newAlts = generateImageAltTags(
+      activeTitle,
+      formData.primaryImage,
+      formData.galleryImages,
+      formData.detailImages || [],
+      variants
+    );
+    const faqs = generateProductFAQs(activeTitle, formData.categoryName, editLang);
+    const newSlug = generateSlug(activeTitle);
+
+    setFormData(prev => ({
+      ...prev,
+      slug: newSlug,
+      metaTitle: meta.metaTitle,
+      metaDescription: meta.metaDescription,
+      focusKeywords: keywords,
+      imagesSEO: newAlts,
+      faqs
+    }));
+  };
+
   const handleSave = () => {
     setIsSaving(true);
     const updated: WebProduct = {
       ...formData,
       displayLanguage: editLang,
       variants,
+      seo: {
+        ...(formData.seo || {}),
+        metaTitleVI: formData.metaTitle,
+        metaDescriptionVI: formData.metaDescription,
+        focusKeywordsVI: formData.focusKeywords,
+        imagesSEO: formData.imagesSEO,
+        faqs: formData.faqs,
+        jsonLdSchema: generateProductJsonLd(formData),
+        seoScore: seoAudit.score
+      },
       updatedAt: new Date().toISOString()
     };
     onSave(updated);
@@ -96,6 +215,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     1 +
     (formData.detailImages?.length || 0) +
     (formData.videoUrl ? 1 : 0);
+
+  const jsonLdCode = useMemo(() => {
+    return JSON.stringify(generateProductJsonLd(formData), null, 2);
+  }, [formData]);
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
@@ -114,6 +237,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <Video className="w-3 h-3" /> Có Video
               </span>
             )}
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ${
+              seoAudit.score >= 80 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+            }`}>
+              <Globe className="w-3 h-3" /> SEO {seoAudit.score}/100
+            </span>
             <a
               href={formData.sourceUrl}
               target="_blank"
@@ -183,10 +311,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Modal Navigation Tabs */}
-        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white select-none">
+        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white select-none overflow-x-auto">
           <button
             onClick={() => setActiveTab("content")}
-            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "content"
                 ? "border-orange-600 text-orange-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -198,7 +326,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab("variants")}
-            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "variants"
                 ? "border-orange-600 text-orange-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -210,7 +338,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab("media")}
-            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "media"
                 ? "border-orange-600 text-orange-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -220,9 +348,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             Media & Video ({mediaCount})
           </button>
 
+          {/* TAB MỚI: TỐI ƯU SEO & SERP */}
+          <button
+            onClick={() => setActiveTab("seo")}
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
+              activeTab === "seo"
+                ? "border-emerald-600 text-emerald-600"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Tối Ưu SEO & SERP
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+              seoAudit.score >= 80 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+            }`}>
+              {seoAudit.score}/100
+            </span>
+          </button>
+
           <button
             onClick={() => setActiveTab("quality")}
-            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "quality"
                 ? "border-orange-600 text-orange-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -253,7 +399,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                  {/* Lock 1: Tiêu đề */}
                   <label className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-orange-300">
                     <input
                       type="checkbox"
@@ -264,7 +409,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span className="font-semibold text-slate-700">Khóa Tiêu Đề</span>
                   </label>
 
-                  {/* Lock 2: Mô tả */}
                   <label className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-orange-300">
                     <input
                       type="checkbox"
@@ -275,7 +419,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span className="font-semibold text-slate-700">Khóa Mô Tả</span>
                   </label>
 
-                  {/* Lock 3: Hình ảnh */}
                   <label className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-orange-300">
                     <input
                       type="checkbox"
@@ -286,7 +429,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span className="font-semibold text-slate-700">Khóa Ảnh Media</span>
                   </label>
 
-                  {/* Lock 4: Tự động đồng bộ giá */}
                   <label className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-orange-300">
                     <input
                       type="checkbox"
@@ -297,7 +439,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span className="font-semibold text-slate-700">Tự Động Sync Giá</span>
                   </label>
 
-                  {/* Lock 5: Tự động đồng bộ tồn kho */}
                   <label className="flex items-center gap-2 p-2.5 bg-white rounded-lg border border-slate-200 cursor-pointer hover:border-orange-300">
                     <input
                       type="checkbox"
@@ -470,7 +611,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
 
-              {/* BẢNG GIÁ SỈ BẬC THANG 1688 (Wholesale Price Tiers) */}
+              {/* BẢNG GIÁ SỈ BẬC THANG 1688 */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -522,7 +663,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
 
-              {/* THÔNG SỐ KỸ THUẬT CHI TIẾT (1688 Specifications) */}
+              {/* THÔNG SỐ KỸ THUẬT CHI TIẾT */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -604,7 +745,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                       return (
                         <tr key={v.sourceSkuId} className={`hover:bg-slate-50 ${!v.selectedForSale ? "opacity-50 bg-slate-50/60" : ""}`}>
-                          {/* Checkbox bán */}
                           <td className="p-3 text-center">
                             <input
                               type="checkbox"
@@ -614,7 +754,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                             />
                           </td>
 
-                          {/* Màu & Size */}
                           <td className="p-3">
                             <div className="flex items-center gap-2">
                               {v.imageUrl && (
@@ -631,12 +770,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                             </div>
                           </td>
 
-                          {/* Giá vốn */}
                           <td className="p-3 font-mono font-semibold text-slate-600">
                             {v.costPriceVND.toLocaleString("vi-VN")}đ
                           </td>
 
-                          {/* Giá bán (Editable) */}
                           <td className="p-3">
                             <input
                               type="number"
@@ -647,14 +784,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                             />
                           </td>
 
-                          {/* Margin % */}
                           <td className="p-3">
                             <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${margin >= 35 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
                               {margin}%
                             </span>
                           </td>
 
-                          {/* Tồn kho (Editable) */}
                           <td className="p-3">
                             <input
                               type="number"
@@ -664,7 +799,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                             />
                           </td>
 
-                          {/* Nguồn 1688 */}
                           <td className="p-3 text-center">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${v.sourceAvailable ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
                               {v.sourceAvailable ? "Còn hàng" : "Hết hàng"}
@@ -802,7 +936,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
 
-              {/* 2. Bộ Sưu Tập Ảnh Sản Phẩm (Gallery Images) */}
+              {/* 2. Bộ Sưu Tập Ảnh Sản Phẩm */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-900">
@@ -814,7 +948,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  {/* Ảnh chính */}
                   <div className="relative rounded-xl border-2 border-orange-500 overflow-hidden group aspect-square">
                     <img
                       src={formData.primaryImage}
@@ -826,7 +959,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Các ảnh gallery */}
                   {formData.galleryImages.map((img, i) => (
                     <div
                       key={i}
@@ -854,7 +986,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* 3. Ảnh Chi Tiết Bán Hàng Dài (Detail Images) */}
+              {/* 3. Ảnh Chi Tiết Bán Hàng Dài */}
               <div className="space-y-3 pt-4 border-t border-slate-200">
                 <div className="flex items-center justify-between">
                   <div>
@@ -902,7 +1034,412 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </div>
           )}
 
-          {/* TAB 4: CHẤT LƯỢNG LISTING */}
+          {/* TAB 4: TỐI ƯU SEO & SERP */}
+          {activeTab === "seo" && (
+            <div className="space-y-6">
+              {/* Header Tối Ưu SEO & Nút Tự Động Hóa */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg font-black shrink-0 shadow-xs">
+                    {seoAudit.score}
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      Điểm Chuẩn SEO E-Commerce Google
+                      <span className="text-[10px] px-2 py-0.5 bg-emerald-200/80 text-emerald-800 rounded-full font-extrabold">
+                        {seoAudit.score >= 85 ? "Rất Tốt (Top 1% SERP)" : "Cần Tối Ưu Thêm"}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Tối ưu hoá từ khóa cho Tiêu đề, Thẻ ALT hình ảnh, URL Slug, Meta tags và Rich Snippets schema.org.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAutoOptimizeSEO}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+                    title="Tự động áp dụng từ khóa, Meta description và thẻ ALT ảnh"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI Tối Ưu Toàn Diện
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowJsonLdModal(true)}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Code className="w-3.5 h-3.5 text-blue-600" />
+                    Mã Schema JSON-LD
+                  </button>
+                </div>
+              </div>
+
+              {/* 1. GOOGLE SERP SEARCH PREVIEW */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Search className="w-4 h-4 text-blue-600" />
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Xem Trước Kết Quả Google Tìm Kiếm (SERP Snippet Preview)
+                    </h4>
+                  </div>
+                  <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50">
+                    <button
+                      type="button"
+                      onClick={() => setSerpDevice("desktop")}
+                      className={`px-2 py-1 text-[11px] font-bold rounded flex items-center gap-1 ${
+                        serpDevice === "desktop" ? "bg-white text-blue-600 shadow-2xs" : "text-slate-500"
+                      }`}
+                    >
+                      <Monitor className="w-3 h-3" /> Desktop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSerpDevice("mobile")}
+                      className={`px-2 py-1 text-[11px] font-bold rounded flex items-center gap-1 ${
+                        serpDevice === "mobile" ? "bg-white text-blue-600 shadow-2xs" : "text-slate-500"
+                      }`}
+                    >
+                      <Smartphone className="w-3 h-3" /> Mobile
+                    </button>
+                  </div>
+                </div>
+
+                {/* Khung giả lập Google SERP */}
+                <div className={`p-4 bg-slate-50/70 border border-slate-200 rounded-xl ${serpDevice === "mobile" ? "max-w-md mx-auto" : ""}`}>
+                  <div className="space-y-1.5">
+                    {/* URL Breadcrumb */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                      <div className="w-4 h-4 rounded-full bg-orange-600 text-white flex items-center justify-center text-[9px] font-bold">
+                        16
+                      </div>
+                      <span className="font-semibold text-slate-800">1688 Hub Store</span>
+                      <span className="text-slate-400">›</span>
+                      <span className="text-slate-500 truncate">products › {formData.slug || "san-pham"}</span>
+                    </div>
+
+                    {/* Google Blue Title */}
+                    <h5 className="text-[17px] leading-snug font-medium text-[#1a0dab] hover:underline cursor-pointer">
+                      {formData.metaTitle || formData.titleVI}
+                    </h5>
+
+                    {/* Rich Snippets Stars & Price */}
+                    <div className="flex items-center gap-2 text-xs text-amber-600">
+                      <div className="flex items-center text-amber-500 font-bold">
+                        ★★★★★ <span className="ml-1 text-slate-700 font-semibold">4.9 (128 đánh giá)</span>
+                      </div>
+                      <span className="text-slate-300">·</span>
+                      <span className="font-extrabold text-emerald-700">
+                        {formData.minPriceVND.toLocaleString("vi-VN")} đ
+                      </span>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-slate-500 font-medium">Còn hàng (InStock)</span>
+                    </div>
+
+                    {/* Meta Description */}
+                    <p className="text-xs text-[#4d5156] leading-relaxed pt-0.5 line-clamp-2">
+                      {formData.metaDescription || "Mô tả sản phẩm hiển thị trên công cụ tìm kiếm Google..."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. CẤU HÌNH META TAGS & URL SLUG */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Tag className="w-4 h-4 text-orange-600" />
+                    Cấu Hình Thẻ Meta & Đường Dẫn Tối Ưu Hóa
+                  </h4>
+                  <span className="text-[11px] text-slate-500">
+                    Trực tiếp quyết định tiêu đề và mô tả xuất hiện trên Google
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Meta Title */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        SEO Meta Title (Tiêu Đề SERP)
+                      </label>
+                      <span className={`text-[11px] font-bold ${
+                        (formData.metaTitle?.length || 0) >= 40 && (formData.metaTitle?.length || 0) <= 65
+                          ? "text-emerald-600"
+                          : "text-amber-600"
+                      }`}>
+                        {formData.metaTitle?.length || 0} / 65 ký tự
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      value={formData.metaTitle || ""}
+                      onChange={(e) => handleFieldChange("metaTitle", e.target.value)}
+                      placeholder="Tiêu đề chuẩn SEO xuất hiện trên Google..."
+                      className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  {/* Meta Description */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        SEO Meta Description (Đoạn Giới Thiệu SERP)
+                      </label>
+                      <span className={`text-[11px] font-bold ${
+                        (formData.metaDescription?.length || 0) >= 115 && (formData.metaDescription?.length || 0) <= 160
+                          ? "text-emerald-600"
+                          : "text-amber-600"
+                      }`}>
+                        {formData.metaDescription?.length || 0} / 160 ký tự
+                      </span>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={formData.metaDescription || ""}
+                      onChange={(e) => handleFieldChange("metaDescription", e.target.value)}
+                      placeholder="Viết đoạn mô tả súc tích, kích thích click kèm ưu đãi mua hàng..."
+                      className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                    ></textarea>
+                  </div>
+
+                  {/* URL Slug */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        URL Slug (Đường dẫn sản phẩm không dấu)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleFieldChange("slug", generateSlug(formData.titleVI))}
+                        className="text-[11px] text-emerald-600 hover:underline font-bold"
+                      >
+                        Tạo lại slug từ tiêu đề
+                      </button>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="bg-slate-200 border border-r-0 border-slate-300 px-3 py-2 text-xs font-mono text-slate-600 rounded-l-lg">
+                        /products/
+                      </span>
+                      <input
+                        type="text"
+                        value={formData.slug}
+                        onChange={(e) => handleFieldChange("slug", generateSlug(e.target.value))}
+                        className="flex-1 text-xs font-mono px-3 py-2 border border-slate-300 rounded-r-lg focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. BỘ TỪ KHÓA MỤC TIÊU (FOCUS KEYWORDS TAG CLOUD) */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Từ Khóa Mục Tiêu & LSI Keywords ({formData.focusKeywords?.length || 0})
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Phục vụ thuật toán xếp hạng từ khóa tìm kiếm và gợi ý liên quan
+                  </span>
+                </div>
+
+                {/* Danh sách Tags */}
+                <div className="flex flex-wrap gap-2">
+                  {(formData.focusKeywords || []).map((kw, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-full"
+                    >
+                      #{kw}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveKeyword(kw)}
+                        className="text-emerald-600 hover:text-rose-600 font-bold ml-0.5"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Thêm từ khóa mới */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newKeywordInput}
+                    onChange={(e) => setNewKeywordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddKeyword())}
+                    placeholder="Nhập từ khóa SEO mới (ví dụ: đầm xòe công sở, hàng thiết kế...)"
+                    className="flex-1 text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddKeyword}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Thêm Từ Khóa
+                  </button>
+                </div>
+              </div>
+
+              {/* 4. QUẢN LÝ THẺ ALT HÌNH ẢNH (GOOGLE IMAGE SEARCH) */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-blue-600" />
+                      Tối Ưu Thẻ ALT Hình Ảnh (Google Image Search SEO)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Google sử dụng thẻ ALT để hiểu nội dung ảnh và hiển thị trên tab Google Hình Ảnh.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateAlts}
+                    className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-blue-600" />
+                    Tự Động Điền ALT Toàn Bộ Ảnh
+                  </button>
+                </div>
+
+                {/* Bảng ALT cho từng ảnh */}
+                <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-72 overflow-y-auto bg-slate-50/50">
+                  {(formData.imagesSEO || []).map((img, idx) => (
+                    <div key={idx} className="p-2.5 flex items-center gap-3 hover:bg-white transition-colors">
+                      <img
+                        src={img.url}
+                        alt=""
+                        className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0 bg-white"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            img.type === "PRIMARY"
+                              ? "bg-orange-100 text-orange-700"
+                              : img.type === "DETAIL"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-slate-200 text-slate-700"
+                          }`}>
+                            {img.type === "PRIMARY" ? "Ảnh Chính" : img.type === "DETAIL" ? "Ảnh Chi Tiết" : "Gallery"}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono truncate max-w-xs">
+                            {img.url.split("/").pop()}
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={img.alt}
+                          onChange={(e) => handleUpdateImageAlt(img.url, e.target.value)}
+                          placeholder="Nhập thẻ ALT chứa từ khóa mô tả hình ảnh..."
+                          className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 5. CÂU HỎI THƯỜNG GẶP FAQ SCHEMA */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-purple-600" />
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Khối Câu Hỏi Thường Gặp (FAQ Schema Markup)
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Xuất hiện dưới dạng accordion trực tiếp trên kết quả tìm kiếm Google
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {(formData.faqs || []).map((faq, i) => (
+                    <div key={i} className="p-3 bg-white border border-slate-200 rounded-lg space-y-1.5">
+                      <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                        <span className="text-purple-600">Q{i + 1}:</span>
+                        <input
+                          type="text"
+                          value={faq.question}
+                          onChange={(e) => {
+                            const nextFaqs = [...(formData.faqs || [])];
+                            nextFaqs[i] = { ...nextFaqs[i], question: e.target.value };
+                            handleFieldChange("faqs", nextFaqs);
+                          }}
+                          className="w-full text-xs font-semibold px-2 py-1 border border-slate-200 rounded focus:ring-1 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div className="text-xs text-slate-600 flex items-start gap-1.5">
+                        <span className="text-slate-400 font-bold">A:</span>
+                        <textarea
+                          rows={2}
+                          value={faq.answer}
+                          onChange={(e) => {
+                            const nextFaqs = [...(formData.faqs || [])];
+                            nextFaqs[i] = { ...nextFaqs[i], answer: e.target.value };
+                            handleFieldChange("faqs", nextFaqs);
+                          }}
+                          className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:ring-1 focus:ring-purple-500"
+                        ></textarea>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 6. BẢNG CHECKLIST KIỂM ĐỊNH SEO AUDIT */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <ListChecks className="w-4 h-4 text-emerald-600" />
+                    Bảng Tiêu Chí Đánh Giá Chuẩn SEO (SEO Audit Checklist)
+                  </h4>
+                  <span className="text-xs font-extrabold text-emerald-700">
+                    Đạt {seoAudit.checks.filter(c => c.passed).length}/{seoAudit.checks.length} tiêu chuẩn
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {seoAudit.checks.map((chk) => (
+                    <div
+                      key={chk.id}
+                      className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-3 ${
+                        chk.passed
+                          ? "bg-emerald-50/50 border-emerald-200 text-emerald-900"
+                          : "bg-amber-50/50 border-amber-200 text-amber-900"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {chk.passed ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        )}
+                        <div>
+                          <span className="font-bold">{chk.title}</span>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{chk.tip}</p>
+                        </div>
+                      </div>
+                      <span className="font-mono font-bold shrink-0 text-[11px]">
+                        +{chk.scoreDelta}đ
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: CHẤT LƯỢNG LISTING */}
           {activeTab === "quality" && (
             <div className="space-y-6">
               <div className="flex items-center gap-4 bg-orange-50/60 border border-orange-200 p-4 rounded-xl">
@@ -914,7 +1451,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     Điểm Sẵn Sàng Bán Hàng (Quality Readiness Score)
                   </h4>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Đánh giá theo các tiêu chuẩn e-commerce để đảm bảo tỷ lệ chuyển đổi cao khi chạy quảng cáo hoặc bán trên sàn.
+                    Đánh giá theo các tiêu chuẩn e-commerce và SEO để đảm bảo tỷ lệ chuyển đổi cao khi chạy quảng cáo hoặc bán trên sàn.
                   </p>
                 </div>
               </div>
@@ -961,22 +1498,75 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   <span className="font-bold text-emerald-600">+20 Điểm</span>
                 </div>
 
-                {formData.attributes && formData.attributes.length > 0 && (
-                  <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      <span className="font-semibold text-slate-800">
-                        Thông số kỹ thuật chi tiết: {formData.attributes.length} thuộc tính song ngữ
-                      </span>
-                    </div>
-                    <span className="font-bold text-emerald-600">+10 Điểm</span>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    <span className="font-semibold text-slate-800">
+                      Tối ưu SEO Google: {formData.focusKeywords?.length || 0} từ khóa & {formData.imagesSEO?.length || 0} thẻ ALT
+                    </span>
                   </div>
-                )}
+                  <span className="font-bold text-emerald-600">+10 Điểm</span>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal xem mã Schema JSON-LD */}
+      {showJsonLdModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-60 p-4">
+          <div className="bg-slate-950 text-slate-100 rounded-2xl max-w-2xl w-full border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Code className="w-5 h-5 text-blue-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Mã Nguồn Cấu Trúc Schema.org (Product JSON-LD)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowJsonLdModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Nhúng đoạn mã này vào thẻ <code className="text-blue-300">&lt;head&gt;</code> hoặc cấu hình trên website để Google hiển thị Rich Snippets (Giá bán, đánh giá 5 sao, tình trạng kho).
+            </p>
+
+            <div className="relative">
+              <pre className="text-xs font-mono bg-slate-900 p-4 rounded-xl border border-slate-800 text-emerald-400 max-h-80 overflow-y-auto">
+                {jsonLdCode}
+              </pre>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(jsonLdCode);
+                  setCopiedJsonLd(true);
+                  setTimeout(() => setCopiedJsonLd(false), 2000);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+              >
+                {copiedJsonLd ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedJsonLd ? "Đã Sao Chép!" : "Sao Chép Mã JSON-LD"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowJsonLdModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

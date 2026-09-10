@@ -41,6 +41,35 @@ export interface ProductPriceTierItem {
   priceUSD?: number;
 }
 
+export interface ProductImageSEO {
+  url: string;
+  alt: string;
+  title?: string;
+  type?: "PRIMARY" | "GALLERY" | "DETAIL" | "VARIANT";
+}
+
+export interface ProductFAQItem {
+  question: string;
+  answer: string;
+}
+
+export interface ProductSEOMetadata {
+  metaTitleVI?: string;
+  metaTitleEN?: string;
+  metaDescriptionVI?: string;
+  metaDescriptionEN?: string;
+  focusKeywordsVI?: string[];
+  focusKeywordsEN?: string[];
+  canonicalUrl?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  faqs?: ProductFAQItem[];
+  jsonLdSchema?: Record<string, any>;
+  imagesSEO?: ProductImageSEO[];
+  seoScore?: number;
+}
+
 export interface WebProduct {
   id?: string;
   slug: string;
@@ -71,6 +100,14 @@ export interface WebProduct {
   // Thuộc tính chi tiết & Bảng giá sỉ bậc thang
   attributes?: ProductAttributeItem[];
   priceTiers?: ProductPriceTierItem[];
+
+  // SEO & Dữ liệu có cấu trúc Google
+  seo?: ProductSEOMetadata;
+  metaTitle?: string;
+  metaDescription?: string;
+  focusKeywords?: string[];
+  imagesSEO?: ProductImageSEO[];
+  faqs?: ProductFAQItem[];
 
   status: PublishStatus;
   qualityScore: number;

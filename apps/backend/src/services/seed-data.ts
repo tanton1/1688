@@ -1,6 +1,50 @@
 import { WebProduct, ProductDiffSummary } from "@hub1688/shared-types";
+import {
+  extractSEOKeywords,
+  generateSEOMeta,
+  generateImageAltTags,
+  generateProductFAQs,
+  generateProductJsonLd
+} from "@hub1688/shared-utils";
 
-export const SEED_PRODUCTS: WebProduct[] = [
+function enrichSeedWithSEO(p: WebProduct): WebProduct {
+  const metaVI = generateSEOMeta(p.titleVI, p.categoryName, p.attributes, "VI");
+  const metaEN = generateSEOMeta(p.titleEN || p.titleVI, p.categoryName, p.attributes, "EN");
+  const focusKeywordsVI = extractSEOKeywords(p.titleVI, p.categoryName, "VI");
+  const focusKeywordsEN = extractSEOKeywords(p.titleEN || p.titleVI, p.categoryName, "EN");
+  const imagesSEO = generateImageAltTags(
+    p.titleVI,
+    p.primaryImage,
+    p.galleryImages,
+    p.detailImages || [],
+    p.variants
+  );
+  const faqs = generateProductFAQs(p.titleVI, p.categoryName, "VI");
+  const jsonLdSchema = generateProductJsonLd(p);
+
+  return {
+    ...p,
+    metaTitle: metaVI.metaTitle,
+    metaDescription: metaVI.metaDescription,
+    focusKeywords: focusKeywordsVI,
+    imagesSEO,
+    faqs,
+    seo: {
+      metaTitleVI: metaVI.metaTitle,
+      metaTitleEN: metaEN.metaTitle,
+      metaDescriptionVI: metaVI.metaDescription,
+      metaDescriptionEN: metaEN.metaDescription,
+      focusKeywordsVI,
+      focusKeywordsEN,
+      imagesSEO,
+      faqs,
+      jsonLdSchema,
+      seoScore: 98
+    }
+  };
+}
+
+const RAW_SEED_PRODUCTS: WebProduct[] = [
   {
     id: "prod_1688_715421588882",
     slug: "ao-so-mi-nu-linen-form-rong-phong-cach-han-quoc-7154",
@@ -393,6 +437,8 @@ Women's Oversized Linen Blouse features an airy cotton-linen weave, dropped shou
     updatedAt: new Date(Date.now() - 3600000 * 18).toISOString()
   }
 ];
+
+export const SEED_PRODUCTS: WebProduct[] = RAW_SEED_PRODUCTS.map(enrichSeedWithSEO);
 
 export const SEED_DIFF_LOGS: ProductDiffSummary[] = [
   {

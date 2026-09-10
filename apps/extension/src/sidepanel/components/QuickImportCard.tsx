@@ -17,6 +17,7 @@ export const QuickImportCard: React.FC<QuickImportCardProps> = ({
 }) => {
   const [options, setOptions] = useState({
     translate: true,
+    seoOptimize: true,
     copyImages: true,
     copyDescription: true,
     copySku: true,
@@ -61,15 +62,16 @@ export const QuickImportCard: React.FC<QuickImportCardProps> = ({
       {/* Sync configuration checkboxes */}
       <div className="p-4 space-y-2.5">
         <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-          Cấu hình đồng bộ nhanh
+          Cấu hình đồng bộ nhanh & Tối ưu SEO
         </h3>
 
         {[
-          { key: "translate", label: "Dịch tiếng Việt chuẩn E-commerce" },
-          { key: "copyImages", label: "Tải ảnh sản phẩm chất lượng cao" },
-          { key: "copyDescription", label: "Tái cấu trúc mô tả sản phẩm" },
+          { key: "translate", label: "Dịch song ngữ (VI/EN) chuẩn E-commerce" },
+          { key: "seoOptimize", label: "Tối ưu từ khóa SEO, Thẻ ALT ảnh & FAQ Schema" },
+          { key: "copyImages", label: "Đồng bộ Album ảnh sắc nét & Video HD" },
+          { key: "copyDescription", label: "Tái cấu trúc mô tả H1-H3 & JSON-LD" },
           { key: "copySku", label: "Tổ hợp ma trận biến thể SKU" },
-          { key: "autoPricing", label: "Tự tính giá bán & biên lợi nhuận" }
+          { key: "autoPricing", label: "Tự tính giá bán lẻ & thang giá sỉ bậc thang" }
         ].map((item) => (
           <label
             key={item.key}

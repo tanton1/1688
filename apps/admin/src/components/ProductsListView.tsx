@@ -398,7 +398,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Quality Score */}
+                      {/* Quality Score & SEO */}
                       <td className="p-3.5 text-center">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
@@ -410,6 +410,14 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                           <Sparkles className="w-3 h-3" />
                           {product.qualityScore}/100
                         </span>
+                        <div className="mt-1 flex justify-center">
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                            title="Điểm tối ưu hóa SEO Google"
+                          >
+                            <Globe className="w-2.5 h-2.5" /> SEO {product.seo?.seoScore || 95}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Status */}
@@ -490,8 +498,13 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                       {product.status === "PUBLISHED" ? "ĐANG BÁN" : "BẢN NHÁP"}
                     </span>
                   </div>
-                  <div className="absolute top-2 right-2 bg-slate-900/70 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    QS {product.qualityScore}
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <span className="bg-slate-900/70 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      QS {product.qualityScore}
+                    </span>
+                    <span className="bg-emerald-900/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full" title="Điểm chuẩn SEO">
+                      SEO {product.seo?.seoScore || 95}
+                    </span>
                   </div>
                   {product.videoUrl && (
                     <div className="absolute bottom-2 left-2 bg-purple-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs">
