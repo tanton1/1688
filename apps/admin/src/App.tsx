@@ -5,19 +5,22 @@ import { Sidebar, AdminTab } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DashboardView } from "./components/DashboardView";
 import { ProductsListView } from "./components/ProductsListView";
-import { ProductDetailModal } from "./components/ProductDetailModal";
 import { DiffCenterView } from "./components/DiffCenterView";
 import { PricingRulesView } from "./components/PricingRulesView";
 import { GlossaryView } from "./components/GlossaryView";
 import { OrdersView } from "./components/OrdersView";
 import { AuthModal, CurrentUser } from "./components/AuthModal";
 import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
-import { BannerFrameStudioModal, StudioMode } from "./components/BannerFrameStudioModal";
-import { MultiPlatformCloneModal } from "./components/MultiPlatformCloneModal";
-import { TemplatesView } from "./components/TemplatesView";
-import { StorefrontView } from "./storefront/StorefrontView";
-import { StoreSettingsModal } from "./storefront/StoreSettingsModal";
-import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
+import type { StudioMode } from "./components/BannerFrameStudioModal";
+import { CheckCircle2, AlertCircle, Settings, Globe, Store, ExternalLink } from "lucide-react";
+
+const ProductDetailModal = React.lazy(() => import("./components/ProductDetailModal").then(module => ({ default: module.ProductDetailModal })));
+const BannerFrameStudioModal = React.lazy(() => import("./components/BannerFrameStudioModal").then(module => ({ default: module.BannerFrameStudioModal })));
+const MultiPlatformCloneModal = React.lazy(() => import("./components/MultiPlatformCloneModal").then(module => ({ default: module.MultiPlatformCloneModal })));
+const TemplatesView = React.lazy(() => import("./components/TemplatesView").then(module => ({ default: module.TemplatesView })));
+const StorefrontView = React.lazy(() => import("./storefront/StorefrontView").then(module => ({ default: module.StorefrontView })));
+const StoreSettingsModal = React.lazy(() => import("./storefront/StoreSettingsModal").then(module => ({ default: module.StoreSettingsModal })));
+const LoadingPanel = () => <div role="status" className="grid min-h-40 place-items-center text-sm font-semibold text-slate-500">Đang tải phân hệ…</div>;
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AdminTab>("DASHBOARD");
@@ -327,17 +330,17 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        <StorefrontView
+        <React.Suspense fallback={<LoadingPanel />}><StorefrontView
           onBackToAdmin={openAdmin}
           onShowToast={showToast}
           initialProductId={storefrontProductId}
-        />
+        /></React.Suspense>
 
-        <StoreSettingsModal
+        <React.Suspense fallback={null}><StoreSettingsModal
           isOpen={showStoreSettingsModal}
           onClose={() => setShowStoreSettingsModal(false)}
           onShowToast={showToast}
-        />
+        /></React.Suspense>
       </div>
     );
   }
@@ -415,6 +418,43 @@ export const App: React.FC = () => {
             />
           )}
 
+          {currentTab === "STOREFRONT" && (
+            <div className="space-y-4 -m-3 sm:-m-5 lg:-m-6">
+              <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 flex flex-wrap items-center justify-between gap-3 sticky top-16 md:top-0 z-20 shadow-md">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                    <Store className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-xs sm:text-sm">Giao Diện Web Bán Hàng Trực Tiếp (Storefront Live)</h3>
+                    <p className="text-[11px] text-emerald-100">Khách mua hàng có thể chọn sản phẩm, thêm giỏ và quét VietQR thanh toán</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowStoreSettingsModal(true)}
+                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>⚙️ Cài Đặt Shop & VietQR</span>
+                  </button>
+                  <button
+                    onClick={() => openStorefront()}
+                    className="px-3.5 py-1.5 bg-white text-emerald-900 hover:bg-emerald-50 rounded-xl text-xs font-black transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Mở Toàn Màn Hình</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <StorefrontView
+                onBackToAdmin={() => setCurrentTab("PRODUCTS")}
+                onShowToast={showToast}
+                initialProductId={storefrontProductId}
+              />
+            </div>
+          )}
+
           {currentTab === "ORDERS" && (
             <OrdersView onShowToast={showToast} />
           )}
@@ -430,12 +470,12 @@ export const App: React.FC = () => {
 
           {currentTab === "GLOSSARY" && <GlossaryView />}
 
-          {currentTab === "TEMPLATES" && <TemplatesView />}
+          {currentTab === "TEMPLATES" && <React.Suspense fallback={<LoadingPanel />}><TemplatesView /></React.Suspense>}
         </main>
       </div>
 
       {/* Modal Chi Tiết & Biên Tập Sản Phẩm */}
-      <ProductDetailModal
+      <React.Suspense fallback={null}><ProductDetailModal
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onSave={handleSaveProduct}
@@ -449,10 +489,10 @@ export const App: React.FC = () => {
           setBannerInitialMode(mode || "TRANSLATE");
           setShowBannerModal(true);
         }}
-      />
+      /></React.Suspense>
 
       {/* Modal E-Commerce Banner & Frame Studio + AI Dịch Chữ Trên Ảnh */}
-      <BannerFrameStudioModal
+      <React.Suspense fallback={null}><BannerFrameStudioModal
         isOpen={showBannerModal}
         onClose={() => {
           setShowBannerModal(false);
@@ -465,7 +505,7 @@ export const App: React.FC = () => {
         onApplyNewPrimaryImage={handleApplyBannerImage}
         onApplyEditedImage={handleApplyEditedImage}
         onShowToast={showToast}
-      />
+      /></React.Suspense>
 
       {/* Modal Omnichannel Connectors (WooCommerce, Shopify, Shopee/TikTok CSV & Telegram) */}
       <StoreConnectorsModal
@@ -480,7 +520,7 @@ export const App: React.FC = () => {
       />
 
       {/* Modal Clone Sản Phẩm Đa Nền Tảng (Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Web) */}
-      <MultiPlatformCloneModal
+      <React.Suspense fallback={null}><MultiPlatformCloneModal
         isOpen={showMultiCloneModal}
         onClose={() => setShowMultiCloneModal(false)}
         onProductCreated={(newProd) => {
@@ -489,7 +529,7 @@ export const App: React.FC = () => {
           setSelectedProduct(newProd);
         }}
         onShowToast={showToast}
-      />
+      /></React.Suspense>
 
       {/* Modal Authentication & Role Management */}
       <AuthModal
@@ -501,11 +541,11 @@ export const App: React.FC = () => {
       />
 
       {/* Modal Cấu Hình Web Bán Hàng Trực Tiếp (Storefront Settings) */}
-      <StoreSettingsModal
+      <React.Suspense fallback={null}><StoreSettingsModal
         isOpen={showStoreSettingsModal}
         onClose={() => setShowStoreSettingsModal(false)}
         onShowToast={showToast}
-      />
+      /></React.Suspense>
 
       {/* Modal Cấu Hình Backend URL */}
       {showSettingsModal && (

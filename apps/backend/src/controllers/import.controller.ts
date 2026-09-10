@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import crypto from "node:crypto";
 import {
   ImportProductPayload,
   WebProduct,
@@ -194,7 +195,7 @@ export class ImportController {
       };
     });
 
-    const productId = `prod_${Date.now()}`;
+    const productId = crypto.randomUUID();
     const skuCode = `SP-${Date.now().toString().slice(-6)}`;
 
     const detailImagesList = (normalized.description?.images && normalized.description.images.length > 0)

@@ -217,6 +217,8 @@ let templatesStore: ProductTemplate[] = [
   }
 ];
 
+const DEFAULT_TEMPLATES: ProductTemplate[] = JSON.parse(JSON.stringify(templatesStore));
+
 export class TemplatesController {
   // GET /api/v1/templates
   public async getTemplates(req: Request, res: Response): Promise<void> {
@@ -350,6 +352,8 @@ export class TemplatesController {
   // POST /api/v1/templates/reset-defaults
   public async resetDefaults(req: Request, res: Response): Promise<void> {
     try {
+      const now = new Date().toISOString();
+      templatesStore = DEFAULT_TEMPLATES.map(template => ({ ...JSON.parse(JSON.stringify(template)), createdAt: now, updatedAt: now }));
       res.json({ success: true, total: templatesStore.length, templates: templatesStore });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });

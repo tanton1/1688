@@ -21,7 +21,8 @@ export class DiffSyncService {
     const changes: DiffFieldChange[] = [];
 
     // 1. Kiểm tra biến động giá nguồn min CNY
-    const oldAvgCostCNY = (currentProduct.variants[0]?.costPriceVND || 0) / 3800;
+    const sourceSnapshots = currentProduct.variants.map(variant => variant.sourcePrice).filter((value): value is number => typeof value === "number" && value > 0);
+    const oldAvgCostCNY = sourceSnapshots.length ? Math.min(...sourceSnapshots) : 0;
     const newMinCostCNY = latestRaw1688.prices.minPriceCNY;
     
     let hasPriceChange = false;
@@ -45,8 +46,8 @@ export class DiffSyncService {
 
       changes.push({
         fieldName: "price",
-        oldValue: `¥${oldAvgCostCNY.toFixed(2)}`,
-        newValue: `¥${newMinCostCNY.toFixed(2)}`,
+        oldValue: oldAvgCostCNY,
+        newValue: newMinCostCNY,
         deltaPercent,
         severity,
         autoApplied

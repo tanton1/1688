@@ -11,7 +11,16 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "*://*.1688.com/*",
+    "*://*.taobao.com/*",
+    "*://*.tmall.com/*",
+    "*://*.shopee.vn/*",
+    "*://shop.tiktok.com/*",
+    "*://*.aliexpress.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -26,24 +35,17 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "*://*.1688.com/*",
+        "*://*.taobao.com/*",
+        "*://*.tmall.com/*",
+        "*://*.shopee.vn/*",
+        "*://shop.tiktok.com/*",
+        "*://*.aliexpress.com/*"
       ],
       "js": [
         "src/content/index.js"
       ],
       "run_at": "document_end"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/sidepanel/*",
-        "assets/*",
-        "icons/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
     }
   ],
   "icons": {

@@ -32,6 +32,20 @@ export async function setApiBaseUrl(url: string): Promise<void> {
   }
 }
 
+const ACCESS_TOKEN_KEY = "hub1688_access_token";
+export async function getAccessToken(): Promise<string> {
+  if (typeof chrome === "undefined" || !chrome.storage?.session) return "";
+  const result = await chrome.storage.session.get([ACCESS_TOKEN_KEY]);
+  return typeof result[ACCESS_TOKEN_KEY] === "string" ? result[ACCESS_TOKEN_KEY] : "";
+}
+
+export async function setAccessToken(token: string): Promise<void> {
+  if (typeof chrome === "undefined" || !chrome.storage?.session) return;
+  const clean = token.trim();
+  if (clean) await chrome.storage.session.set({ [ACCESS_TOKEN_KEY]: clean });
+  else await chrome.storage.session.remove([ACCESS_TOKEN_KEY]);
+}
+
 export interface BackendAiConfig {
   isConfigured: boolean;
   maskedKey: string;
@@ -119,25 +133,15 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   const endpoint = path.startsWith("/") ? path : `/${path}`;
   const baseUrl = await getApiBaseUrl();
   const selectedModel = await getSelectedModel();
+  const accessToken = await getAccessToken();
 
   const headers = new Headers(options.headers || {});
   if (selectedModel && !headers.has("x-ai-model")) {
     headers.set("x-ai-model", selectedModel);
   }
+  if (accessToken && !headers.has("authorization")) headers.set("authorization", `Bearer ${accessToken}`);
 
   const mergedOptions = { ...options, headers };
 
-  try {
-    const res = await fetch(`${baseUrl}${endpoint}`, mergedOptions);
-    return res;
-  } catch (err) {
-    console.warn(`[Config] Fetch failed on ${baseUrl}${endpoint}:`, err);
-    // Nếu gọi bị lỗi mạng (ví dụ localhost chết hoặc custom domain timeout), fallback trực tiếp về Vercel
-    if (baseUrl !== DEFAULT_API_URL) {
-      console.log(`[Config] Retrying with production fallback: ${DEFAULT_API_URL}${endpoint}`);
-      return await fetch(`${DEFAULT_API_URL}${endpoint}`, mergedOptions);
-    }
-    throw err;
-  }
+  return fetch(`${baseUrl}${endpoint}`, mergedOptions);
 }
-

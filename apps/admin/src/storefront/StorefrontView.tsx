@@ -98,27 +98,49 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         setConfig(infoRes.config);
       }
 
-      if (prodRes?.products) {
-        setProducts(prodRes.products);
-        setCategories(prodRes.categories || []);
+      let loadedProducts: WebProduct[] = [];
 
-        if (initialProductId) {
-          const match = prodRes.products.find((p: WebProduct) => p.id === initialProductId || p.slug === initialProductId);
-          if (match) setDetailProduct(match);
-        }
-      } else {
-        // Fallback: Nếu backend chưa có hoặc rỗng, lấy từ local persisted
+      // 1. Kiểm tra sản phẩm từ Backend
+      if (prodRes?.products && prodRes.products.length > 0) {
+        loadedProducts = prodRes.products;
+      }
+
+      // 2. Kiểm tra từ localStorage persistence
+      if (loadedProducts.length === 0) {
         const rawLocal = localStorage.getItem("hub1688_persisted_products");
         if (rawLocal) {
-          const parsed: WebProduct[] = JSON.parse(rawLocal);
-          const published = parsed.filter(p => p.status === "PUBLISHED");
-          setProducts(published);
-          const catSet = new Set(published.map(p => p.categoryName).filter(Boolean));
-          setCategories(Array.from(catSet) as string[]);
+          try {
+            const parsed: WebProduct[] = JSON.parse(rawLocal);
+            const published = parsed.filter(p => p.status === "PUBLISHED");
+            if (published.length > 0) {
+              loadedProducts = published;
+            } else if (parsed.length > 0) {
+              // Hiển thị các sản phẩm đã clone/cào để người dùng thấy ngay trên cửa hàng
+              loadedProducts = parsed;
+            }
+          } catch {}
         }
+      }
+
+      // 3. Nếu kho hoàn toàn trống, nạp sản phẩm demo chuẩn xưởng
+      if (loadedProducts.length === 0) {
+        loadedProducts = getDemoStoreProducts();
+      }
+
+      setProducts(loadedProducts);
+      const catSet = new Set(loadedProducts.map(p => p.categoryName).filter(Boolean));
+      setCategories(Array.from(catSet) as string[]);
+
+      if (initialProductId) {
+        const match = loadedProducts.find(p => p.id === initialProductId || p.slug === initialProductId);
+        if (match) setDetailProduct(match);
       }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu cửa hàng:", err);
+      const demoItems = getDemoStoreProducts();
+      setProducts(demoItems);
+      const catSet = new Set(demoItems.map(p => p.categoryName).filter(Boolean));
+      setCategories(Array.from(catSet) as string[]);
     } finally {
       setIsLoading(false);
     }
@@ -474,3 +496,225 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     </div>
   );
 };
+
+function getDemoStoreProducts(): WebProduct[] {
+  return [
+    {
+      id: "DEMO-001",
+      slug: "ao-polo-nam-cotton-pique-cao-cap",
+      skuCode: "POLO-2026-01",
+      titleVI: "Áo Polo Nam Cotton Pique Cao Cấp Co Giãn Thoáng Khí Phong Cách Công Sở",
+      titleEN: "Men's Classic Pique Cotton Polo Shirt Breathable Casual Business",
+      categoryName: "Thời Trang Nam",
+      primaryImage: "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=600&auto=format&fit=crop&q=80",
+      galleryImages: [
+        "https://images.unsplash.com/photo-1625910513413-56839352e008?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80"
+      ],
+      detailImages: [
+        "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=800&auto=format&fit=crop&q=80"
+      ],
+      minPriceVND: 189000,
+      maxPriceVND: 219000,
+      qualityScore: 96,
+      status: "PUBLISHED",
+      sourceProductId: "1688-DEMO-001",
+      sourceUrl: "https://detail.1688.com/offer/demo1.html",
+      supplierName: "Xưởng Dệt May Quảng Châu",
+      isTitleLocked: false,
+      isDescLocked: false,
+      isImagesLocked: false,
+      isPriceAutoSync: true,
+      isStockAutoSync: true,
+      fullDescVI: "Áo polo nam chất liệu Cotton Pique dệt mắt chim cao cấp, thấm hút mồ hôi cực tốt. Phù hợp đi làm, dạo phố, thể thao nhẹ nhàng. Đường may tỉ mỉ, bo cổ dày dặn không bai dão sau nhiều lần giặt.",
+      attributes: [
+        { keyVI: "Chất liệu", valueVI: "95% Cotton Pique, 5% Spandex", keyCN: "材质", valueCN: "棉" },
+        { keyVI: "Kiểu dáng", valueVI: "Slim-fit vừa vặn tôn dáng", keyCN: "版型", valueCN: "修身" },
+        { keyVI: "Xuất xứ", valueVI: "Xưởng dệt may cao cấp", keyCN: "产地", valueCN: "广东" }
+      ],
+      variants: [
+        {
+          sourceSkuId: "POLO-BLK-L",
+          colorName: "Đen Basic",
+          sizeName: "Size L (55-65kg)",
+          costPriceVND: 95000,
+          sellingPriceVND: 189000,
+          stockQuantity: 150,
+          imageUrl: "https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        },
+        {
+          sourceSkuId: "POLO-WHT-XL",
+          colorName: "Trắng Tinh Khôi",
+          sizeName: "Size XL (65-75kg)",
+          costPriceVND: 95000,
+          sellingPriceVND: 189000,
+          stockQuantity: 200,
+          imageUrl: "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        },
+        {
+          sourceSkuId: "POLO-BLU-2XL",
+          colorName: "Xanh Navy",
+          sizeName: "Size 2XL (75-85kg)",
+          costPriceVND: 105000,
+          sellingPriceVND: 219000,
+          stockQuantity: 80,
+          imageUrl: "https://images.unsplash.com/photo-1625910513413-56839352e008?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        }
+      ]
+    },
+    {
+      id: "DEMO-002",
+      slug: "dam-vay-xoe-hoa-nhi-vintage-du-tiec",
+      skuCode: "DRESS-2026-02",
+      titleVI: "Đầm Váy Xòe Nữ Hoa Nhí Phong Cách Vintage Hàn Quốc Dáng Dài Tôn Dáng",
+      titleEN: "Women's Vintage Floral Midi Dress Elegant Party Casual",
+      categoryName: "Thời Trang Nữ",
+      primaryImage: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=600&auto=format&fit=crop&q=80",
+      galleryImages: [
+        "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600&auto=format&fit=crop&q=80"
+      ],
+      minPriceVND: 245000,
+      maxPriceVND: 265000,
+      qualityScore: 94,
+      status: "PUBLISHED",
+      sourceProductId: "1688-DEMO-002",
+      sourceUrl: "https://detail.1688.com/offer/demo2.html",
+      supplierName: "Xưởng Váy Đầm Thiết Kế",
+      isTitleLocked: false,
+      isDescLocked: false,
+      isImagesLocked: false,
+      isPriceAutoSync: true,
+      isStockAutoSync: true,
+      fullDescVI: "Thiết kế đầm xòe cổ V dịu dàng, chất voan tơ 2 lớp mềm mịn bay bổng. Họa tiết hoa nhí vintage nhẹ nhàng sang chảnh phù hợp đi làm, dự tiệc, đi chơi chụp ảnh.",
+      attributes: [
+        { keyVI: "Chất liệu", valueVI: "Voan lụa tơ 2 lớp kèm lót trong", keyCN: "面料", valueCN: "雪纺" },
+        { keyVI: "Chiều dài", valueVI: "Dáng dài qua gối 105cm", keyCN: "裙长", valueCN: "长裙" }
+      ],
+      variants: [
+        {
+          sourceSkuId: "DR-FLW-S",
+          colorName: "Hoa Vàng Nhạt",
+          sizeName: "Size S (42-48kg)",
+          costPriceVND: 120000,
+          sellingPriceVND: 245000,
+          stockQuantity: 90,
+          imageUrl: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        },
+        {
+          sourceSkuId: "DR-FLW-M",
+          colorName: "Hoa Vàng Nhạt",
+          sizeName: "Size M (49-55kg)",
+          costPriceVND: 120000,
+          sellingPriceVND: 245000,
+          stockQuantity: 120,
+          imageUrl: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        }
+      ]
+    },
+    {
+      id: "DEMO-003",
+      slug: "giay-sneaker-the-thao-nam-nu-don-de",
+      skuCode: "SHOE-2026-03",
+      titleVI: "Giày Thể Thao Sneaker Nữ Unisex Phong Cách Chunky Độn Đế Êm Chân",
+      titleEN: "Unisex Chunky Sneaker Platform Running Sports Shoes",
+      categoryName: "Giày Dép & Phụ Kiện",
+      primaryImage: "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=600&auto=format&fit=crop&q=80",
+      galleryImages: [
+        "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80"
+      ],
+      minPriceVND: 299000,
+      maxPriceVND: 320000,
+      qualityScore: 95,
+      status: "PUBLISHED",
+      sourceProductId: "1688-DEMO-003",
+      sourceUrl: "https://detail.1688.com/offer/demo3.html",
+      supplierName: "Xưởng Giày Phúc Kiến",
+      isTitleLocked: false,
+      isDescLocked: false,
+      isImagesLocked: false,
+      isPriceAutoSync: true,
+      isStockAutoSync: true,
+      fullDescVI: "Giày sneaker thể thao phong cách Hàn Quốc thời thượng, đế cao su non đúc nguyên khối 4.5cm êm nhẹ chống trơn trượt.",
+      attributes: [
+        { keyVI: "Chất liệu đế", valueVI: "Cao su đúc nguyên khối chống mòn", keyCN: "鞋底", valueCN: "橡胶" },
+        { keyVI: "Độ cao đế", valueVI: "4.5 cm", keyCN: "跟高", valueCN: "4.5cm" }
+      ],
+      variants: [
+        {
+          sourceSkuId: "SH-WHT-37",
+          colorName: "Trắng Sữa",
+          sizeName: "Size 37",
+          costPriceVND: 140000,
+          sellingPriceVND: 299000,
+          stockQuantity: 60,
+          imageUrl: "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        },
+        {
+          sourceSkuId: "SH-WHT-38",
+          colorName: "Trắng Sữa",
+          sizeName: "Size 38",
+          costPriceVND: 140000,
+          sellingPriceVND: 299000,
+          stockQuantity: 75,
+          imageUrl: "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        }
+      ]
+    },
+    {
+      id: "DEMO-004",
+      slug: "balo-thoi-trang-chong-nuoc-laptop-15-inch",
+      skuCode: "BAG-2026-04",
+      titleVI: "Balo Thời Trang Chống Thấm Nước Đựng Vừa Laptop 15.6 Inch Nhiều Ngăn Tiện Ích",
+      titleEN: "Waterproof Casual Backpack Travel School Bag with Laptop Sleeve",
+      categoryName: "Túi Xách & Balo",
+      primaryImage: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80",
+      galleryImages: [
+        "https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?w=600&auto=format&fit=crop&q=80"
+      ],
+      minPriceVND: 215000,
+      maxPriceVND: 235000,
+      qualityScore: 92,
+      status: "PUBLISHED",
+      sourceProductId: "1688-DEMO-004",
+      sourceUrl: "https://detail.1688.com/offer/demo4.html",
+      supplierName: "Xưởng Balo & Túi Xách Bạch Câu",
+      isTitleLocked: false,
+      isDescLocked: false,
+      isImagesLocked: false,
+      isPriceAutoSync: true,
+      isStockAutoSync: true,
+      fullDescVI: "Balo vải Oxford 900D kháng nước vượt trội, khóa kéo kim loại chống kẹt, quai đeo đệm lưới thoáng khí giảm áp lực vai.",
+      attributes: [
+        { keyVI: "Chất liệu", valueVI: "Vải Oxford 900D trượt nước", keyCN: "材质", valueCN: "牛津纺" },
+        { keyVI: "Ngăn đựng laptop", valueVI: "Đệm chống sốc cho laptop 15.6 inch", keyCN: "电脑仓", valueCN: "15.6寸" }
+      ],
+      variants: [
+        {
+          sourceSkuId: "BAG-GRY-STD",
+          colorName: "Xám Tiêu Chuẩn",
+          sizeName: "Cỡ Lớn (45 x 30 x 14cm)",
+          costPriceVND: 110000,
+          sellingPriceVND: 215000,
+          stockQuantity: 110,
+          imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=300&auto=format&fit=crop&q=80",
+          sourceAvailable: true,
+          selectedForSale: true
+        }
+      ]
+    }
+  ];
+}

@@ -393,15 +393,8 @@ export function useProductExtractor() {
             return;
           }
 
-          // [Fallback an toàn]: Mock 1688 nếu đang trên 1688 và các phương án đều chưa lấy được
-          if (tabUrl.includes("1688.com")) {
-            setProduct(getMock1688Product());
-            setLoading(false);
-            return;
-          }
-
           setProduct(null);
-          setError("Chưa nhận diện được sản phẩm trên trang này. Vui lòng mở trang chi tiết sản phẩm hoặc dán link sản phẩm vào ô bên trên.");
+          setError("EXTRACTION_FAILED: Không lấy được dữ liệu thật. Hãy mở đúng trang chi tiết sản phẩm rồi thử lại.");
           setLoading(false);
           return;
         }
@@ -410,11 +403,9 @@ export function useProductExtractor() {
       }
     }
 
-    // 2. Fallback dữ liệu mẫu để preview test UI
-    setTimeout(() => {
-      setProduct(getMock1688Product());
-      setLoading(false);
-    }, 400);
+    setProduct(null);
+    setError("EXTRACTION_FAILED: Không có trang sản phẩm hợp lệ để trích xuất.");
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -593,7 +584,7 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
           [opt2.name || "Quy cách"]: v.option2 || ""
         },
         priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
-        stock: v.stock || 100,
+        stock: v.stock ?? 0,
         imageUrl: v.imageUrl
       };
 
@@ -631,7 +622,7 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
           [opt.name || "Phân loại"]: v.option1 || v.nameVI || v.name
         },
         priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
-        stock: v.stock || 100,
+        stock: v.stock ?? 0,
         imageUrl: v.imageUrl
       };
 
@@ -668,7 +659,7 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
             "Quy cách": v.option2 || ""
           },
           priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
-          stock: v.stock || 100,
+          stock: v.stock ?? 0,
           imageUrl: v.imageUrl
         };
 
@@ -702,7 +693,7 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
           skuId: v.skuId,
           attributes: { "Phân loại": v.nameVI || v.name },
           priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
-          stock: v.stock || 100,
+          stock: v.stock ?? 0,
           imageUrl: v.imageUrl
         };
 

@@ -278,6 +278,12 @@ export class SupabaseDataService {
         images_seo: product.imagesSEO || [],
         faqs_json: product.faqs || [],
         store_sync_history: product.storeSyncHistory || [],
+        warranty_policy: product.warrantyPolicy || null,
+        shipping_policy: product.shippingPolicy || null,
+        source_platform: product.sourcePlatform || "1688",
+        source_currency: product.sourceCurrency || "CNY",
+        is_media_mirrored: Boolean(product.isMediaMirrored),
+        mirrored_at: product.mirroredAt || null,
         status: product.status,
         quality_score: product.qualityScore,
         min_price_vnd: product.minPriceVND,
@@ -305,11 +311,12 @@ export class SupabaseDataService {
         return false;
       }
 
-      // Xóa các variant cũ và lưu biến thể mới
-      await this.client
+      const { data: previousVariants } = await this.client.from("product_variants").select("*").eq("product_id", createdProd.id);
+      const { error: deleteVariantsError } = await this.client
         .from("product_variants")
         .delete()
         .eq("product_id", createdProd.id);
+      if (deleteVariantsError) return false;
 
       const variantRows = product.variants.map(v => ({
         product_id: createdProd.id,
@@ -319,6 +326,7 @@ export class SupabaseDataService {
         size_name: v.sizeName || null,
         size_name_en: v.sizeNameEN || null,
         cost_price_vnd: v.costPriceVND,
+        source_price: v.sourcePrice || null,
         selling_price_vnd: v.sellingPriceVND,
         stock_quantity: v.stockQuantity,
         image_url: v.imageUrl || null,
@@ -330,7 +338,11 @@ export class SupabaseDataService {
         const { error: varErr } = await this.client
           .from("product_variants")
           .insert(variantRows);
-        if (varErr) console.error("[Supabase saveVariants error]", varErr);
+        if (varErr) {
+          console.error("[Supabase saveVariants error]", varErr);
+          if (previousVariants?.length) await this.client.from("product_variants").insert(previousVariants);
+          return false;
+        }
       }
 
       return true;
@@ -374,6 +386,12 @@ export class SupabaseDataService {
       if (updates.imagesSEO !== undefined) dbUpdates.images_seo = updates.imagesSEO;
       if (updates.faqs !== undefined) dbUpdates.faqs_json = updates.faqs;
       if (updates.storeSyncHistory !== undefined) dbUpdates.store_sync_history = updates.storeSyncHistory;
+      if (updates.warrantyPolicy !== undefined) dbUpdates.warranty_policy = updates.warrantyPolicy;
+      if (updates.shippingPolicy !== undefined) dbUpdates.shipping_policy = updates.shippingPolicy;
+      if (updates.sourcePlatform !== undefined) dbUpdates.source_platform = updates.sourcePlatform;
+      if (updates.sourceCurrency !== undefined) dbUpdates.source_currency = updates.sourceCurrency;
+      if (updates.isMediaMirrored !== undefined) dbUpdates.is_media_mirrored = updates.isMediaMirrored;
+      if (updates.mirroredAt !== undefined) dbUpdates.mirrored_at = updates.mirroredAt;
       if (updates.qualityScore !== undefined) dbUpdates.quality_score = updates.qualityScore;
       if (updates.minPriceVND !== undefined) dbUpdates.min_price_vnd = updates.minPriceVND;
       if (updates.maxPriceVND !== undefined) dbUpdates.max_price_vnd = updates.maxPriceVND;
@@ -394,10 +412,12 @@ export class SupabaseDataService {
       }
 
       if (Array.isArray(updates.variants)) {
-        await this.client
+        const { data: previousVariants } = await this.client.from("product_variants").select("*").eq("product_id", id);
+        const { error: deleteVariantsError } = await this.client
           .from("product_variants")
           .delete()
           .eq("product_id", id);
+        if (deleteVariantsError) return false;
 
         const variantRows = updates.variants.map(v => ({
           product_id: id,
@@ -407,6 +427,7 @@ export class SupabaseDataService {
           size_name: v.sizeName || null,
           size_name_en: v.sizeNameEN || null,
           cost_price_vnd: v.costPriceVND,
+          source_price: v.sourcePrice || null,
           selling_price_vnd: v.sellingPriceVND,
           stock_quantity: v.stockQuantity,
           image_url: v.imageUrl || null,
@@ -415,7 +436,11 @@ export class SupabaseDataService {
         }));
 
         if (variantRows.length > 0) {
-          await this.client.from("product_variants").insert(variantRows);
+          const { error: insertVariantsError } = await this.client.from("product_variants").insert(variantRows);
+          if (insertVariantsError) {
+            if (previousVariants?.length) await this.client.from("product_variants").insert(previousVariants);
+            return false;
+          }
         }
       }
 
@@ -458,6 +483,7 @@ export class SupabaseDataService {
       sizeName: v.size_name,
       sizeNameEN: v.size_name_en,
       costPriceVND: Number(v.cost_price_vnd) || 0,
+      sourcePrice: v.source_price == null ? undefined : Number(v.source_price),
       sellingPriceVND: Number(v.selling_price_vnd) || 0,
       stockQuantity: Number(v.stock_quantity) || 0,
       imageUrl: v.image_url,
@@ -491,6 +517,8 @@ export class SupabaseDataService {
       imagesSEO: row.images_seo || [],
       faqs: row.faqs_json || [],
       storeSyncHistory: row.store_sync_history || [],
+      warrantyPolicy: row.warranty_policy,
+      shippingPolicy: row.shipping_policy,
       status: row.status,
       qualityScore: row.quality_score || 0,
       minPriceVND: Number(row.min_price_vnd) || 0,
@@ -500,7 +528,11 @@ export class SupabaseDataService {
       isImagesLocked: Boolean(row.is_images_locked),
       isPriceAutoSync: Boolean(row.is_price_auto_sync),
       isStockAutoSync: Boolean(row.is_stock_auto_sync),
+      isMediaMirrored: Boolean(row.is_media_mirrored),
+      mirroredAt: row.mirrored_at,
       variants,
+      sourcePlatform: row.source_platform || "1688",
+      sourceCurrency: row.source_currency || "CNY",
       sourceProductId: row.source_product_id,
       sourceUrl: row.source_url,
       supplierName: row.supplier_name,

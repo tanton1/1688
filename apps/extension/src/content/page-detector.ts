@@ -67,7 +67,7 @@ export function detectAnyCommercePage(url: string = window.location.href): Detec
       return { platform, pageType: "UNKNOWN", productId };
     }
 
-    return { platform, pageType: "DETAIL", productId, offerId: productId };
+    return { platform, pageType: "UNKNOWN", productId };
   } catch {
     return { platform, pageType: "UNKNOWN", productId };
   }
@@ -85,4 +85,3 @@ export function detect1688Page(url: string = window.location.href): {
     shopId: res.shopId
   };
 }
-

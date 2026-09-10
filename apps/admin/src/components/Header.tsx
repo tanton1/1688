@@ -78,15 +78,15 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs">
-      <div>
+    <header className="min-h-16 bg-white border-b border-slate-200 px-3 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-20 shadow-xs">
+      <div className="min-w-0">
         <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
           {title}
         </h1>
-        <p className="text-xs text-slate-500">{subtitle}</p>
+        <p className="hidden sm:block text-xs text-slate-500 truncate">{subtitle}</p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 overflow-x-auto">
         {/* Refresh button */}
         <button
           onClick={onRefresh}
@@ -95,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="Làm mới dữ liệu từ máy chủ"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-orange-600" : ""}`} />
-          <span>{isRefreshing ? "Đang tải..." : "Làm mới"}</span>
+          <span className="hidden xl:inline">{isRefreshing ? "Đang tải..." : "Làm mới"}</span>
         </button>
 
         {/* Omnichannel Connectors Hub */}
@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="Đồng bộ WooCommerce, Shopify, Shopee, TikTok Shop & Telegram"
         >
           <Share2 className="w-3.5 h-3.5 text-orange-600" />
-          <span>Kênh Đẩy Web (API)</span>
+          <span className="hidden 2xl:inline">Kênh Đẩy Web (API)</span>
         </button>
 
         {/* Multi-Platform Cloner Button */}
@@ -115,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="Clone sản phẩm từ Taobao, Tmall, Shopee, TikTok Shop, AliExpress và Web bất kỳ"
         >
           <Globe className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Clone Đa Nền Tảng</span>
+          <span className="hidden xl:inline">Clone Đa Nền Tảng</span>
         </button>
 
         {/* Web Bán Hàng Trực Tiếp (Storefront Direct) */}
@@ -126,10 +126,11 @@ export const Header: React.FC<HeaderProps> = ({
             title="Mở Cửa Hàng Bán Lẻ & Bán Sỉ Trực Tiếp"
           >
             <Store className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Mở Web Bán Hàng ↗</span>
+            <span className="hidden 2xl:inline">Mở Web Bán Hàng ↗</span>
           </button>
           <button
             onClick={onOpenStoreSettings}
+            aria-label="Cấu hình cửa hàng"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
             title="Cấu hình VietQR & Thương hiệu Web Bán Hàng"
           >
@@ -143,7 +144,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 rounded-lg shadow-sm shadow-orange-500/30 transition-all"
         >
           <PlusCircle className="w-3.5 h-3.5" />
-          <span>Kéo Nhanh Từ 1688</span>
+          <span className="hidden lg:inline">Kéo Nhanh Từ 1688</span>
         </button>
 
         {/* Auth Role Button */}
@@ -183,14 +184,15 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Quick Ingest Modal */}
         {showQuickModal && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
+            <div role="dialog" aria-modal="true" aria-labelledby="quick-import-title" className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <h3 id="quick-import-title" className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <PlusCircle className="w-4 h-4 text-orange-500" />
                   Nhập Nhanh Bằng Offer ID / Link 1688
                 </h3>
                 <button
                   onClick={() => setShowQuickModal(false)}
+                  aria-label="Đóng"
                   className="text-slate-400 hover:text-slate-600 text-lg font-bold"
                 >
                   ✕

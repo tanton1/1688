@@ -42,16 +42,26 @@ if (document.readyState === "loading") {
   runPageDetection();
 }
 
-// Theo dõi thay đổi URL khi người dùng lướt sản phẩm (SPA navigation)
+// Theo dõi điều hướng SPA trực tiếp, không quan sát toàn bộ DOM.
 let lastUrl = window.location.href;
-new MutationObserver(() => {
+let navigationTimer: number | undefined;
+const onNavigation = () => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    console.log("[1688 Hub] Phát hiện chuyển hướng trang:", currentUrl);
-    setTimeout(() => runPageDetection(), 800);
+    window.clearTimeout(navigationTimer);
+    navigationTimer = window.setTimeout(runPageDetection, 500);
   }
-}).observe(document, { subtree: true, childList: true });
+};
+for (const method of ["pushState", "replaceState"] as const) {
+  const original = history[method];
+  history[method] = function (...args: Parameters<History[typeof method]>) {
+    const result = original.apply(this, args);
+    queueMicrotask(onNavigation);
+    return result;
+  } as History[typeof method];
+}
+window.addEventListener("popstate", onNavigation);
 
 // Lắng nghe yêu cầu bóc tách dữ liệu từ Side Panel hoặc Background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

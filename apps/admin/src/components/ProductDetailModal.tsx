@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import {
@@ -420,14 +421,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
           <div className="flex items-center gap-3 min-w-0">
             <span className="font-mono text-xs bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded shrink-0">
               {formData.skuCode}
             </span>
-            <h2 className="text-sm font-bold text-slate-900 truncate max-w-md">
+            <h2 id="product-dialog-title" className="text-sm font-bold text-slate-900 truncate max-w-md">
               {editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI)}
             </h2>
             {formData.videoUrl && (
@@ -2085,7 +2086,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                     <div
                       className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs leading-relaxed text-slate-800 font-sans prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: generatedCopy.bodyHtml }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(generatedCopy.bodyHtml, { USE_PROFILES: { html: true } }) }}
                     />
                   </div>
 

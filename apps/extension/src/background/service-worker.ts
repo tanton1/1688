@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "../shared/config.js";
+import { apiFetch } from "../shared/config.js";
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[1688 Hub Background] Service Worker đã được cài đặt thành công!");
@@ -17,8 +17,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === "IMPORT_BULK_REQUEST") {
     const { offerIds } = message;
-    getApiBaseUrl().then(baseUrl => {
-      fetch(`${baseUrl}/api/v1/import/bulk`, {
+    apiFetch("/api/v1/import/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -33,7 +32,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then(res => res.json())
         .then(data => sendResponse({ success: true, data }))
         .catch(err => sendResponse({ success: false, error: err.message }));
-    });
     return true;
   }
 });

@@ -13,6 +13,7 @@ import {
   VisualSourcingMatch,
   VisualSourcingResponse
 } from "@hub1688/shared-types";
+import crypto from "node:crypto";
 import {
   detectProductPlatform,
   extractProductIdFromUrl,
@@ -311,7 +312,7 @@ export class MultiPlatformClonerService {
     const titleVI = request.customTitle || preview.translatedTitleVI;
     const titleEN = preview.translatedTitleEN || titleVI;
     const categoryName = request.categoryName || preview.categorySuggested;
-    const productId = `prod_cloned_${Date.now()}`;
+    const productId = crypto.randomUUID();
     const skuCode = `CL-${Date.now().toString().slice(-6)}`;
 
     // Tạo variants hoàn chỉnh

@@ -242,6 +242,47 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Web Bán Hàng Trực Tiếp Shortcut Bar */}
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-orange-50 border border-emerald-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+              <Store className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-xs sm:text-sm text-slate-900">Web Bán Hàng Trực Tiếp (Storefront)</span>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {products.filter(p => p.status === "PUBLISHED").length} / {products.length} Đang Bán
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">Khách mua hàng có thể đặt hàng trực tiếp, quét VietQR hoặc thanh toán COD</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {products.some(p => p.status !== "PUBLISHED") && (
+              <button
+                onClick={() => onBulkPublish(products.map(p => p.id!))}
+                className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Xuất bản tất cả sản phẩm sang trạng thái Đang Bán"
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Đăng Bán Tất Cả Lên Web</span>
+              </button>
+            )}
+
+            {onViewOnStore && (
+              <button
+                onClick={() => onViewOnStore(products[0])}
+                className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Mở Web Bán Hàng ↗</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Product Content: Table or Grid */}
@@ -274,6 +315,10 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                   const isSelected = selectedIds.includes(product.id!);
                   const totalStock = product.variants.reduce((sum, v) => sum + v.stockQuantity, 0);
                   const activeVariants = product.variants.filter(v => v.selectedForSale).length;
+                  const lowestCost = product.variants.length ? Math.min(...product.variants.map(v => v.costPriceVND)) : 0;
+                  const margin = product.minPriceVND > 0 && lowestCost > 0
+                    ? Math.round(((product.minPriceVND - lowestCost) / product.minPriceVND) * 100)
+                    : null;
 
                   return (
                     <tr
@@ -367,7 +412,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                         </div>
                         <div className="flex items-center gap-1.5 mt-1">
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
-                            Margin ~55%
+                            {margin === null ? "Margin —" : `Margin ${margin}%`}
                           </span>
                           {product.priceTiers && product.priceTiers.length > 0 && (
                             <span className="text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1 py-0.2 rounded" title="Có thang giá sỉ bậc thang">

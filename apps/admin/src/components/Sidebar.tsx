@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getApiBaseUrl } from "../services/api";
 import {
   LayoutDashboard,
   Package,
@@ -14,7 +15,7 @@ import {
   Store
 } from "lucide-react";
 
-export type AdminTab = "DASHBOARD" | "PRODUCTS" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY" | "TEMPLATES";
+export type AdminTab = "DASHBOARD" | "PRODUCTS" | "STOREFRONT" | "ORDERS" | "DIFFS" | "PRICING" | "GLOSSARY" | "TEMPLATES";
 
 interface SidebarProps {
   currentTab: AdminTab;
@@ -33,6 +34,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   onOpenStorefront
 }) => {
+  const [health, setHealth] = useState<"CHECKING" | "ONLINE" | "OFFLINE">("CHECKING");
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${getApiBaseUrl()}/health`, { signal: controller.signal })
+      .then(response => setHealth(response.ok ? "ONLINE" : "OFFLINE"))
+      .catch(() => setHealth("OFFLINE"));
+    return () => controller.abort();
+  }, []);
   const menuItems = [
     {
       id: "DASHBOARD" as AdminTab,
@@ -45,6 +54,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: "Sản Phẩm Đồng Bộ",
       icon: Package,
       badge: totalProductsCount > 0 ? totalProductsCount : null
+    },
+    {
+      id: "STOREFRONT" as AdminTab,
+      label: "Web Bán Hàng (Store)",
+      icon: Store,
+      badge: "Trực Tiếp",
+      badgeColor: "bg-emerald-500 text-white font-bold"
     },
     {
       id: "ORDERS" as AdminTab,
@@ -82,13 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 z-30 border-r border-slate-800 select-none">
+    <aside className="w-full h-16 md:w-64 md:h-screen bg-[#0B1628] text-slate-300 flex md:flex-col fixed left-0 top-0 z-30 border-r border-slate-800 select-none">
       {/* Brand Header */}
-      <div className="h-16 flex items-center gap-3 px-5 border-b border-slate-800 bg-slate-950/60">
+      <div className="h-16 shrink-0 flex items-center gap-3 px-3 md:px-5 border-b border-slate-800 bg-slate-950/60">
         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white font-black shadow-lg shadow-orange-500/20">
           <Layers className="w-5 h-5" />
         </div>
-        <div>
+        <div className="hidden sm:block">
           <div className="text-white font-bold text-sm tracking-wide flex items-center gap-1.5">
             1688 SYNC HUB
             <span className="text-[10px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.2 rounded font-semibold">
@@ -100,8 +116,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation Menu */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+      <nav className="flex flex-1 items-center gap-1 overflow-x-auto px-2 md:block md:px-3 md:py-4 md:space-y-1.5 md:overflow-y-auto">
+        <div className="hidden md:block px-3 pb-2 text-xs font-bold uppercase tracking-wider text-slate-300">
           Phân Hệ Quản Trị
         </div>
 
@@ -112,7 +128,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              aria-current={isActive ? "page" : undefined}
+              className={`shrink-0 md:w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400 ${
                 isActive
                   ? "bg-orange-600 text-white shadow-md shadow-orange-600/30 font-bold"
                   : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/80"
@@ -120,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center gap-3">
                 <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400"}`} />
-                <span>{item.label}</span>
+                <span className="hidden lg:inline">{item.label}</span>
               </div>
               {item.badge && (
                 <span
@@ -155,17 +172,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Extension & Status Footer */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/40 space-y-2">
+      <div className="hidden md:block p-3 border-t border-slate-800 bg-slate-950/40 space-y-2">
         <div className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] text-slate-400 font-medium">Trạng thái Hub</span>
-            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Sẵn sàng
+            <span className={`inline-flex items-center gap-1 text-xs font-bold ${health === "ONLINE" ? "text-emerald-400" : health === "OFFLINE" ? "text-rose-400" : "text-amber-400"}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+              {health === "ONLINE" ? "Online" : health === "OFFLINE" ? "Offline" : "Đang kiểm tra"}
             </span>
           </div>
           <div className="text-[11px] text-slate-300 truncate font-mono">
-            1688-phi.vercel.app
+            {getApiBaseUrl().replace(/^https?:\/\//, "")}
           </div>
         </div>
 
