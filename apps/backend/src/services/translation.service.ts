@@ -1,15 +1,17 @@
 import {
   ProductTitleVariants,
   TranslationMode,
-  Raw1688Attribute
+  Raw1688Attribute,
+  ProductAttributeItem
 } from "@hub1688/shared-types";
 import {
   clean1688Title,
   applyGlossary,
+  applyGlossaryEN,
   DEFAULT_GLOSSARY,
+  DEFAULT_GLOSSARY_EN,
   normalizeSizeProp
 } from "@hub1688/shared-utils";
-import { ENV } from "../config/env.js";
 
 export class TranslationEngineService {
   private customGlossary: Record<string, string> = {};
@@ -23,19 +25,13 @@ export class TranslationEngineService {
   }
 
   /**
-   * Sinh 4 kiểu tiêu đề sản phẩm (Original, Literal, Clean, SEO, Display)
+   * Sinh các biến thể tiêu đề Tiếng Việt (Original, Literal, Clean, SEO, Display)
    */
   public generateTitleVariants(rawTitleCN: string, category: string = "Thời trang"): ProductTitleVariants {
     const cleanedCN = clean1688Title(rawTitleCN);
     const translatedLiteral = applyGlossary(cleanedCN, this.customGlossary);
-
-    // Xây dựng tiêu đề Clean
     const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
-
-    // Xây dựng tiêu đề SEO (kèm từ khóa tìm kiếm & danh mục)
     const seoTitle = `${cleanTitle} – Cao Cấp, Bền Đẹp, Chuẩn Form`;
-
-    // Xây dựng tiêu đề Display thương mại
     const displayTitle = `${cleanTitle} (Mẫu Mới)`;
 
     return {
@@ -48,10 +44,30 @@ export class TranslationEngineService {
   }
 
   /**
-   * Dịch thuộc tính sản phẩm và loại bỏ thuộc tính không cần thiết
+   * Sinh các biến thể tiêu đề Tiếng Anh (Original, Literal, Clean, SEO, Display)
    */
-  public translateAttributes(attrs: Raw1688Attribute[]): Array<{ keyVI: string; valueVI: string; keyCN: string; valueCN: string }> {
+  public generateTitleVariantsEN(rawTitleCN: string, category: string = "Fashion"): ProductTitleVariants {
+    const cleanedCN = clean1688Title(rawTitleCN);
+    const translatedLiteral = applyGlossaryEN(cleanedCN);
+    const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
+    const seoTitle = `${cleanTitle} - Premium Quality & Modern Design`;
+    const displayTitle = `${cleanTitle} (New Arrival)`;
+
+    return {
+      original: rawTitleCN,
+      literal: translatedLiteral,
+      clean: cleanTitle,
+      seo: seoTitle,
+      display: displayTitle
+    };
+  }
+
+  /**
+   * Dịch thuộc tính sản phẩm sang cả Tiếng Việt và Tiếng Anh
+   */
+  public translateAttributes(attrs: Raw1688Attribute[]): ProductAttributeItem[] {
     return attrs.map(attr => {
+      // Dịch sang tiếng Việt
       let keyVI = applyGlossary(attr.nameCN, this.customGlossary);
       if (attr.nameCN.includes("颜色")) keyVI = "Màu sắc";
       if (attr.nameCN.includes("尺码") || attr.nameCN.includes("尺寸")) keyVI = "Kích thước";
@@ -62,21 +78,33 @@ export class TranslationEngineService {
       let valueVI = applyGlossary(attr.valueCN, this.customGlossary);
       valueVI = normalizeSizeProp(valueVI);
 
+      // Dịch sang tiếng Anh
+      let keyEN = applyGlossaryEN(attr.nameCN);
+      if (attr.nameCN.includes("颜色")) keyEN = "Color";
+      if (attr.nameCN.includes("尺码") || attr.nameCN.includes("尺寸")) keyEN = "Size";
+      if (attr.nameCN.includes("材质") || attr.nameCN.includes("面料")) keyEN = "Material";
+      if (attr.nameCN.includes("货号")) keyEN = "Item No.";
+      if (attr.nameCN.includes("产地")) keyEN = "Origin";
+
+      let valueEN = applyGlossaryEN(attr.valueCN);
+
       return {
         keyCN: attr.nameCN,
         valueCN: attr.valueCN,
         keyVI,
-        valueVI
+        valueVI,
+        keyEN,
+        valueEN
       };
     });
   }
 
   /**
-   * Tái cấu trúc mô tả sản phẩm thành 5-7 phần chuẩn E-commerce
+   * Tái cấu trúc mô tả sản phẩm Tiếng Việt
    */
   public generateStructuredDescription(
     titleVI: string,
-    attributes: Array<{ keyVI: string; valueVI: string }>,
+    attributes: ProductAttributeItem[],
     rawDescText: string = ""
   ): string {
     const materialAttr = attributes.find(a => a.keyVI === "Chất liệu")?.valueVI || "Vải cao cấp thoáng khí";
@@ -84,7 +112,7 @@ export class TranslationEngineService {
 
     return `
 ### GIỚI THIỆU SẢN PHẨM
-${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong cách hiện đại, thanh lịch và phù hợp sử dụng hàng ngày hoặc tập luyện thể thao.
+${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong cách hiện đại, thanh lịch và phù hợp sử dụng hàng ngày hoặc đi chơi, đi làm.
 
 ### ĐẶC ĐIỂM NỔI BẬT
 • Thiết kế tôn dáng, đường may tỉ mỉ, chắc chắn từng chi tiết.
@@ -97,9 +125,6 @@ ${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong 
 • **Xuất xứ**: ${originAttr}
 • **Quy cách đóng gói**: Túi zip bảo quản chuyên dụng
 
-### HƯỚNG DẪN CHỌN SIZE
-• Vui lòng tham khảo bảng kích thước chi tiết hoặc nhắn tin cho shop để được tư vấn size chuẩn nhất.
-
 ### HƯỚNG DẪN BẢO QUẢN
 • Giặt ở nhiệt độ thường với đồ có màu tương tự.
 • Không sử dụng hóa chất tẩy mạnh.
@@ -107,8 +132,40 @@ ${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong 
     `.trim();
   }
 
+  /**
+   * Tái cấu trúc mô tả sản phẩm Tiếng Anh (English Global Store / Shopify)
+   */
+  public generateStructuredDescriptionEN(
+    titleEN: string,
+    attributes: ProductAttributeItem[],
+    rawDescText: string = ""
+  ): string {
+    const materialAttr = attributes.find(a => a.keyEN === "Material")?.valueEN || "High Quality Breathable Fabric";
+    const originAttr = attributes.find(a => a.keyEN === "Origin")?.valueEN || "Certified Factory Direct";
+
+    return `
+### PRODUCT OVERVIEW
+${titleEN} features contemporary craftsmanship, premium comfort, and an elegant silhouette suitable for everyday wear, work, or casual outings.
+
+### KEY HIGHLIGHTS
+• Flattering fit with reinforced, precision stitching throughout.
+• Ultra-soft touch, breathable fabric with natural flexibility.
+• Moisture-wicking and quick-drying, resilient against shrinkage or fading.
+• Ergonomic cut providing effortless comfort all day long.
+
+### SPECIFICATIONS & MATERIALS
+• **Material**: ${materialAttr}
+• **Origin**: ${originAttr}
+• **Packaging**: Eco-friendly protective zipper bag
+
+### CARE INSTRUCTIONS
+• Machine wash cold with like colors.
+• Tumble dry low or air dry in shade.
+• Do not bleach or use harsh chemicals.
+    `.trim();
+  }
+
   private formatEcommerceTitle(text: string): string {
-    // Chuyển chữ cái đầu các từ thành chữ hoa thẩm mỹ
     return text
       .split(" ")
       .filter(Boolean)

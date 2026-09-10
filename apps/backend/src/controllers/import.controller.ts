@@ -95,10 +95,14 @@ export class ImportController {
     // 2. Tìm hoặc chọn công thức định giá
     const pricingRule = pricingService.getRuleById(settings.pricingRuleId);
 
-    // 3. Xử lý Dịch thuật
+    // 3. Xử lý Dịch thuật Song ngữ (Tiếng Việt & Tiếng Anh)
     const titleVariants = translationService.generateTitleVariants(
       normalized.titleCN,
       settings.categoryName || "Thời trang"
+    );
+    const titleVariantsEN = translationService.generateTitleVariantsEN(
+      normalized.titleCN,
+      settings.categoryName || "Fashion"
     );
 
     let finalTitle = titleVariants.clean;
@@ -106,9 +110,17 @@ export class ImportController {
     if (settings.translationMode === "SEO") finalTitle = titleVariants.seo;
     if (settings.translationMode === "REWRITE") finalTitle = titleVariants.display;
 
+    let finalTitleEN = titleVariantsEN.clean;
+    if (settings.translationMode === "SEO") finalTitleEN = titleVariantsEN.seo;
+
     const translatedAttrs = translationService.translateAttributes(raw.attributes || []);
     const structuredDesc = translationService.generateStructuredDescription(
       finalTitle,
+      translatedAttrs,
+      normalized.description.rawHtml || ""
+    );
+    const structuredDescEN = translationService.generateStructuredDescriptionEN(
+      finalTitleEN,
       translatedAttrs,
       normalized.description.rawHtml || ""
     );
@@ -130,6 +142,17 @@ export class ImportController {
       pricingRule.id
     );
 
+    // Tính toán bảng giá sỉ bậc thang sang VNĐ
+    const priceTiers = (raw.prices.priceTiers || []).map(tier => {
+      const tierCalc = pricingService.calculate(tier.price, pricingRule.id);
+      return {
+        minQuantity: tier.minQuantity,
+        priceCNY: tier.price,
+        priceVND: tierCalc.finalSellingPriceVND,
+        priceUSD: parseFloat((tierCalc.finalSellingPriceVND / 24500).toFixed(2))
+      };
+    });
+
     const productId = `prod_${Date.now()}`;
     const slug = `${finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now().toString().slice(-4)}`;
 
@@ -137,13 +160,33 @@ export class ImportController {
       id: productId,
       slug,
       skuCode: `SP-${Date.now().toString().slice(-6)}`,
+      
+      // Tiếng Việt
       titleVI: finalTitle,
       titleVariants,
       shortDescVI: `Sản phẩm ${finalTitle} nhập chính hãng nguồn 1688`,
       fullDescVI: structuredDesc,
+
+      // Tiếng Anh
+      titleEN: finalTitleEN,
+      titleVariantsEN,
+      shortDescEN: `High-quality ${finalTitleEN} imported directly from verified 1688 manufacturer`,
+      fullDescEN: structuredDescEN,
+      displayLanguage: settings.targetLanguage === "en" ? "EN" : "VI",
+
       categoryName: settings.categoryName || "Thời trang nữ",
+      
+      // Media & Video
       primaryImage: normalized.media.images[0] || "",
       galleryImages: normalized.media.images.slice(1),
+      detailImages: normalized.description.images || [],
+      videoUrl: normalized.media.videoUrl || null,
+      videoPosterUrl: normalized.media.images[0] || null,
+
+      // Thuộc tính chi tiết & Bảng giá sỉ
+      attributes: translatedAttrs,
+      priceTiers: priceTiers.length > 0 ? priceTiers : undefined,
+
       status: settings.autoPublish ? "PUBLISHED" : "DRAFT",
       qualityScore: 0,
       minPriceVND,

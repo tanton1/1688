@@ -3,12 +3,13 @@ import {
   Raw1688Shop,
   Raw1688SkuProp,
   Raw1688SkuItem,
-  Raw1688Attribute
+  Raw1688Attribute,
+  Raw1688PriceTier
 } from "@hub1688/shared-types";
 
 export class Detail1688Extractor {
   /**
-   * Trích xuất thông tin chi tiết của sản phẩm 1688
+   * Trích xuất thông tin chi tiết của sản phẩm 1688 (Hình ảnh, Video, Thuộc tính, Biến thể, Bảng giá sỉ)
    */
   public static async extract(): Promise<Raw1688Product> {
     const offerIdMatch = window.location.pathname.match(/\/offer\/(\d+)\.html/);
@@ -30,9 +31,10 @@ export class Detail1688Extractor {
       ratingScore: 4.8
     };
 
-    // 3. Khoảng giá (Price range)
+    // 3. Khoảng giá (Price range) & Bảng giá sỉ bậc thang (Price Tiers)
     let minPriceCNY = 32.0;
     let maxPriceCNY = 45.0;
+    const priceTiers: Raw1688PriceTier[] = [];
 
     const priceEls = document.querySelectorAll(".price-text, .price-num, .price, .normal-price");
     if (priceEls.length > 0) {
@@ -48,13 +50,26 @@ export class Detail1688Extractor {
       }
     }
 
+    // Quét bảng giá sỉ bậc thang
+    const ladderEls = document.querySelectorAll(".price-ladder .ladder-item, .step-price .price-item, .od-price-tier, .price-range-item");
+    ladderEls.forEach(el => {
+      const qtyEl = el.querySelector(".ladder-num, .count, .quantity, .unit");
+      const priceEl = el.querySelector(".ladder-price, .price, .value, .num");
+      if (qtyEl && priceEl) {
+        const minQty = parseInt(qtyEl.textContent?.replace(/[^0-9]/g, "") || "0", 10);
+        const priceVal = parseFloat(priceEl.textContent?.replace(/[¥￥\s]/g, "") || "0");
+        if (minQty > 0 && priceVal > 0) {
+          priceTiers.push({ minQuantity: minQty, price: priceVal });
+        }
+      }
+    });
+
     // 4. Danh sách hình ảnh sản phẩm (Gallery images)
     const images: string[] = [];
-    const imgEls = document.querySelectorAll(".main-img img, .tab-trigger img, .detail-gallery img, .vertical-img img");
+    const imgEls = document.querySelectorAll(".main-img img, .tab-trigger img, .detail-gallery img, .vertical-img img, .detail-gallery-turn img");
     imgEls.forEach(img => {
       let src = (img as HTMLImageElement).src || (img as HTMLImageElement).getAttribute("data-src");
       if (src) {
-        // Chuẩn hóa lấy ảnh full size chất lượng cao
         src = src.replace(/\.32x32\./g, ".800x800.").replace(/\.60x60\./g, ".800x800.");
         if (src.startsWith("//")) src = "https:" + src;
         if (!images.includes(src)) images.push(src);
@@ -65,7 +80,53 @@ export class Detail1688Extractor {
       images.push("https://cbu01.alicdn.com/img/ibank/dummy_1688.jpg");
     }
 
-    // 5. Thuộc tính sản phẩm (Attributes)
+    // 5. Bóc tách Video 1688 (nếu có)
+    let videoUrl: string | null = null;
+    let videoPosterUrl: string | null = null;
+
+    // Tìm thẻ video trực tiếp
+    const videoEl = document.querySelector("video") as HTMLVideoElement | null;
+    if (videoEl) {
+      videoUrl = videoEl.src || videoEl.querySelector("source")?.src || null;
+      videoPosterUrl = videoEl.poster || null;
+    }
+
+    // Tìm trong data attributes của các container video
+    if (!videoUrl) {
+      const videoContainer = document.querySelector("[data-video-url], [data-mp4], .lib-video, .video-box");
+      if (videoContainer) {
+        videoUrl = videoContainer.getAttribute("data-video-url") || videoContainer.getAttribute("data-mp4") || null;
+      }
+    }
+
+    // Tìm trong script JSON nhúng
+    if (!videoUrl) {
+      const scripts = document.querySelectorAll("script:not([src])");
+      for (const s of scripts) {
+        const content = s.textContent || "";
+        const match = content.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/i) ||
+                      content.match(/https?:\/\/cloud\.video\.taobao\.com\/play\/u\/[^"'\s]+/i);
+        if (match) {
+          videoUrl = match[0].replace(/\\u002F/g, "/").replace(/\\\//g, "/");
+          break;
+        }
+      }
+    }
+
+    // 6. Ảnh mô tả dài (Detail Description Images)
+    const descriptionImages: string[] = [];
+    const descImgEls = document.querySelectorAll("#desc-lazyload-container img, .content-detail img, .desc-item img, .detail-desc img");
+    descImgEls.forEach(img => {
+      let src = (img as HTMLImageElement).getAttribute("data-lazyload-src") ||
+                (img as HTMLImageElement).getAttribute("data-src") ||
+                (img as HTMLImageElement).src;
+      if (src && !src.includes("dummy") && !src.includes("spacer")) {
+        if (src.startsWith("//")) src = "https:" + src;
+        if (!descriptionImages.includes(src)) descriptionImages.push(src);
+      }
+    });
+
+    // 7. Thuộc tính sản phẩm (Attributes)
     const attributes: Raw1688Attribute[] = [];
     const attrRows = document.querySelectorAll(".obj-sku .prop-item, .offer-attr-item, .de-desc-item");
     attrRows.forEach(row => {
@@ -79,11 +140,10 @@ export class Detail1688Extractor {
       }
     });
 
-    // 6. Ma trận biến thể SKU (Colors & Sizes)
+    // 8. Ma trận biến thể SKU (Colors & Sizes)
     const skuProps: Raw1688SkuProp[] = [];
     const skuMap: Record<string, Raw1688SkuItem> = {};
 
-    // Tìm các lựa chọn Màu sắc
     const colorImgs = document.querySelectorAll(".prop-img-item, .sku-prop-item");
     const colors: Array<{ valueId: string; valueCN: string; imageUrl?: string }> = [];
 
@@ -111,7 +171,6 @@ export class Detail1688Extractor {
       values: colors
     });
 
-    // Kích thước (Sizes)
     const sizes = [
       { valueId: "size_s", valueCN: "S" },
       { valueId: "size_m", valueCN: "M" },
@@ -125,7 +184,6 @@ export class Detail1688Extractor {
       values: sizes
     });
 
-    // Tạo skuMap mapping
     colors.forEach((col, cIdx) => {
       sizes.forEach((sz, sIdx) => {
         const skuId = `1688_${offerId}_${cIdx}_${sIdx}`;
@@ -151,9 +209,12 @@ export class Detail1688Extractor {
       prices: {
         minPriceCNY,
         maxPriceCNY,
-        currency: "CNY"
+        currency: "CNY",
+        priceTiers: priceTiers.length > 0 ? priceTiers : undefined
       },
       images,
+      videoUrl,
+      descriptionImages,
       attributes,
       skuProps,
       skuMap,

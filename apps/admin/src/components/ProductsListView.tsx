@@ -17,7 +17,9 @@ import {
   Sparkles,
   ArrowUpDown,
   LayoutGrid,
-  List
+  List,
+  Video,
+  Globe
 } from "lucide-react";
 
 interface ProductsListViewProps {
@@ -41,6 +43,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [qualityFilter, setQualityFilter] = useState("ALL");
+  const [mediaFilter, setMediaFilter] = useState<"ALL" | "VIDEO_ONLY" | "NO_VIDEO">("ALL");
   const [sortBy, setSortBy] = useState("NEWEST");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
@@ -55,14 +58,15 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   const filteredProducts = useMemo(() => {
     return products
       .filter(p => {
-        // Tìm kiếm
+        // Tìm kiếm (Tiêu đề tiếng Việt, Tiếng Anh, SKU, Offer ID, Shop)
         if (searchTerm.trim()) {
           const q = searchTerm.toLowerCase();
-          const matchTitle = p.titleVI.toLowerCase().includes(q);
-          const matchSku = p.skuCode.toLowerCase().includes(q);
-          const matchOfferId = p.sourceProductId.includes(q);
+          const matchTitleVI = p.titleVI?.toLowerCase().includes(q);
+          const matchTitleEN = p.titleEN?.toLowerCase().includes(q);
+          const matchSku = p.skuCode?.toLowerCase().includes(q);
+          const matchOfferId = p.sourceProductId?.includes(q);
           const matchShop = p.supplierName?.toLowerCase().includes(q);
-          if (!matchTitle && !matchSku && !matchOfferId && !matchShop) return false;
+          if (!matchTitleVI && !matchTitleEN && !matchSku && !matchOfferId && !matchShop) return false;
         }
 
         // Lọc trạng thái
@@ -75,6 +79,10 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
         if (qualityFilter === "HIGH" && (p.qualityScore || 0) < 80) return false;
         if (qualityFilter === "LOW" && (p.qualityScore || 0) >= 80) return false;
 
+        // Lọc Media (Video)
+        if (mediaFilter === "VIDEO_ONLY" && !p.videoUrl) return false;
+        if (mediaFilter === "NO_VIDEO" && p.videoUrl) return false;
+
         return true;
       })
       .sort((a, b) => {
@@ -84,7 +92,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
         if (sortBy === "OLDEST") return new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
         return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
       });
-  }, [products, searchTerm, statusFilter, categoryFilter, qualityFilter, sortBy]);
+  }, [products, searchTerm, statusFilter, categoryFilter, qualityFilter, mediaFilter, sortBy]);
 
   // Chọn tất cả
   const handleSelectAll = (checked: boolean) => {
@@ -113,13 +121,13 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo tên sản phẩm tiếng Việt, SKU, 1688 Offer ID, Tên shop..."
+              placeholder="Tìm theo tên tiếng Việt/English, SKU, 1688 Offer ID, Tên shop..."
               className="w-full text-xs pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
             />
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto flex-wrap">
             {/* Status Filter */}
             <select
               value={statusFilter}
@@ -129,6 +137,17 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
               <option value="ALL">Tất cả trạng thái</option>
               <option value="PUBLISHED">Đang bán (Published)</option>
               <option value="DRAFT">Bản nháp (Draft)</option>
+            </select>
+
+            {/* Media Filter */}
+            <select
+              value={mediaFilter}
+              onChange={(e) => setMediaFilter(e.target.value as any)}
+              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="ALL">Mọi loại Media</option>
+              <option value="VIDEO_ONLY">🎬 Có Video HD</option>
+              <option value="NO_VIDEO">Chỉ có ảnh</option>
             </select>
 
             {/* Category Filter */}
@@ -239,7 +258,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                   </th>
                   <th className="p-3.5 min-w-[280px]">Sản Phẩm & Nguồn 1688</th>
                   <th className="p-3.5 min-w-[120px]">Ngành Hàng & SKU</th>
-                  <th className="p-3.5 min-w-[140px]">Giá Bán Web & Margin</th>
+                  <th className="p-3.5 min-w-[140px]">Giá Bán Web & Bậc Sỉ</th>
                   <th className="p-3.5 min-w-[110px]">Biến Thể & Kho</th>
                   <th className="p-3.5 min-w-[110px] text-center">Khóa Trường</th>
                   <th className="p-3.5 min-w-[90px] text-center">Chất Lượng</th>
@@ -283,14 +302,33 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                                 +{product.galleryImages.length}
                               </span>
                             )}
+                            {product.videoUrl && (
+                              <span className="absolute top-0 left-0 bg-purple-600/90 text-white text-[8px] font-extrabold px-1 py-0.5 rounded-br flex items-center gap-0.5 shadow-xs">
+                                <Video className="w-2 h-2" /> MP4
+                              </span>
+                            )}
                           </div>
                           <div className="min-w-0">
-                            <h4
-                              onClick={() => onSelectProduct(product)}
-                              className="text-xs font-bold text-slate-900 hover:text-orange-600 cursor-pointer line-clamp-2 leading-relaxed"
-                            >
-                              {product.titleVI}
-                            </h4>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4
+                                onClick={() => onSelectProduct(product)}
+                                className="text-xs font-bold text-slate-900 hover:text-orange-600 cursor-pointer line-clamp-2 leading-relaxed"
+                              >
+                                {product.titleVI}
+                              </h4>
+                              {product.videoUrl && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 bg-purple-100 text-purple-700 rounded shrink-0">
+                                  <Video className="w-2.5 h-2.5" /> Video
+                                </span>
+                              )}
+                            </div>
+
+                            {product.titleEN && (
+                              <p className="text-[11px] text-blue-600 truncate max-w-md font-medium mt-0.5" title={product.titleEN}>
+                                🇬🇧 {product.titleEN}
+                              </p>
+                            )}
+
                             <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500">
                               <span className="truncate max-w-[160px] text-slate-400 italic">
                                 {product.titleVariants?.original || "N/A"}
@@ -317,16 +355,23 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Giá bán & Margin */}
+                      {/* Giá bán & Bậc sỉ */}
                       <td className="p-3.5">
                         <div className="font-extrabold text-slate-900 text-xs">
                           {product.minPriceVND === product.maxPriceVND
                             ? `${product.minPriceVND.toLocaleString("vi-VN")}đ`
                             : `${product.minPriceVND.toLocaleString("vi-VN")}đ - ${product.maxPriceVND.toLocaleString("vi-VN")}đ`}
                         </div>
-                        <span className="inline-block mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
-                          Margin ~55%
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                            Margin ~55%
+                          </span>
+                          {product.priceTiers && product.priceTiers.length > 0 && (
+                            <span className="text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1 py-0.2 rounded" title="Có thang giá sỉ bậc thang">
+                              {product.priceTiers.length} bậc sỉ
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Biến thể & Kho */}
@@ -448,6 +493,11 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                   <div className="absolute top-2 right-2 bg-slate-900/70 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                     QS {product.qualityScore}
                   </div>
+                  {product.videoUrl && (
+                    <div className="absolute bottom-2 left-2 bg-purple-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs">
+                      <Video className="w-3 h-3 text-purple-300" /> Video MP4
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-3.5 space-y-2">
@@ -463,8 +513,21 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                     {product.titleVI}
                   </h4>
 
-                  <div className="text-sm font-extrabold text-orange-600">
-                    {product.minPriceVND.toLocaleString("vi-VN")}đ
+                  {product.titleEN && (
+                    <p className="text-[11px] text-blue-600 truncate font-medium">
+                      🇬🇧 {product.titleEN}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-extrabold text-orange-600">
+                      {product.minPriceVND.toLocaleString("vi-VN")}đ
+                    </div>
+                    {product.priceTiers && product.priceTiers.length > 0 && (
+                      <span className="text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                        {product.priceTiers.length} bậc sỉ
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

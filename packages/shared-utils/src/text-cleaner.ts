@@ -26,7 +26,7 @@ export const JUNK_1688_KEYWORDS = [
   /ins风/g,
 ];
 
-// Từ điển mặc định dịch các thuộc tính và kích thước
+// Từ điển mặc định dịch các thuộc tính sang Tiếng Việt
 export const DEFAULT_GLOSSARY: Record<string, string> = {
   // Màu sắc phổ biến
   "黑色": "Đen",
@@ -43,6 +43,9 @@ export const DEFAULT_GLOSSARY: Record<string, string> = {
   "酒红色": "Đỏ đô",
   "紫色": "Tím",
   "咖啡色": "Nâu cà phê",
+  "杏色": "Màu Be Hạnh Nhân",
+  "浅蓝色": "Xanh nhạt",
+  "军绿色": "Xanh quân đội",
 
   // Kích thước & Thuộc tính
   "均码": "Freesize",
@@ -55,7 +58,7 @@ export const DEFAULT_GLOSSARY: Record<string, string> = {
   "防滑": "Chống trượt",
   "透气": "Thoáng khí",
   "弹力": "Co giãn",
-  "无缝": "Seamless (Không đường may)",
+  "无缝": "Seamless",
   "瑜伽裤": "Quần Legging Nữ",
   "运动内衣": "Áo Bra Thể Thao",
   "短袖T恤": "Áo Thun Ngắn Tay",
@@ -64,7 +67,74 @@ export const DEFAULT_GLOSSARY: Record<string, string> = {
   "马丁靴": "Giày Boots Martin",
   "帆布鞋": "Giày Canvas",
   "双肩包": "Balo",
-  "单肩包": "Túi Đeo Chéo"
+  "单肩包": "Túi Đeo Chéo",
+  "衬衫": "Áo Sơ Mi",
+  "卫衣": "Áo Hoodie",
+  "短裤": "Quần Short",
+  "西装": "Áo Blazer",
+  "聚酯纤维": "Polyester",
+  "雪纺": "Vải Voan Chiffon",
+  "亚麻": "Vải Linen",
+  "真丝": "Lụa Tơ Tằm"
+};
+
+// Từ điển dịch sang Tiếng Anh chuẩn E-commerce (Shopify / Amazon)
+export const DEFAULT_GLOSSARY_EN: Record<string, string> = {
+  // Colors
+  "黑色": "Black",
+  "白色": "White",
+  "灰色": "Grey",
+  "粉色": "Pink",
+  "红色": "Red",
+  "黄色": "Yellow",
+  "蓝色": "Blue",
+  "绿色": "Green",
+  "卡其色": "Khaki",
+  "米白色": "Off-White",
+  "藏青色": "Navy Blue",
+  "酒红色": "Burgundy",
+  "紫色": "Purple",
+  "咖啡色": "Coffee Brown",
+  "杏色": "Apricot",
+  "浅蓝色": "Light Blue",
+  "军绿色": "Army Green",
+
+  // Attributes & Specs
+  "均码": "One Size",
+  "加绒": "Fleece Lined",
+  "不加绒": "Standard (Unlined)",
+  "纯棉": "100% Cotton",
+  "高腰": "High Waist",
+  "低腰": "Low Rise",
+  "速干": "Quick Dry",
+  "防滑": "Anti-Slip",
+  "透气": "Breathable",
+  "弹力": "Elastic / Stretchy",
+  "无缝": "Seamless",
+  "瑜伽裤": "Yoga Leggings",
+  "运动内衣": "Sports Bra",
+  "短袖T恤": "Short Sleeve T-Shirt",
+  "连衣裙": "Dress",
+  "阔腿裤": "Wide Leg Pants",
+  "马丁靴": "Martin Boots",
+  "帆布鞋": "Canvas Sneakers",
+  "双肩包": "Backpack",
+  "单肩包": "Shoulder Bag",
+  "衬衫": "Shirt / Blouse",
+  "卫衣": "Hoodie",
+  "短裤": "Shorts",
+  "西装": "Blazer Suit",
+  "聚酯纤维": "Polyester",
+  "雪纺": "Chiffon",
+  "亚麻": "Linen",
+  "真丝": "Mulberry Silk",
+  "材质": "Material",
+  "面料": "Fabric",
+  "产地": "Origin",
+  "货号": "Item No.",
+  "尺码": "Size",
+  "尺寸": "Dimensions",
+  "颜色": "Color"
 };
 
 /**
@@ -82,7 +152,7 @@ export function clean1688Title(rawTitle: string): string {
 }
 
 /**
- * Tra từ điển thay thế chính xác các cụm từ
+ * Tra từ điển thay thế chính xác các cụm từ sang Tiếng Việt
  */
 export function applyGlossary(
   text: string,
@@ -100,6 +170,26 @@ export function applyGlossary(
     }
   }
   return result;
+}
+
+/**
+ * Tra từ điển thay thế chính xác các cụm từ sang Tiếng Anh
+ */
+export function applyGlossaryEN(
+  text: string,
+  customGlossary: Record<string, string> = {}
+): string {
+  if (!text) return "";
+  const merged = { ...DEFAULT_GLOSSARY_EN, ...customGlossary };
+  let result = text;
+  
+  const keys = Object.keys(merged).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (result.includes(key)) {
+      result = result.split(key).join(" " + merged[key] + " ");
+    }
+  }
+  return result.replace(/\s+/g, " ").trim();
 }
 
 /**

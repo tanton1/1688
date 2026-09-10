@@ -5,6 +5,8 @@ export const SEED_PRODUCTS: WebProduct[] = [
     id: "prod_1688_715421588882",
     slug: "ao-so-mi-nu-linen-form-rong-phong-cach-han-quoc-7154",
     skuCode: "SP-SMN-01",
+    
+    // Tiếng Việt
     titleVI: "Áo Sơ Mi Nữ Linen Form Rộng Cổ V Phong Cách Hàn Quốc 2026",
     titleVariants: {
       original: "夏季复古棉麻衬衫女韩版宽松显瘦V领中袖上衣",
@@ -14,21 +16,70 @@ export const SEED_PRODUCTS: WebProduct[] = [
       display: "Áo Sơ Mi Nữ Linen Form Rộng Cổ V Phong Cách Hàn Quốc 2026"
     },
     shortDescVI: "Chất liệu linen tự nhiên thoáng mát, form rộng giấu dáng cực tốt, chuẩn style Hàn Quốc.",
-    fullDescVI: `<h3>Đặc điểm nổi bật:</h3>
-<ul>
-  <li>Chất liệu: 70% Cotton, 30% Linen tự nhiên, thấm hút mồ hôi vượt trội.</li>
-  <li>Thiết kế: Dáng suông rộng tay lỡ, cổ chữ V tôn dáng cổ thanh thoát.</li>
-  <li>Phù hợp: Đi làm công sở, dạo phố, đi biển mùa hè.</li>
-  <li>Xuất xứ: Quảng Châu chính hãng - Nguồn hàng 1688 tuyển chọn.</li>
-</ul>`,
+    fullDescVI: `### GIỚI THIỆU SẢN PHẨM
+Áo Sơ Mi Nữ Linen Form Rộng Cổ V được sản xuất với tiêu chuẩn chất lượng cao từ xưởng dệt may Quảng Châu, mang phong cách trẻ trung, thoáng mát lý tưởng cho mùa hè.
+
+### ĐẶC ĐIỂM NỔI BẬT
+• Chất liệu: 70% Cotton, 30% Linen tự nhiên, thấm hút mồ hôi vượt trội.
+• Thiết kế: Dáng suông rộng tay lỡ, cổ chữ V tôn dáng cổ thanh thoát.
+• Đường may kép chắc chắn, khuy áo bằng vỏ ốc tinh xảo.
+• Phù hợp: Đi làm công sở, dạo phố, đi biển mùa hè.`,
+
+    // Tiếng Anh (Global E-Commerce)
+    titleEN: "Women's Oversized Linen Blouse V-Neck Korean Casual Summer Top",
+    titleVariantsEN: {
+      original: "夏季复古棉麻衬衫女韩版宽松显瘦V领中袖上衣",
+      clean: "Women's Oversized Linen Blouse V-Neck Korean Summer Top",
+      literal: "Summer retro cotton linen shirt women Korean loose slimming V-neck mid-sleeve top",
+      seo: "Women's Linen Blouse Oversized V-Neck Breathable Short Sleeve Summer Shirt",
+      display: "Women's Oversized Linen Blouse V-Neck (New Arrival 2026)"
+    },
+    shortDescEN: "Natural breathable cotton-linen blend with relaxed oversized silhouette and flattering V-neckline.",
+    fullDescEN: `### PRODUCT OVERVIEW
+Women's Oversized Linen Blouse features an airy cotton-linen weave, dropped shoulders, and a clean V-neckline designed for effortless summer style.
+
+### KEY HIGHLIGHTS
+• Premium 70% Cotton / 30% Natural Linen blend for superior breathability.
+• Flattering relaxed fit with half-sleeves and natural mother-of-pearl buttons.
+• Pre-washed fabric resists shrinkage and stays soft against sensitive skin.
+• Versatile staple for office casual, weekend coffee, or seaside vacations.`,
+
     categoryName: "Áo nữ",
-    primaryImage: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80",
+    primaryImage: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=800&auto=format&fit=crop&q=80",
     galleryImages: [
-      "https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1551803091-e20673f15770?w=600&auto=format&fit=crop&q=80"
+      "https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1551803091-e20673f15770?w=800&auto=format&fit=crop&q=80"
     ],
+    
+    // Ảnh mô tả dài (Detail Description Images)
+    detailImages: [
+      "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=800&auto=format&fit=crop&q=80"
+    ],
+
+    // Video sản phẩm 1688 thực tế
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    videoPosterUrl: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=800&auto=format&fit=crop&q=80",
+
+    // Thuộc tính chi tiết Song ngữ
+    attributes: [
+      { keyCN: "材质", valueCN: "棉麻", keyVI: "Chất liệu", valueVI: "Cotton Linen Tự Nhiên", keyEN: "Material", valueEN: "Cotton Linen Blend" },
+      { keyCN: "领型", valueCN: "V字领", keyVI: "Kiểu cổ", valueVI: "Cổ Chữ V", keyEN: "Collar Type", valueEN: "V-Neck" },
+      { keyCN: "版型", valueCN: "宽松型", keyVI: "Phom dáng", valueVI: "Form Rộng Oversized", keyEN: "Fit Type", valueEN: "Loose / Oversized" },
+      { keyCN: "季节", valueCN: "夏季", keyVI: "Mùa thích hợp", valueVI: "Mùa Hè", keyEN: "Season", valueEN: "Summer" },
+      { keyCN: "产地", valueCN: "广州", keyVI: "Xuất xứ", valueVI: "Quảng Châu", keyEN: "Origin", valueEN: "Guangzhou, China" }
+    ],
+
+    // Bảng giá sỉ bậc thang 1688
+    priceTiers: [
+      { minQuantity: 2, priceCNY: 34.0, priceVND: 189000, priceUSD: 7.99 },
+      { minQuantity: 20, priceCNY: 30.5, priceVND: 169000, priceUSD: 6.99 },
+      { minQuantity: 100, priceCNY: 26.0, priceVND: 145000, priceUSD: 5.99 }
+    ],
+
     status: "PUBLISHED",
-    qualityScore: 94,
+    qualityScore: 96,
     minPriceVND: 189000,
     maxPriceVND: 219000,
     isTitleLocked: true,
@@ -40,7 +91,9 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_7154_trang_s",
         colorName: "Trắng Kem (米白)",
+        colorNameEN: "Off-White",
         sizeName: "S (42-48kg)",
+        sizeNameEN: "S",
         costPriceVND: 82000,
         sellingPriceVND: 189000,
         stockQuantity: 120,
@@ -51,7 +104,9 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_7154_trang_m",
         colorName: "Trắng Kem (米白)",
+        colorNameEN: "Off-White",
         sizeName: "M (49-55kg)",
+        sizeNameEN: "M",
         costPriceVND: 82000,
         sellingPriceVND: 189000,
         stockQuantity: 150,
@@ -60,34 +115,14 @@ export const SEED_PRODUCTS: WebProduct[] = [
         selectedForSale: true
       },
       {
-        sourceSkuId: "sku_7154_trang_l",
-        colorName: "Trắng Kem (米白)",
-        sizeName: "L (56-63kg)",
-        costPriceVND: 82000,
-        sellingPriceVND: 189000,
-        stockQuantity: 80,
-        imageUrl: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=200&auto=format&fit=crop&q=80",
-        sourceAvailable: true,
-        selectedForSale: true
-      },
-      {
         sourceSkuId: "sku_7154_xanh_s",
         colorName: "Xanh Matcha (抹茶绿)",
+        colorNameEN: "Matcha Green",
         sizeName: "S (42-48kg)",
+        sizeNameEN: "S",
         costPriceVND: 89000,
         sellingPriceVND: 209000,
         stockQuantity: 95,
-        imageUrl: "https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=200&auto=format&fit=crop&q=80",
-        sourceAvailable: true,
-        selectedForSale: true
-      },
-      {
-        sourceSkuId: "sku_7154_xanh_m",
-        colorName: "Xanh Matcha (抹茶绿)",
-        sizeName: "M (49-55kg)",
-        costPriceVND: 89000,
-        sellingPriceVND: 209000,
-        stockQuantity: 110,
         imageUrl: "https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=200&auto=format&fit=crop&q=80",
         sourceAvailable: true,
         selectedForSale: true
@@ -112,14 +147,43 @@ export const SEED_PRODUCTS: WebProduct[] = [
       display: "Quần Ống Rộng Nữ Suông Lưng Cao Hack Dáng Vải Tuyết Mưa Cao Cấp"
     },
     shortDescVI: "Chất tuyết mưa dày dặn đứng form, cạp cao tôn dáng đôi chân thon dài hoàn hảo.",
-    fullDescVI: `<p>Quần ống rộng lưng cao luôn là item không thể thiếu trong tủ đồ của các cô nàng sành điệu...</p>`,
+    fullDescVI: `<p>Quần ống rộng lưng cao chất tuyết mưa đứng dáng, cạp cao hack chiều cao cực đỉnh.</p>`,
+
+    titleEN: "Women's High Waisted Wide Leg Trousers Drape Suit Pants",
+    titleVariantsEN: {
+      original: "秋季高腰垂感阔腿裤女宽松显瘦西装直筒休闲裤",
+      clean: "Women's High Waisted Wide Leg Drape Trousers",
+      literal: "Autumn high waist drape wide leg pants women loose slimming suit straight casual trousers",
+      seo: "Women's High Rise Wide Leg Trousers Professional Office Work Pants",
+      display: "Women's High Waisted Wide Leg Trousers (Best Seller)"
+    },
+    shortDescEN: "Flowing drape fabric with tailored high-rise waistline for an elegant elongating silhouette.",
+    fullDescEN: `<p>These high-waisted wide leg trousers deliver an effortless tailored fit suitable for corporate meetings or polished streetwear.</p>`,
+
     categoryName: "Quần nữ",
-    primaryImage: "https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=600&auto=format&fit=crop&q=80",
+    primaryImage: "https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=800&auto=format&fit=crop&q=80",
     galleryImages: [
-      "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=600&auto=format&fit=crop&q=80"
+      "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&auto=format&fit=crop&q=80"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80"
+    ],
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    videoPosterUrl: "https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=800&auto=format&fit=crop&q=80",
+
+    attributes: [
+      { keyCN: "材质", valueCN: "聚酯纤维", keyVI: "Chất liệu", valueVI: "Vải Tuyết Mưa Cao Cấp", keyEN: "Material", valueEN: "Drape Polyester Blend" },
+      { keyCN: "裤长", valueCN: "长裤", keyVI: "Chiều dài", valueVI: "Quần Dài", keyEN: "Length", valueEN: "Full Length" },
+      { keyCN: "腰型", valueCN: "高腰", keyVI: "Lưng quần", valueVI: "Cạp Cao Tôn Dáng", keyEN: "Waist Type", valueEN: "High Rise" }
+    ],
+    priceTiers: [
+      { minQuantity: 2, priceCNY: 42.0, priceVND: 229000, priceUSD: 9.99 },
+      { minQuantity: 30, priceCNY: 38.0, priceVND: 209000, priceUSD: 8.99 },
+      { minQuantity: 100, priceCNY: 33.0, priceVND: 185000, priceUSD: 7.99 }
+    ],
+
     status: "PUBLISHED",
-    qualityScore: 91,
+    qualityScore: 92,
     minPriceVND: 229000,
     maxPriceVND: 259000,
     isTitleLocked: false,
@@ -131,7 +195,9 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_6891_den_s",
         colorName: "Đen Basic (黑色)",
+        colorNameEN: "Classic Black",
         sizeName: "S",
+        sizeNameEN: "S",
         costPriceVND: 95000,
         sellingPriceVND: 229000,
         stockQuantity: 210,
@@ -140,20 +206,11 @@ export const SEED_PRODUCTS: WebProduct[] = [
         selectedForSale: true
       },
       {
-        sourceSkuId: "sku_6891_den_m",
-        colorName: "Đen Basic (黑色)",
-        sizeName: "M",
-        costPriceVND: 95000,
-        sellingPriceVND: 229000,
-        stockQuantity: 180,
-        imageUrl: "https://images.unsplash.com/photo-1509551388413-e18d0ac5d495?w=200&auto=format&fit=crop&q=80",
-        sourceAvailable: true,
-        selectedForSale: true
-      },
-      {
         sourceSkuId: "sku_6891_be_s",
         colorName: "Nâu Be (卡其色)",
+        colorNameEN: "Beige Khaki",
         sizeName: "S",
+        sizeNameEN: "S",
         costPriceVND: 105000,
         sellingPriceVND: 249000,
         stockQuantity: 75,
@@ -182,13 +239,42 @@ export const SEED_PRODUCTS: WebProduct[] = [
     },
     shortDescVI: "Họa tiết hoa nhí tinh tế, dáng xòe tiểu thư duyên dáng, lót lụa 2 lớp cao cấp.",
     fullDescVI: `<p>Chiếc đầm hoa nhí xinh xắn dành riêng cho các buổi hẹn hò hoặc dạo phố cuối tuần...</p>`,
+
+    titleEN: "French Floral Vintage Puff Sleeve Square Neck Midi Dress",
+    titleVariantsEN: {
+      original: "法式复古小碎花连衣裙女夏方领泡泡袖甜美仙女裙",
+      clean: "French Floral Vintage Square Neck Puff Sleeve Dress",
+      literal: "French retro small floral dress women summer square collar puff sleeve sweet fairy skirt",
+      seo: "Women's Vintage Floral Puff Sleeve Square Neck Cottagecore Midi Dress",
+      display: "French Floral Vintage Puff Sleeve Midi Dress (2026 Edition)"
+    },
+    shortDescEN: "Charming floral chiffon print with romantic puff sleeves, ruffled hemline, and breathable inner lining.",
+    fullDescEN: `<p>A romantic vintage dress inspired by French countryside fashion with flattering square neckline and delicate floral patterns.</p>`,
+
     categoryName: "Đầm & Váy",
-    primaryImage: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=600&auto=format&fit=crop&q=80",
+    primaryImage: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&auto=format&fit=crop&q=80",
     galleryImages: [
-      "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600&auto=format&fit=crop&q=80"
+      "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=800&auto=format&fit=crop&q=80"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=800&auto=format&fit=crop&q=80"
+    ],
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    videoPosterUrl: "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&auto=format&fit=crop&q=80",
+
+    attributes: [
+      { keyCN: "材质", valueCN: "雪纺", keyVI: "Chất liệu", valueVI: "Voan Chiffon Lụa Mềm", keyEN: "Material", valueEN: "Soft Chiffon Silk" },
+      { keyCN: "裙长", valueCN: "中长裙", keyVI: "Độ dài", valueVI: "Váy Midi Dài Quá Gối", keyEN: "Length", valueEN: "Midi Length" },
+      { keyCN: "领型", valueCN: "方领", keyVI: "Kiểu cổ", valueVI: "Cổ Vuông Kiểu Pháp", keyEN: "Collar Type", valueEN: "Square Neck" }
+    ],
+    priceTiers: [
+      { minQuantity: 2, priceCNY: 48.0, priceVND: 289000, priceUSD: 12.99 },
+      { minQuantity: 20, priceCNY: 43.0, priceVND: 259000, priceUSD: 11.50 },
+      { minQuantity: 50, priceCNY: 38.0, priceVND: 229000, priceUSD: 9.99 }
+    ],
+
     status: "DRAFT",
-    qualityScore: 86,
+    qualityScore: 89,
     minPriceVND: 289000,
     maxPriceVND: 319000,
     isTitleLocked: false,
@@ -200,7 +286,9 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_7442_hoa_vang_s",
         colorName: "Vàng Hoa Cúc (小黄花)",
+        colorNameEN: "Daisy Yellow",
         sizeName: "S",
+        sizeNameEN: "S",
         costPriceVND: 120000,
         sellingPriceVND: 289000,
         stockQuantity: 40,
@@ -211,7 +299,9 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_7442_hoa_xanh_m",
         colorName: "Xanh Hoa Nhí (碎花蓝)",
+        colorNameEN: "Floral Blue",
         sizeName: "M",
+        sizeNameEN: "M",
         costPriceVND: 125000,
         sellingPriceVND: 299000,
         stockQuantity: 35,
@@ -240,13 +330,40 @@ export const SEED_PRODUCTS: WebProduct[] = [
     },
     shortDescVI: "Chất da PU bóng mờ cao cấp, form chuẩn không gãy gập, khóa đồng vintage.",
     fullDescVI: `<p>Mẫu túi kẹp nách thời thượng làm mưa làm gió trên các sàn thương mại điện tử...</p>`,
+
+    titleEN: "Women's Retro PU Leather Shoulder Underarm Bag Metal Lock Handbag",
+    titleVariantsEN: {
+      original: "复古PU皮腋下包女小众设计法式金属锁扣单肩包",
+      clean: "Women's Retro PU Leather Shoulder Bag Metal Lock",
+      literal: "Retro PU leather underarm bag women niche design French metal lock shoulder bag",
+      seo: "Vintage PU Leather Baguette Bag Women Retro Minimalist Clutch Purse",
+      display: "Women's Retro PU Leather Underarm Bag (Trending 2026)"
+    },
+    shortDescEN: "Sleek faux leather baguette bag with polished gold-tone hardware and secure magnetic closure.",
+    fullDescEN: `<p>A sleek 90s-inspired baguette bag crafted in premium soft faux leather with interior zippered pockets.</p>`,
+
     categoryName: "Phụ kiện",
-    primaryImage: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=600&auto=format&fit=crop&q=80",
+    primaryImage: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80",
     galleryImages: [
-      "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=600&auto=format&fit=crop&q=80"
+      "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=800&auto=format&fit=crop&q=80"
     ],
+    detailImages: [
+      "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800&auto=format&fit=crop&q=80"
+    ],
+    videoUrl: null, // Sản phẩm này không có video
+
+    attributes: [
+      { keyCN: "材质", valueCN: "PU皮", keyVI: "Chất liệu", valueVI: "Da PU Cao Cấp Chống Trầy", keyEN: "Material", valueEN: "Premium PU Vegan Leather" },
+      { keyCN: "开盖方式", valueCN: "锁扣", keyVI: "Kiểu khóa", valueVI: "Khóa Kim Loại Vintage", keyEN: "Closure Type", valueEN: "Vintage Metal Lock" }
+    ],
+    priceTiers: [
+      { minQuantity: 2, priceCNY: 28.0, priceVND: 159000, priceUSD: 6.99 },
+      { minQuantity: 50, priceCNY: 24.0, priceVND: 139000, priceUSD: 5.99 },
+      { minQuantity: 200, priceCNY: 20.0, priceVND: 119000, priceUSD: 4.99 }
+    ],
+
     status: "DRAFT",
-    qualityScore: 78,
+    qualityScore: 82,
     minPriceVND: 159000,
     maxPriceVND: 179000,
     isTitleLocked: false,
@@ -258,24 +375,15 @@ export const SEED_PRODUCTS: WebProduct[] = [
       {
         sourceSkuId: "sku_6901_nau_tay",
         colorName: "Nâu Tây (复古棕)",
+        colorNameEN: "Retro Brown",
         sizeName: "Tiêu chuẩn (24x14cm)",
+        sizeNameEN: "Standard (24x14cm)",
         costPriceVND: 65000,
         sellingPriceVND: 159000,
         stockQuantity: 90,
         imageUrl: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=200&auto=format&fit=crop&q=80",
         sourceAvailable: true,
         selectedForSale: true
-      },
-      {
-        sourceSkuId: "sku_6901_den_bong",
-        colorName: "Đen Tuyền (经典黑)",
-        sizeName: "Tiêu chuẩn (24x14cm)",
-        costPriceVND: 65000,
-        sellingPriceVND: 159000,
-        stockQuantity: 0,
-        imageUrl: "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=200&auto=format&fit=crop&q=80",
-        sourceAvailable: false,
-        selectedForSale: false
       }
     ],
     sourceProductId: "690184712093",

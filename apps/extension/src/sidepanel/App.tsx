@@ -14,13 +14,14 @@ import {
   DEFAULT_PRICING_RULE,
   generateCartesianCombinations
 } from "@hub1688/shared-utils";
-import { CheckCircle, Zap, SlidersHorizontal, Loader2 } from "lucide-react";
+import { CheckCircle, Zap, SlidersHorizontal, Loader2, Video, Globe, Play } from "lucide-react";
 import { getApiBaseUrl } from "../shared/config.js";
 
 export const App: React.FC = () => {
   const { product, loading, refresh } = useProductExtractor();
   const [importMode, setImportMode] = useState<"QUICK" | "ADVANCED">("QUICK");
   const [translationMode, setTranslationMode] = useState<TranslationMode>("ECOMMERCE");
+  const [targetLanguage, setTargetLanguage] = useState<"vi" | "en">("vi");
   const [multiplier, setMultiplier] = useState<number>(2.2);
   const [importing, setImporting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -85,7 +86,7 @@ export const App: React.FC = () => {
         stock: v.stockQuantity
       })),
       description: {
-        images: []
+        images: product.descriptionImages || []
       },
       rawSnapshot: product
     };
@@ -98,7 +99,7 @@ export const App: React.FC = () => {
         body: JSON.stringify({
           normalized,
           settings: {
-            targetLanguage: "vi",
+            targetLanguage,
             translationMode,
             autoPublish,
             copyDescriptionImages: true,
@@ -109,24 +110,24 @@ export const App: React.FC = () => {
 
       const data = await res.json();
       if (res.ok) {
+        const title = targetLanguage === "en" ? (data.product.titleEN || data.product.titleVI) : data.product.titleVI;
         setSuccessMessage(
           autoPublish
-            ? `✓ Đã đăng bán thành công sản phẩm: ${data.product.titleVI}`
-            : `✓ Đã lưu thành công vào DRAFT: ${data.product.titleVI}`
+            ? `✓ Đã đăng bán thành công: ${title}`
+            : `✓ Đã lưu thành công vào DRAFT: ${title}`
         );
       } else {
         setSuccessMessage(`⚠ ${data.message || "Lỗi khi đồng bộ về website"}`);
       }
     } catch (err: any) {
-      // Giả lập thành công khi offline server local
-      setSuccessMessage(`✓ Đã lưu thành công sản phẩm vào Web Draft (Mô phỏng)`);
+      setSuccessMessage(`⚠ Lỗi mạng: ${err.message}`);
     } finally {
       setImporting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-6 text-gray-800">
+    <div className="min-h-screen bg-gray-100 flex flex-col font-sans text-gray-800">
       <Header shop={product?.shop} onRefresh={refresh} loading={loading} />
 
       <main className="p-3.5 space-y-3 flex-1">
@@ -142,6 +143,58 @@ export const App: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* Language & Mode Control Bar */}
+            <div className="flex items-center justify-between gap-2 bg-white p-2 rounded-xl border border-gray-200 shadow-2xs">
+              <div className="flex items-center gap-1 text-[11px] font-bold text-gray-600">
+                <Globe className="w-3.5 h-3.5 text-orange-500" />
+                <span>Ngôn ngữ:</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setTargetLanguage("vi")}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition-all ${
+                    targetLanguage === "vi"
+                      ? "bg-orange-600 text-white shadow-xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  🇻🇳 Tiếng Việt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetLanguage("en")}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition-all ${
+                    targetLanguage === "en"
+                      ? "bg-orange-600 text-white shadow-xs"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  🇬🇧 English
+                </button>
+              </div>
+            </div>
+
+            {/* Video preview banner if video exists */}
+            {product.videoUrl && (
+              <div className="bg-slate-900 rounded-xl overflow-hidden shadow-sm border border-slate-800">
+                <div className="p-2 px-3 bg-slate-950 flex items-center justify-between text-xs text-white">
+                  <span className="font-bold flex items-center gap-1.5 text-orange-400 text-[11px]">
+                    <Video className="w-3.5 h-3.5" />
+                    Phát hiện Video 1688
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Sẵn sàng đồng bộ</span>
+                </div>
+                <video
+                  src={product.videoUrl}
+                  controls
+                  poster={product.images[0]}
+                  className="w-full h-36 object-cover bg-black"
+                />
+              </div>
+            )}
+
             {/* Mode switch tabs */}
             <div className="grid grid-cols-2 bg-gray-200/80 p-0.5 rounded-lg text-xs font-bold">
               <button
@@ -180,21 +233,23 @@ export const App: React.FC = () => {
             {importMode === "QUICK" ? (
               <QuickImportCard
                 product={product}
-                onImport={async () => executeImport(false)}
+                onImport={(opts) => executeImport(false)}
                 onPreview={() => setImportMode("ADVANCED")}
                 importing={importing}
               />
             ) : (
               <AdvancedImportTabs
-                variants={variants}
+                product={product}
+                translationMode={translationMode}
+                onTranslationModeChange={setTranslationMode}
                 pricingBreakdown={pricingBreakdown}
                 multiplier={multiplier}
                 onMultiplierChange={setMultiplier}
-                selectedMode={translationMode}
-                onSelectMode={setTranslationMode}
+                variants={variants}
                 onToggleVariant={handleToggleVariant}
                 onPriceChange={handlePriceChange}
-                onPublish={executeImport}
+                onSaveDraft={() => executeImport(false)}
+                onPublishDirect={() => executeImport(true)}
                 importing={importing}
               />
             )}

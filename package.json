@@ -11,6 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "build:admin": "npm run build --workspace=@hub1688/admin",
+    "build:extension": "node apps/extension/scripts/build.js",
     "dev:admin": "npm run dev --workspace=@hub1688/admin",
     "build:vercel": "npm run build --workspace=@hub1688/shared-types && npm run build --workspace=@hub1688/shared-utils && npm run build --workspace=@hub1688/backend && npm run build --workspace=@hub1688/admin",
     "test": "node --test packages/shared-utils/test/pipeline.test.mjs"
