@@ -34,6 +34,12 @@ import {
   buildShopifyPayload,
   buildMarketplaceCSV
 } from "../dist/store-export-builder.js";
+import {
+  detectProductPlatform,
+  extractProductIdFromUrl,
+  parseHtmlProductMetadata,
+  SUPPORTED_PLATFORMS_META
+} from "../dist/platform-detector.js";
 
 test("1. Text Cleaner & Glossary Engine", (t) => {
   const rawTitle = "2026新款 厂家直销 跨境专供 爆款 女士高腰弹力速干瑜伽裤 1688一件代发";
@@ -277,4 +283,64 @@ test("7. Omnichannel Connectors Payload Builders", (t) => {
   assert.ok(tiktokCSV.includes("Áo Thun Cotton Nữ Cao Cấp"));
   assert.ok(tiktokCSV.includes("180000"));
 });
+
+test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGraph/JSON-LD Parser)", (t) => {
+  // 1. Platform Detection
+  assert.equal(detectProductPlatform("https://detail.1688.com/offer/684219482103.html"), "1688");
+  assert.equal(detectProductPlatform("https://item.taobao.com/item.htm?id=681928471928"), "TAOBAO");
+  assert.equal(detectProductPlatform("https://detail.tmall.com/item.htm?id=712938491024"), "TMALL");
+  assert.equal(detectProductPlatform("https://shopee.vn/product/12345678/987654321"), "SHOPEE");
+  assert.equal(detectProductPlatform("https://shop.tiktok.com/view/product/1729384918294"), "TIKTOK_SHOP");
+  assert.equal(detectProductPlatform("https://www.aliexpress.com/item/1005004819283746.html"), "ALIEXPRESS");
+  assert.equal(detectProductPlatform("https://cottonon.com/VN/p/oversized-crew-tee/123456.html"), "GENERIC_WEB");
+
+  // 2. ID Extraction
+  assert.equal(extractProductIdFromUrl("https://item.taobao.com/item.htm?id=681928471928"), "681928471928");
+  assert.equal(extractProductIdFromUrl("https://shopee.vn/product/12345678/987654321"), "987654321");
+  assert.equal(extractProductIdFromUrl("https://shop.tiktok.com/view/product/1729384918294"), "1729384918294");
+  assert.equal(extractProductIdFromUrl("https://www.aliexpress.com/item/1005004819283746.html"), "1005004819283746");
+
+  // 3. Supported Platforms Meta
+  assert.equal(SUPPORTED_PLATFORMS_META.length >= 7, true);
+  assert.ok(SUPPORTED_PLATFORMS_META.some(p => p.id === "TAOBAO"));
+  assert.ok(SUPPORTED_PLATFORMS_META.some(p => p.id === "SHOPEE"));
+
+  // 4. HTML OpenGraph & Schema.org Extraction
+  const sampleHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Áo Sơ Mi Nữ Lụa Satin Cao Cấp | Store VN</title>
+        <meta property="og:title" content="Áo Sơ Mi Nữ Lụa Satin Cao Cấp" />
+        <meta property="og:description" content="Thiết kế thanh lịch, chất vải lụa mềm mát chống nhăn" />
+        <meta property="og:image" content="https://img.cdn.com/shirt.jpg" />
+        <meta property="og:price:amount" content="285000" />
+        <meta property="og:price:currency" content="VND" />
+        <script type="application/ld+json">
+        {
+          "@type": "Product",
+          "name": "Áo Sơ Mi Nữ Lụa Satin Cao Cấp",
+          "image": "https://img.cdn.com/shirt.jpg",
+          "description": "Thiết kế thanh lịch, chất vải lụa mềm mát chống nhăn",
+          "brand": { "@type": "Brand", "name": "Boutique Fashion" },
+          "offers": {
+            "@type": "Offer",
+            "price": "285000",
+            "priceCurrency": "VND"
+          }
+        }
+        </script>
+      </head>
+      <body></body>
+    </html>
+  `;
+
+  const extracted = parseHtmlProductMetadata(sampleHtml);
+  assert.equal(extracted.title, "Áo Sơ Mi Nữ Lụa Satin Cao Cấp");
+  assert.equal(extracted.price, 285000);
+  assert.equal(extracted.currency, "VND");
+  assert.equal(extracted.brand, "Boutique Fashion");
+  assert.ok(extracted.images.includes("https://img.cdn.com/shirt.jpg"));
+});
+
 

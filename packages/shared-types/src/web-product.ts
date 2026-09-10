@@ -1,3 +1,5 @@
+import { SourcePlatform } from "./normalized-product.js";
+
 export type PublishStatus = "DRAFT" | "READY_TO_REVIEW" | "PUBLISHED" | "ARCHIVED";
 
 export interface ProductTitleVariants {
@@ -164,9 +166,64 @@ export interface WebProduct {
   isStockAutoSync: boolean;
 
   variants: WebProductVariant[];
+  sourcePlatform?: SourcePlatform;
+  sourceCurrency?: "CNY" | "VND" | "USD";
   sourceProductId: string;
   sourceUrl: string;
   supplierName: string;
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface SupportedPlatformInfo {
+  id: SourcePlatform;
+  name: string;
+  badge: string;
+  icon: string;
+  color: string;
+  defaultCurrency: "CNY" | "VND" | "USD";
+  sampleUrl: string;
+  description: string;
+}
+
+export interface ClonedVariantPreview {
+  skuId: string;
+  name: string;
+  nameVI?: string;
+  originalPrice: number;
+  priceVND: number;
+  stock: number;
+  imageUrl?: string;
+}
+
+export interface ClonePreviewResponse {
+  sourcePlatform: SourcePlatform;
+  sourceProductId: string;
+  sourceUrl: string;
+  originalTitle: string;
+  translatedTitleVI: string;
+  translatedTitleEN?: string;
+  supplierName: string;
+  currency: "CNY" | "USD" | "VND";
+  originalPriceMin: number;
+  originalPriceMax: number;
+  estimatedCostVND: number;
+  estimatedSellingPriceVND: number;
+  estimatedMarginPercent: number;
+  primaryImage: string;
+  galleryImages: string[];
+  variants: ClonedVariantPreview[];
+  categorySuggested: string;
+  rawAttributes?: Array<{ key: string; value: string }>;
+  qualityScorePreview: number;
+}
+
+export interface CloneExecuteRequest {
+  url: string;
+  platform?: SourcePlatform;
+  customTitle?: string;
+  pricingRuleId?: string;
+  categoryName?: string;
+  autoPublish?: boolean;
+}
+

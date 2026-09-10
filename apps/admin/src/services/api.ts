@@ -2,7 +2,11 @@ import {
   WebProduct,
   ProductDiffSummary,
   PricingRuleConfig,
-  PricingBreakdown
+  PricingBreakdown,
+  SupportedPlatformInfo,
+  ClonePreviewResponse,
+  CloneExecuteRequest,
+  SourcePlatform
 } from "@hub1688/shared-types";
 
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
@@ -254,6 +258,25 @@ export const AdminApi = {
   async deleteOrder(id: string): Promise<{ success: boolean }> {
     return request(`/api/v1/orders/${id}`, {
       method: "DELETE"
+    });
+  },
+
+  // 22. Multi-Platform Product Cloner (1688, Taobao, Tmall, Shopee, TikTok, AliExpress, Web)
+  async getSupportedClonePlatforms(): Promise<{ success: boolean; platforms: SupportedPlatformInfo[] }> {
+    return request("/api/v1/clone/supported-platforms");
+  },
+
+  async previewCloneProduct(url: string, platform?: SourcePlatform): Promise<{ success: boolean; preview: ClonePreviewResponse }> {
+    return request("/api/v1/clone/preview", {
+      method: "POST",
+      body: JSON.stringify({ url, platform })
+    });
+  },
+
+  async executeCloneProduct(data: CloneExecuteRequest): Promise<{ success: boolean; message: string; product: WebProduct }> {
+    return request("/api/v1/clone/execute", {
+      method: "POST",
+      body: JSON.stringify(data)
     });
   }
 };

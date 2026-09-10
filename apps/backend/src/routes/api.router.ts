@@ -6,6 +6,7 @@ import { PricingController } from "../controllers/pricing.controller.js";
 import { GlossaryController } from "../controllers/glossary.controller.js";
 import { StoreConnectorsController } from "../controllers/store-connectors.controller.js";
 import { OrdersController } from "../controllers/orders.controller.js";
+import { cloneController } from "../controllers/clone.controller.js";
 
 export const apiRouter = Router();
 
@@ -16,6 +17,12 @@ const pricingCtrl = new PricingController();
 const glossaryCtrl = new GlossaryController();
 const connectorsCtrl = new StoreConnectorsController();
 const ordersCtrl = new OrdersController();
+
+// Multi-Platform Product Cloner (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Universal Web)
+apiRouter.get("/clone/supported-platforms", (req, res) => cloneController.getSupportedPlatforms(req, res));
+apiRouter.post("/clone/preview", (req, res) => cloneController.preview(req, res));
+apiRouter.post("/clone/execute", (req, res) => cloneController.execute(req, res));
+
 
 // 0. Dashboard Stats
 apiRouter.get("/dashboard/stats", (req, res) => productsCtrl.getDashboardStats(req, res));

@@ -5,3 +5,4 @@ export * from "./quality-evaluator.js";
 export * from "./seo-optimizer.js";
 export * from "./ai-copywriter.js";
 export * from "./store-export-builder.js";
+export * from "./platform-detector.js";

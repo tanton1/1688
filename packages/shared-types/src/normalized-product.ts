@@ -25,8 +25,10 @@ export interface NormalizedVariant {
   imageUrl?: string;
 }
 
+export type SourcePlatform = "1688" | "TAOBAO" | "TMALL" | "SHOPEE" | "TIKTOK_SHOP" | "ALIEXPRESS" | "GENERIC_WEB";
+
 export interface Normalized1688Product {
-  sourcePlatform: "1688";
+  sourcePlatform: SourcePlatform;
   sourceProductId: string;
   sourceUrl: string;
   supplier: Raw1688Shop;

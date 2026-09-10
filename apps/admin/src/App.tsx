@@ -13,6 +13,7 @@ import { OrdersView } from "./components/OrdersView";
 import { AuthModal, CurrentUser } from "./components/AuthModal";
 import { StoreConnectorsModal } from "./components/StoreConnectorsModal";
 import { BannerFrameStudioModal } from "./components/BannerFrameStudioModal";
+import { MultiPlatformCloneModal } from "./components/MultiPlatformCloneModal";
 import { CheckCircle2, AlertCircle, Settings, Globe } from "lucide-react";
 
 export const App: React.FC = () => {
@@ -51,6 +52,9 @@ export const App: React.FC = () => {
   // E-Commerce Banner & Frame Studio State
   const [showBannerModal, setShowBannerModal] = useState(false);
   const [bannerProduct, setBannerProduct] = useState<WebProduct | null>(null);
+
+  // Multi-Platform Cloner State
+  const [showMultiCloneModal, setShowMultiCloneModal] = useState(false);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
@@ -267,6 +271,7 @@ export const App: React.FC = () => {
             setConnectorsProduct(null);
             setShowConnectorsModal(true);
           }}
+          onOpenMultiClone={() => setShowMultiCloneModal(true)}
         />
 
         <main className="p-6 flex-1 overflow-x-hidden">
@@ -343,6 +348,17 @@ export const App: React.FC = () => {
         }}
         products={products}
         selectedProduct={connectorsProduct}
+        onShowToast={showToast}
+      />
+
+      {/* Modal Clone Sản Phẩm Đa Nền Tảng (Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Web) */}
+      <MultiPlatformCloneModal
+        isOpen={showMultiCloneModal}
+        onClose={() => setShowMultiCloneModal(false)}
+        onProductCreated={(newProd) => {
+          loadData();
+          setSelectedProduct(newProd);
+        }}
         onShowToast={showToast}
       />
 

@@ -23,6 +23,7 @@ interface HeaderProps {
   currentUser: CurrentUser | null;
   onOpenAuth: () => void;
   onOpenConnectors: () => void;
+  onOpenMultiClone: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,7 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
   onQuickImport,
   currentUser,
   onOpenAuth,
-  onOpenConnectors
+  onOpenConnectors,
+  onOpenMultiClone
 }) => {
   const [quickOfferId, setQuickOfferId] = useState("");
   const [showQuickModal, setShowQuickModal] = useState(false);
@@ -95,6 +97,16 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Share2 className="w-3.5 h-3.5 text-orange-600" />
           <span>Kênh Đẩy Web (API)</span>
+        </button>
+
+        {/* Multi-Platform Cloner Button */}
+        <button
+          onClick={onOpenMultiClone}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-all"
+          title="Clone sản phẩm từ Taobao, Tmall, Shopee, TikTok Shop, AliExpress và Web bất kỳ"
+        >
+          <Globe className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Clone Đa Nền Tảng</span>
         </button>
 
         {/* Quick Ingest Button */}
