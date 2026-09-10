@@ -14,11 +14,12 @@ import {
   DEFAULT_PRICING_RULE,
   generateCartesianCombinations
 } from "@hub1688/shared-utils";
-import { CheckCircle, Zap, SlidersHorizontal, Loader2, Video, Globe, Play } from "lucide-react";
+import { CheckCircle, Zap, SlidersHorizontal, Loader2, Video, Globe, Play, Search, AlertCircle } from "lucide-react";
 import { getApiBaseUrl } from "../shared/config.js";
 
 export const App: React.FC = () => {
-  const { product, loading, refresh } = useProductExtractor();
+  const { product, loading, error, currentUrl, refresh, extractByCustomUrl } = useProductExtractor();
+  const [inputUrl, setInputUrl] = useState<string>("");
   const [importMode, setImportMode] = useState<"QUICK" | "ADVANCED">("QUICK");
   const [translationMode, setTranslationMode] = useState<TranslationMode>("ECOMMERCE");
   const [targetLanguage, setTargetLanguage] = useState<"vi" | "en">("vi");
@@ -163,15 +164,61 @@ export const App: React.FC = () => {
       <Header shop={product?.shop} onRefresh={refresh} loading={loading} />
 
       <main className="p-3.5 space-y-3 flex-1">
+        {/* Quick URL Input Bar: Cho phép dán bất kỳ link sản phẩm nào (Macorner, Shopee, Taobao, 1688...) */}
+        <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-bold text-gray-700">
+            <span className="flex items-center gap-1">
+              <Search className="w-3.5 h-3.5 text-orange-500" />
+              Dán Link Sản Phẩm (Macorner, 1688, Web...):
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              placeholder="https://macorner.co/products/... hoặc link bất kỳ"
+              className="flex-1 text-[11px] px-2.5 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-500 font-mono"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && inputUrl) {
+                  extractByCustomUrl(inputUrl);
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                if (inputUrl) extractByCustomUrl(inputUrl);
+              }}
+              disabled={loading}
+              className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-xs disabled:opacity-50"
+            >
+              Quét
+            </button>
+          </div>
+        </div>
+
+        {/* Thông báo lỗi / Hướng dẫn nếu chưa nhận diện được */}
+        {error && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+            <div className="font-bold flex items-center gap-1.5 text-amber-900">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+              <span>Lưu ý nhận diện:</span>
+            </div>
+            <p className="text-[11px] leading-relaxed">{error}</p>
+          </div>
+        )}
+
         {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center space-y-2 text-gray-400">
+          <div className="py-16 flex flex-col items-center justify-center space-y-2 text-gray-400">
             <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
-            <p className="text-xs font-medium">Đang nhận diện sản phẩm 1688...</p>
+            <p className="text-xs font-medium">Đang nhận diện và bóc tách thông số sản phẩm...</p>
           </div>
         ) : !product ? (
           <div className="p-6 bg-white rounded-xl border border-gray-200 text-center space-y-2">
             <p className="text-sm font-semibold text-gray-700">Chưa nhận diện được sản phẩm</p>
-            <p className="text-xs text-gray-400">Vui lòng mở một trang chi tiết 1688 (detail.1688.com/offer/...)</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Vui lòng mở một trang <strong>chi tiết sản phẩm</strong> (ví dụ: macorner.co/products/...) hoặc dán đường dẫn sản phẩm vào ô tìm kiếm bên trên rồi bấm "Quét".
+            </p>
           </div>
         ) : (
           <>
