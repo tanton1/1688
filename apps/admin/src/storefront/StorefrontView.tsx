@@ -10,6 +10,7 @@ import { StoreCheckoutModal } from "./StoreCheckoutModal";
 import { StoreOrderSuccessModal } from "./StoreOrderSuccessModal";
 import { StoreOrderTrackerModal } from "./StoreOrderTrackerModal";
 import { StoreOccasionsNav } from "./StoreOccasionsNav";
+import { StoreMobileBottomNav } from "./StoreMobileBottomNav";
 import { StoreSocialProofPopup } from "./StoreSocialProofPopup";
 import { DEMO_MACORNER_PRODUCTS } from "./demoMacornerCatalog";
 import {
@@ -32,6 +33,8 @@ interface StorefrontViewProps {
   onShowToast: (message: string, type?: "success" | "error") => void;
   initialProductId?: string | null;
 }
+
+const STOREFRONT_DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 export const StorefrontView: React.FC<StorefrontViewProps> = ({
   onBackToAdmin,
@@ -59,6 +62,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"NEWEST" | "PRICE_ASC" | "PRICE_DESC">("NEWEST");
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [catalogMode, setCatalogMode] = useState<"LIVE" | "DEMO">("LIVE");
 
   // Cart State (Persisted in localStorage)
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -94,52 +99,51 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   // Load Store Info & Products
   const loadStoreData = async () => {
     setIsLoading(true);
+    setLoadError("");
     try {
-      const [infoRes, prodRes] = await Promise.all([
-        AdminApi.getStoreInfo().catch(() => null),
-        AdminApi.getStoreProducts().catch(() => null)
+      const loadCatalog = async () => {
+        const first = await AdminApi.getStoreProducts({ page: 1, limit: 100 });
+        const all = [...(first.products || [])];
+        const pages = Math.ceil((first.total || 0) / 100);
+        if (pages > 1) {
+          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, index) =>
+            AdminApi.getStoreProducts({ page: index + 2, limit: 100 })
+          ));
+          for (const response of rest) all.push(...(response.products || []));
+        }
+        return { ...first, products: all };
+      };
+      const [infoResult, productsResult] = await Promise.allSettled([
+        AdminApi.getStoreInfo(),
+        loadCatalog()
       ]);
+
+      const infoRes = infoResult.status === "fulfilled" ? infoResult.value : null;
+      if (productsResult.status === "rejected") throw productsResult.reason;
+      const prodRes = productsResult.value;
 
       if (infoRes?.config) {
         setConfig(infoRes.config);
       }
 
-      let loadedProducts: WebProduct[] = [];
+      let loadedProducts: WebProduct[] = prodRes?.products || [];
 
-      // 1. Kiểm tra sản phẩm từ Backend
-      if (prodRes?.products && prodRes.products.length > 0) {
-        loadedProducts = prodRes.products;
-      }
-
-      // 2. Kiểm tra từ localStorage persistence
-      if (loadedProducts.length === 0) {
+      // Dữ liệu cục bộ và catalog mẫu chỉ được phép xuất hiện trong demo build.
+      if (STOREFRONT_DEMO_MODE && loadedProducts.length === 0) {
         const rawLocal = localStorage.getItem("hub1688_persisted_products");
         if (rawLocal) {
           try {
             const parsed: WebProduct[] = JSON.parse(rawLocal);
             const published = parsed.filter(p => p.status === "PUBLISHED");
-            if (published.length > 0) {
-              loadedProducts = published;
-            } else if (parsed.length > 0) {
-              // Hiển thị các sản phẩm đã clone/cào để người dùng thấy ngay trên cửa hàng
-              loadedProducts = parsed;
-            }
+            if (published.length > 0) loadedProducts = published;
           } catch {}
         }
       }
 
-      // 3. Nếu kho hoàn toàn trống, nạp sản phẩm demo chuẩn xưởng
-      if (loadedProducts.length === 0) {
-        loadedProducts = getDemoStoreProducts();
-      }
-
-      // Tích hợp trọn bộ sản phẩm cá nhân hóa Macorner POD cùng các sản phẩm đã đồng bộ
-      const finalCatalog: WebProduct[] = [...DEMO_MACORNER_PRODUCTS];
-      loadedProducts.forEach(p => {
-        if (!finalCatalog.some(existing => existing.id === p.id || existing.slug === p.slug)) {
-          finalCatalog.push(p);
-        }
-      });
+      const finalCatalog: WebProduct[] = STOREFRONT_DEMO_MODE && loadedProducts.length === 0
+        ? [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()]
+        : loadedProducts;
+      setCatalogMode(STOREFRONT_DEMO_MODE && loadedProducts.length === 0 ? "DEMO" : "LIVE");
 
       setProducts(finalCatalog);
       const catSet = new Set(finalCatalog.map(p => p.categoryName).filter(Boolean));
@@ -151,7 +155,11 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu cửa hàng:", err);
-      const fallbackCatalog = [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()];
+      const fallbackCatalog = STOREFRONT_DEMO_MODE
+        ? [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()]
+        : [];
+      setCatalogMode(STOREFRONT_DEMO_MODE ? "DEMO" : "LIVE");
+      setLoadError(STOREFRONT_DEMO_MODE ? "API chưa sẵn sàng; đang hiển thị catalog mô phỏng." : (err?.message || "Không thể tải catalog từ máy chủ."));
       setProducts(fallbackCatalog);
       const catSet = new Set(fallbackCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
@@ -163,6 +171,18 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   useEffect(() => {
     loadStoreData();
   }, [initialProductId]);
+
+  // Giá hiển thị dùng cùng contract với checkout phía server.
+  const calculateUnitPrice = (product: WebProduct, variant: WebProductVariant, quantity: number, addonIds: string[] = []) => {
+    const tier = [...(product.volumeDiscountTiers || [])]
+      .sort((a, b) => b.minQty - a.minQty)
+      .find(candidate => quantity >= candidate.minQty);
+    const discounted = Math.round(variant.sellingPriceVND * (1 - (tier?.discountPercent || 0) / 100));
+    const addons = (product.giftAddons || [])
+      .filter(addon => addonIds.includes(addon.id))
+      .reduce((sum, addon) => sum + addon.priceVND, 0);
+    return discounted + addons;
+  };
 
   // Add Item to Cart
   const handleAddToCart = (
@@ -177,7 +197,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     const baseSku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
     const sku = hasCustom ? `${baseSku}-CUST-${Date.now().toString(36)}` : baseSku;
     const vName = [variant.colorName, variant.sizeName].filter(Boolean).join(" - ") || variant.sourceSkuId || "Mặc định";
-    const price = variant.sellingPriceVND || product.minPriceVND || 0;
+    const price = calculateUnitPrice(product, variant, quantity, giftAddonsSelected);
 
     setCart(prev => {
       const existingIdx = prev.findIndex(item => item.skuCode === sku);
@@ -189,6 +209,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         const newItem: CartItem = {
           productId: product.id!,
           skuCode: sku,
+          sourceSkuId: variant.sourceSkuId,
           variantName: vName,
           productTitle: product.titleVI,
           image: customizedPreviewUrl || variant.imageUrl || product.primaryImage,
@@ -237,7 +258,16 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       handleRemoveCartItem(skuCode);
       return;
     }
-    setCart(prev => prev.map(it => (it.skuCode === skuCode ? { ...it, quantity: qty } : it)));
+    setCart(prev => prev.map(item => {
+      if (item.skuCode !== skuCode) return item;
+      const product = products.find(candidate => candidate.id === item.productId);
+      const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
+      return {
+        ...item,
+        quantity: qty,
+        priceVND: product && variant ? calculateUnitPrice(product, variant, qty, item.giftAddonsSelected) : item.priceVND
+      };
+    }));
   };
 
   const handleRemoveCartItem = (skuCode: string) => {
@@ -297,8 +327,25 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     catalogRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleGoHome = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleOpenOccasions = () => {
+    const el = document.getElementById("store-occasions-section");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    } else {
+      scrollToCatalog();
+    }
+  };
+
+  const handleOpenSearch = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen bg-[#FDFBF7] flex flex-col selection:bg-orange-500 selection:text-white pb-20 md:pb-0">
       {/* 1. Header */}
       <StoreHeader
         config={config}
@@ -316,6 +363,12 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       {/* 2. Hero Banner */}
       <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />
 
+      {(catalogMode === "DEMO" || loadError) && (
+        <div className={`${catalogMode === "DEMO" ? "bg-amber-50 text-amber-900 border-amber-200" : "bg-rose-50 text-rose-800 border-rose-200"} border-y px-4 py-2.5 text-center text-xs font-semibold`} role="status">
+          {catalogMode === "DEMO" ? "Chế độ Demo — sản phẩm và hoạt động mua hàng bên dưới là dữ liệu mô phỏng." : loadError}
+        </div>
+      )}
+
       {/* 2.5 Occasions & Recipients Filter Bar (Macorner Feature) */}
       <StoreOccasionsNav
         activeOccasion={activeOccasion}
@@ -328,15 +381,15 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       {/* 3. Main Catalog Section */}
       <main ref={catalogRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full space-y-6">
         {/* Category Filters & Sort */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 pb-4 border-b border-stone-200/80">
           {/* Category Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button
               onClick={() => setSelectedCategory("ALL")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                 selectedCategory === "ALL"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                  ? "bg-stone-900 text-white shadow-sm"
+                  : "bg-white text-stone-600 hover:bg-orange-50 hover:text-orange-600 border border-stone-200/90"
               }`}
             >
               Tất Cả Sản Phẩm ({products.length})
@@ -346,10 +399,10 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
               <button
                 key={idx}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   selectedCategory === cat
-                    ? "bg-orange-600 text-white shadow-sm"
-                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    ? "bg-orange-600 text-white shadow-md shadow-orange-600/25"
+                    : "bg-white text-stone-600 hover:bg-orange-50 hover:text-orange-600 border border-stone-200/90"
                 }`}
               >
                 {cat}
@@ -359,12 +412,12 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
           {/* Sort Dropdown */}
           <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-            <span className="text-xs text-slate-500 font-medium">Sắp xếp:</span>
+            <span className="text-xs text-stone-500 font-semibold">Sắp xếp:</span>
             <div className="relative">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="text-xs font-bold px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-hidden cursor-pointer"
+                className="text-xs font-bold px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-hidden cursor-pointer"
               >
                 <option value="NEWEST">Mới Nhất</option>
                 <option value="PRICE_ASC">Giá: Thấp đến Cao</option>
@@ -379,6 +432,17 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           <div className="py-24 text-center space-y-3">
             <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-xs text-slate-500 font-medium">Đang tải sản phẩm từ cửa hàng...</p>
+          </div>
+        ) : loadError && products.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-rose-200 p-12 text-center space-y-3 max-w-lg mx-auto shadow-xs" role="alert">
+            <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
+              <RotateCcw className="w-8 h-8" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">Không thể tải cửa hàng</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">{loadError}</p>
+            <button onClick={loadStoreData} className="mt-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold">
+              Thử tải lại
+            </button>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3 max-w-lg mx-auto shadow-xs">
@@ -512,19 +576,20 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         onApplyDiscountCode={setAppliedDiscountCode}
       />
 
-      <StoreProductDetailModal
+      {detailProduct && <StoreProductDetailModal
         isOpen={!!detailProduct}
         product={detailProduct}
         onClose={() => setDetailProduct(null)}
         onAddToCart={handleAddToCart}
         onBuyNow={handleBuyNow}
-      />
+      />}
 
       <StoreCheckoutModal
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         items={cart}
         config={config}
+        appliedDiscountCode={appliedDiscountCode}
         onOrderSuccess={handleOrderSuccess}
         onShowToast={onShowToast}
       />
@@ -549,7 +614,21 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       />
 
       {/* Social Proof Realtime Purchases (Macorner Feature) */}
-      <StoreSocialProofPopup products={products} />
+      <StoreSocialProofPopup products={products} enabled={catalogMode === "DEMO"} />
+
+      {/* 6. Mobile Sticky Bottom Navigation Bar */}
+      <StoreMobileBottomNav
+        cartCount={totalCartCount}
+        onGoHome={handleGoHome}
+        onOpenOccasions={handleOpenOccasions}
+        onOpenSearch={handleOpenSearch}
+        onOpenTracker={() => {
+          setTrackerOrderNo("");
+          setIsTrackerOpen(true);
+        }}
+        onOpenCart={() => setIsCartOpen(true)}
+        activeFilterCount={(activeOccasion !== "all" ? 1 : 0) + (activeRecipient !== "all" ? 1 : 0) + (selectedCategory !== "ALL" ? 1 : 0)}
+      />
     </div>
   );
 };

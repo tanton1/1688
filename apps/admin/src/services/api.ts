@@ -19,6 +19,11 @@ import {
 
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
 export function getApiBaseUrl(): string {
+  const configuredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/+$/, "");
+
+  if (import.meta.env.PROD && typeof window !== "undefined") return window.location.origin;
+
   const customUrl = localStorage.getItem("hub1688_backend_url");
   if (customUrl) return customUrl.replace(/\/+$/, "");
 
@@ -31,7 +36,12 @@ export function getApiBaseUrl(): string {
 }
 
 export function setApiBaseUrl(url: string) {
-  localStorage.setItem("hub1688_backend_url", url.trim());
+  const parsed = new URL(url.trim());
+  if (!/^https?:$/.test(parsed.protocol)) throw new Error("Backend URL phải dùng HTTP hoặc HTTPS");
+  if (import.meta.env.PROD && parsed.origin !== window.location.origin) {
+    throw new Error("Production chỉ cho phép API cùng origin hoặc VITE_API_BASE_URL cố định");
+  }
+  localStorage.setItem("hub1688_backend_url", parsed.origin);
 }
 
 const TOKEN_KEY = "hub1688_access_token";
@@ -80,6 +90,7 @@ export const AdminApi = {
     publishedCount: number;
     draftCount: number;
     totalStock: number;
+    totalVariants: number;
     avgQuality: number;
     categoryCount: Record<string, number>;
     supplierCount: number;
@@ -93,6 +104,8 @@ export const AdminApi = {
     category?: string;
     search?: string;
     minQuality?: number;
+    maxQuality?: number;
+    media?: string;
     sort?: string;
     page?: number;
     pageSize?: number;
@@ -102,6 +115,8 @@ export const AdminApi = {
     if (params?.category) query.set("category", params.category);
     if (params?.search) query.set("search", params.search);
     if (params?.minQuality) query.set("minQuality", params.minQuality.toString());
+    if (params?.maxQuality !== undefined) query.set("maxQuality", params.maxQuality.toString());
+    if (params?.media) query.set("media", params.media);
     if (params?.sort) query.set("sort", params.sort);
     if (params?.page) query.set("page", String(params.page));
     if (params?.pageSize) query.set("pageSize", String(params.pageSize));
@@ -227,18 +242,18 @@ export const AdminApi = {
   },
 
   // 16. Omnichannel Connectors - WooCommerce
-  async syncWooCommerce(productId: string, config: any): Promise<{ success: boolean; result: any }> {
+  async syncWooCommerce(productId: string, _config?: any): Promise<{ success: boolean; result: any }> {
     return request("/api/v1/connectors/woocommerce/sync", {
       method: "POST",
-      body: JSON.stringify({ productId, config })
+      body: JSON.stringify({ productId })
     });
   },
 
   // 17. Omnichannel Connectors - Shopify
-  async syncShopify(productId: string, config: any): Promise<{ success: boolean; result: any }> {
+  async syncShopify(productId: string, _config?: any): Promise<{ success: boolean; result: any }> {
     return request("/api/v1/connectors/shopify/sync", {
       method: "POST",
-      body: JSON.stringify({ productId, config })
+      body: JSON.stringify({ productId })
     });
   },
 
@@ -260,14 +275,14 @@ export const AdminApi = {
   async testTelegram(botToken: string, chatId: string): Promise<any> {
     return request("/api/v1/connectors/telegram/test", {
       method: "POST",
-      body: JSON.stringify({ botToken, chatId })
+      body: JSON.stringify({})
     });
   },
 
   async sendTelegramAlert(botToken: string, chatId: string, type: string, data: any): Promise<any> {
     return request("/api/v1/connectors/telegram/send-alert", {
       method: "POST",
-      body: JSON.stringify({ botToken, chatId, type, data })
+      body: JSON.stringify({ type, data })
     });
   },
 
@@ -442,10 +457,13 @@ export const AdminApi = {
     });
   },
 
-  async trackStoreOrder(query: string): Promise<{
+  async trackStoreOrder(orderNumber: string, customerPhone: string): Promise<{
     success: boolean;
     orders: CustomerOrder[];
   }> {
-    return request(`/api/v1/store/orders/track/${encodeURIComponent(query)}`);
+    return request("/api/v1/store/orders/track", {
+      method: "POST",
+      body: JSON.stringify({ orderNumber, customerPhone })
+    });
   }
 };

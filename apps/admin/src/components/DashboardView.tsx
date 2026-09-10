@@ -18,6 +18,7 @@ import { AdminTab } from "./Sidebar";
 
 interface DashboardViewProps {
   products: WebProduct[];
+  stats?: { totalProducts: number; publishedCount: number; draftCount: number; totalStock: number; totalVariants: number; avgQuality: number; categoryCount: Record<string, number>; supplierCount: number } | null;
   diffLogs: ProductDiffSummary[];
   onNavigateTab: (tab: AdminTab) => void;
   onSelectProduct: (product: WebProduct) => void;
@@ -25,29 +26,32 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   products,
+  stats,
   diffLogs,
   onNavigateTab,
   onSelectProduct
 }) => {
-  const totalProducts = products.length;
+  const totalProducts = stats?.totalProducts ?? products.length;
   const publishedProducts = products.filter(p => p.status === "PUBLISHED");
   const draftProducts = products.filter(p => p.status === "DRAFT");
   const criticalDiffs = diffLogs.filter(d => d.hasPriceChange || d.hasUnavailableSku);
 
-  const avgQuality = totalProducts > 0
+  const avgQuality = stats?.avgQuality ?? (totalProducts > 0
     ? Math.round(products.reduce((acc, p) => acc + (p.qualityScore || 0), 0) / totalProducts)
-    : 0;
+    : 0);
 
   // Tính tổng số biến thể và tồn kho
-  const totalVariants = products.reduce((acc, p) => acc + p.variants.length, 0);
-  const totalStock = products.reduce((acc, p) => acc + p.variants.reduce((s, v) => s + v.stockQuantity, 0), 0);
+  const totalVariants = stats?.totalVariants ?? products.reduce((acc, p) => acc + p.variants.length, 0);
+  const totalStock = stats?.totalStock ?? products.reduce((acc, p) => acc + p.variants.reduce((s, v) => s + v.stockQuantity, 0), 0);
 
   // Phân bổ danh mục
-  const categoryStats: Record<string, number> = {};
+  const categoryStats: Record<string, number> = stats?.categoryCount ? { ...stats.categoryCount } : {};
+  if (!stats) {
   products.forEach(p => {
     const cat = p.categoryName || "Khác";
     categoryStats[cat] = (categoryStats[cat] || 0) + 1;
   });
+  }
 
   return (
     <div className="space-y-6">
@@ -112,9 +116,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <CheckCircle className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-600 mt-2">{publishedProducts.length}</div>
+          <div className="text-2xl font-extrabold text-emerald-600 mt-2">{stats?.publishedCount ?? publishedProducts.length}</div>
           <div className="text-[11px] text-emerald-700 mt-1 font-medium">
-            {totalProducts > 0 ? Math.round((publishedProducts.length / totalProducts) * 100) : 0}% danh mục sẵn sàng
+            {totalProducts > 0 ? Math.round(((stats?.publishedCount ?? publishedProducts.length) / totalProducts) * 100) : 0}% danh mục sẵn sàng
           </div>
         </div>
 
@@ -126,7 +130,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-amber-600 mt-2">{draftProducts.length}</div>
+          <div className="text-2xl font-extrabold text-amber-600 mt-2">{stats?.draftCount ?? draftProducts.length}</div>
           <div className="text-[11px] text-slate-500 mt-1">
             Cần rà soát trước khi xuất bản
           </div>

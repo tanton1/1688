@@ -1,6 +1,6 @@
 import React from "react";
 import { WebProduct } from "@hub1688/shared-types";
-import { ShoppingBag, Eye, Video, Sparkles, Star } from "lucide-react";
+import { ShoppingBag, Eye, Video, Sparkles, Star, Heart } from "lucide-react";
 
 interface StoreProductCardProps {
   product: WebProduct;
@@ -15,19 +15,25 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
 }) => {
   const minPrice = product.minPriceVND || 0;
   const maxPrice = product.maxPriceVND || minPrice;
-  const originalPrice = Math.round(minPrice * 1.32 / 1000) * 1000;
-  const discountPercent = originalPrice > minPrice ? Math.round(((originalPrice - minPrice) / originalPrice) * 100) : 0;
+  const originalPrice = Math.round((minPrice * 1.32) / 1000) * 1000;
+  const discountPercent =
+    originalPrice > minPrice
+      ? Math.round(((originalPrice - minPrice) / originalPrice) * 100)
+      : 0;
 
-  const totalStock = (product.variants || []).reduce((acc, v) => acc + (v.stockQuantity || 0), 0);
+  const totalStock = (product.variants || []).reduce(
+    (acc, v) => acc + (v.stockQuantity || 0),
+    0
+  );
   const isOutOfStock = totalStock <= 0;
 
   return (
-    <div className="group bg-white rounded-2xl border border-slate-200 hover:border-orange-500 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col h-full relative">
-      {/* Image & Badges */}
-      <div
-        className="relative aspect-square overflow-hidden bg-slate-100 cursor-pointer"
-        onClick={() => onSelect(product)}
-      >
+    <article
+      onClick={() => onSelect(product)}
+      className="group bg-white rounded-2xl sm:rounded-3xl border border-stone-200/90 hover:border-orange-500/80 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col h-full relative cursor-pointer select-none"
+    >
+      {/* Product Image & Floating Badges */}
+      <div className="relative aspect-square overflow-hidden bg-stone-100">
         <img
           loading="lazy"
           decoding="async"
@@ -36,129 +42,118 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
 
-        {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start">
+        {/* Top Badges (Left) */}
+        <div className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 flex flex-col gap-1 items-start z-10">
           {product.isPersonalized && (
-            <span className="bg-orange-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md uppercase tracking-wider">
-              <Sparkles className="w-3 h-3" />
+            <span className="bg-orange-600/95 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm uppercase tracking-wider">
+              <Sparkles className="w-2.5 h-2.5" />
               <span>Custom</span>
             </span>
           )}
 
           {product.videoUrl && (
-            <span className="bg-purple-600/90 backdrop-blur-xs text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
-              <Video className="w-3 h-3" />
-              <span>Video</span>
+            <span className="bg-purple-600/90 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+              <Video className="w-2.5 h-2.5" />
+              <span className="hidden sm:inline">Video</span>
             </span>
           )}
         </div>
 
-        {/* Discount Badge */}
+        {/* Discount Badge (Right) */}
         {discountPercent > 0 && (
-          <span className="absolute top-2.5 right-2.5 bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-md">
+          <span className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 bg-rose-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm z-10">
             -{discountPercent}%
           </span>
         )}
 
-        {/* Category Tag */}
+        {/* Category Pill */}
         {product.categoryName && (
-          <span className="absolute bottom-2.5 left-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded-md">
+          <span className="absolute bottom-2 left-2 sm:bottom-2.5 sm:left-2.5 bg-stone-900/75 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-lg z-10 truncate max-w-[80%]">
             {product.categoryName}
           </span>
         )}
 
-        {/* Quick View Floating Overlay Button */}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(product);
-            }}
-            className="px-4 py-2 bg-white/95 hover:bg-white text-slate-900 text-xs font-bold rounded-xl shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all flex items-center gap-1.5"
-          >
+        {/* Quick View Floating Overlay Button (Desktop) */}
+        <div className="hidden sm:flex absolute inset-0 bg-stone-900/25 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center p-4">
+          <span className="px-4 py-2 bg-white text-stone-900 text-xs font-black rounded-xl shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all flex items-center gap-1.5">
             <Eye className="w-3.5 h-3.5 text-orange-600" />
-            <span>Tùy Biến / Xem Nhanh</span>
-          </button>
+            <span>Tùy Biến & Xem Nhanh</span>
+          </span>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4 flex flex-col flex-1">
-        {/* Rating stars & review count */}
-        <div className="flex items-center gap-1 text-[11px] text-amber-500 font-bold mb-1.5">
-          <div className="flex">
-            {[...Array(5)].map((_, i) => (
-              <Star key={i} size={11} className="fill-current text-amber-400" />
-            ))}
+      {/* Content Area */}
+      <div className="p-2.5 sm:p-4 flex flex-col flex-1 justify-between">
+        <div>
+          {/* Rating stars & review count */}
+          <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-amber-500 font-bold mb-1">
+            <div className="flex">
+              {[...Array(5)].map((_, i) => (
+                <Star key={i} size={11} className="fill-current text-amber-400" />
+              ))}
+            </div>
+            <span className="text-stone-800 text-[10px] font-extrabold">{product.rating || 4.9}</span>
+            <span className="text-stone-400 text-[10px]">({product.reviewCount || 980})</span>
           </div>
-          <span className="text-slate-800 text-[10px]">{product.rating || 4.9}</span>
-          <span className="text-slate-400 text-[10px]">({product.reviewCount || 980})</span>
+
+          {/* Title */}
+          <h3
+            className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-orange-600 line-clamp-2 leading-snug mb-1.5 transition-colors"
+            title={product.titleVI}
+          >
+            {product.titleVI}
+          </h3>
+
+          {/* Volume Discount Tag */}
+          {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
+            <div className="mb-2">
+              <span className="text-[9px] sm:text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 sm:px-2 py-0.5 rounded-md inline-block">
+                Mua 2 Giảm 10% • Mua 3 Freeship
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Title */}
-        <h3
-          onClick={() => onSelect(product)}
-          className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-orange-600 cursor-pointer line-clamp-2 leading-snug mb-2 flex-1"
-          title={product.titleVI}
-        >
-          {product.titleVI}
-        </h3>
-
-        {/* Attributes / Stock info */}
-        <div className="flex items-center justify-between text-[11px] text-slate-500 mb-2">
-          <span>{product.variants?.length || 1} phân loại</span>
-          <span className={isOutOfStock ? "text-rose-600 font-bold" : "text-emerald-600 font-medium"}>
-            {isOutOfStock ? "Tạm hết hàng" : `Còn ${totalStock.toLocaleString()} cái`}
-          </span>
-        </div>
-
-        {/* Volume Discount Indicator if applicable */}
-        {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
-          <div className="mb-2.5">
-            <span className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200/80 px-2 py-0.5 rounded-md inline-block">
-              Mua 2 Giảm 10% • Mua 3 Giảm 15%
-            </span>
-          </div>
-        )}
-
-        {/* Price Box */}
-        <div className="pt-2 border-t border-slate-100 flex items-end justify-between gap-2">
-          <div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-base sm:text-lg font-black text-orange-600">
+        {/* Price & Quick Add Box */}
+        <div className="pt-2 border-t border-stone-100 flex items-end justify-between gap-1.5">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1 flex-wrap">
+              <span className="text-sm sm:text-base font-black text-orange-600 tracking-tight">
                 {minPrice.toLocaleString("vi-VN")}đ
               </span>
               {maxPrice > minPrice && (
-                <span className="text-xs font-bold text-orange-500">
-                  - {maxPrice.toLocaleString("vi-VN")}đ
+                <span className="text-[10px] sm:text-xs font-bold text-orange-500">
+                  ~ {maxPrice.toLocaleString("vi-VN")}đ
                 </span>
               )}
             </div>
             {originalPrice > minPrice && (
-              <span className="text-[11px] text-slate-400 line-through">
+              <span className="text-[10px] text-stone-400 line-through block">
                 {originalPrice.toLocaleString("vi-VN")}đ
               </span>
             )}
           </div>
 
-          {/* Action Button */}
+          {/* Touch-Friendly Action Button */}
           <button
+            type="button"
             disabled={isOutOfStock}
             onClick={(e) => {
               e.stopPropagation();
               onQuickAdd(product);
             }}
-            className={`p-2.5 rounded-xl font-bold text-xs transition-all active:scale-90 flex items-center justify-center cursor-pointer ${
+            className={`min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] p-2 sm:p-2.5 rounded-xl font-bold text-xs transition-all active:scale-90 flex items-center justify-center cursor-pointer shrink-0 ${
               isOutOfStock
-                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                ? "bg-stone-100 text-stone-400 cursor-not-allowed"
                 : "bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white border border-orange-200 hover:border-orange-600 shadow-xs"
             }`}
             title="Thêm nhanh vào giỏ hàng"
+            aria-label="Thêm nhanh vào giỏ hàng"
           >
             <ShoppingBag className="w-4 h-4" />
           </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 };

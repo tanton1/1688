@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { WebProduct } from "@hub1688/shared-types";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   Sparkles,
   Download,
@@ -115,6 +116,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
   initialSelectedImage,
   initialMode = "TRANSLATE"
 }) => {
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen && Boolean(product), onClose);
   // Mode chính: Dịch chữ trên ảnh vs Đóng khung promo
   const [studioMode, setStudioMode] = useState<StudioMode>(initialMode);
 
@@ -633,7 +635,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col max-h-[94vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xưởng xử lý ảnh sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col max-h-[94vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -681,6 +683,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
             </button>
             <button
               onClick={onClose}
+              aria-label="Đóng xưởng xử lý ảnh"
               className="ml-2 text-slate-400 hover:text-slate-600 text-base font-bold px-2"
             >
               ✕

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   generateSlug,
   extractSEOKeywords,
@@ -51,7 +52,7 @@ import {
 } from "lucide-react";
 
 interface ProductDetailModalProps {
-  product: WebProduct | null;
+  product: WebProduct;
   onClose: () => void;
   onSave: (updatedProduct: WebProduct) => void;
   onOpenConnectors?: (product: WebProduct) => void;
@@ -65,7 +66,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onOpenConnectors,
   onOpenBannerStudio
 }) => {
-  if (!product) return null;
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(true, onClose);
 
   const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality" | "copywriter" | "sourcing">("content");
   const [copyStyle, setCopyStyle] = useState<AICopywritingStyle>("AIDA");
@@ -104,6 +105,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   // Product Template State & Actions
   const [showApplyTemplateModal, setShowApplyTemplateModal] = useState(false);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const jsonDialogRef = useAccessibleDialog<HTMLDivElement>(showJsonLdModal, () => setShowJsonLdModal(false));
+  const applyTemplateDialogRef = useAccessibleDialog<HTMLDivElement>(showApplyTemplateModal, () => setShowApplyTemplateModal(false));
+  const saveTemplateDialogRef = useAccessibleDialog<HTMLDivElement>(showSaveTemplateModal, () => setShowSaveTemplateModal(false));
   const [availableTemplates, setAvailableTemplates] = useState<ProductTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [applyContentOption, setApplyContentOption] = useState(true);
@@ -421,7 +425,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
           <div className="flex items-center gap-3 min-w-0">
@@ -563,6 +567,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
             <button
               onClick={onClose}
+              aria-label="Đóng trình biên tập sản phẩm"
               className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60"
             >
               <X className="w-5 h-5" />
@@ -2223,7 +2228,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       {/* Modal xem mã Schema JSON-LD */}
       {showJsonLdModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-60 p-4">
-          <div className="bg-slate-950 text-slate-100 rounded-2xl max-w-2xl w-full border border-slate-800 shadow-2xl p-6 space-y-4">
+          <div ref={jsonDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Mã cấu trúc JSON-LD" className="bg-slate-950 text-slate-100 rounded-2xl max-w-2xl w-full border border-slate-800 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Code className="w-5 h-5 text-blue-400" />
@@ -2234,6 +2239,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowJsonLdModal(false)}
+                aria-label="Đóng mã JSON-LD"
                 className="text-slate-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
@@ -2286,7 +2292,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       {/* Modal: Áp Dụng Template Lên Sản Phẩm */}
       {showApplyTemplateModal && (
         <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+          <div ref={applyTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Áp dụng mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-indigo-50/50">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-indigo-600 text-white rounded-lg">
@@ -2304,6 +2310,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowApplyTemplateModal(false)}
+                aria-label="Đóng chọn mẫu"
                 className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
@@ -2405,7 +2412,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       {/* Modal: Lưu Thành Template Mới */}
       {showSaveTemplateModal && (
         <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+          <div ref={saveTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Lưu mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-600 text-white rounded-lg">
@@ -2423,6 +2430,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSaveTemplateModal(false)}
+                aria-label="Đóng lưu mẫu"
                 className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { StorefrontConfig } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
 interface StoreSettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -74,7 +76,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Cấu hình cửa hàng" className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -88,6 +90,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Đóng cấu hình cửa hàng"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
           >
             <X className="w-5 h-5" />

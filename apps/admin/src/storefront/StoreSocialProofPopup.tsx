@@ -4,6 +4,7 @@ import { WebProduct } from "@hub1688/shared-types";
 
 interface StoreSocialProofPopupProps {
   products: WebProduct[];
+  enabled?: boolean;
 }
 
 interface FakeNotification {
@@ -26,13 +27,13 @@ const SAMPLE_CUSTOMERS = [
 
 const SAMPLE_TIMES = ["1 phút trước", "3 phút trước", "5 phút trước", "8 phút trước", "12 phút trước"];
 
-export const StoreSocialProofPopup: React.FC<StoreSocialProofPopupProps> = ({ products }) => {
+export const StoreSocialProofPopup: React.FC<StoreSocialProofPopupProps> = ({ products, enabled = false }) => {
   const [currentNotification, setCurrentNotification] = useState<FakeNotification | null>(null);
   const [visible, setVisible] = useState(false);
   const [closedManually, setClosedManually] = useState(false);
 
   useEffect(() => {
-    if (closedManually || !products || products.length === 0) return;
+    if (!enabled || closedManually || !products || products.length === 0) return;
 
     // Show first popup after 4 seconds
     const initialTimer = setTimeout(() => {
@@ -70,9 +71,9 @@ export const StoreSocialProofPopup: React.FC<StoreSocialProofPopupProps> = ({ pr
       clearTimeout(initialTimer);
       clearInterval(interval);
     };
-  }, [products, closedManually]);
+  }, [products, closedManually, enabled]);
 
-  if (!visible || !currentNotification) return null;
+  if (!enabled || !visible || !currentNotification) return null;
 
   return (
     <div className="fixed bottom-5 left-5 z-40 max-w-xs sm:max-w-sm bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 p-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -92,11 +93,12 @@ export const StoreSocialProofPopup: React.FC<StoreSocialProofPopupProps> = ({ pr
         </p>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-[10px] text-slate-400">{currentNotification.timeAgo}</span>
-          <span className="text-[9px] text-orange-600 font-bold bg-orange-50 px-1.5 py-0.2 rounded-sm">Đã xác nhận</span>
+          <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded-sm">Mô phỏng Demo</span>
         </div>
       </div>
       <button
         type="button"
+        aria-label="Đóng thông báo mô phỏng"
         onClick={() => {
           setVisible(false);
           setClosedManually(true);

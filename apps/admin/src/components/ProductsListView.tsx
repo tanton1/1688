@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { WebProduct } from "@hub1688/shared-types";
 import {
   Search,
@@ -31,6 +31,10 @@ interface ProductsListViewProps {
   onBulkPublish: (ids: string[]) => void;
   onBulkDelete: (ids: string[]) => void;
   onViewOnStore?: (product: WebProduct) => void;
+  totalProducts: number;
+  pageSize?: number;
+  onQueryChange: (query: { status?: string; category?: string; search?: string; minQuality?: number; maxQuality?: number; media?: string; sort?: string; page: number; pageSize: number }) => void;
+  availableCategories?: string[];
 }
 
 export const ProductsListView: React.FC<ProductsListViewProps> = ({
@@ -40,7 +44,11 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   onDeleteProduct,
   onBulkPublish,
   onBulkDelete,
-  onViewOnStore
+  onViewOnStore,
+  totalProducts,
+  pageSize = 25,
+  onQueryChange,
+  availableCategories
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -50,12 +58,31 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   const [sortBy, setSortBy] = useState("NEWEST");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [searchTerm, statusFilter, categoryFilter, qualityFilter, mediaFilter, sortBy]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => onQueryChange({
+      status: statusFilter !== "ALL" ? statusFilter : undefined,
+      category: categoryFilter !== "ALL" ? categoryFilter : undefined,
+      search: searchTerm.trim() || undefined,
+      minQuality: qualityFilter === "HIGH" ? 80 : undefined,
+      maxQuality: qualityFilter === "LOW" ? 79 : undefined,
+      media: mediaFilter !== "ALL" ? mediaFilter : undefined,
+      sort: sortBy === "OLDEST" ? "UPDATED_ASC" : sortBy,
+      page,
+      pageSize
+    }), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm, statusFilter, categoryFilter, qualityFilter, mediaFilter, sortBy, page, pageSize, onQueryChange]);
+
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
 
   // Thu thập danh sách các danh mục duy nhất
   const categories = useMemo(() => {
-    const set = new Set(products.map(p => p.categoryName).filter(Boolean));
+    const set = new Set([...(availableCategories || []), ...products.map(p => p.categoryName).filter(Boolean)]);
     return Array.from(set);
-  }, [products]);
+  }, [products, availableCategories]);
 
   // Bộ lọc và sắp xếp
   const filteredProducts = useMemo(() => {
@@ -631,6 +658,20 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
           ))}
         </div>
       )}
+
+      <nav className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3" aria-label="Phân trang sản phẩm">
+        <p className="text-xs text-slate-500">
+          Trang <strong className="text-slate-800">{page}/{totalPages}</strong> · {totalProducts.toLocaleString("vi-VN")} sản phẩm
+        </p>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">
+            Trang trước
+          </button>
+          <button type="button" disabled={page >= totalPages} onClick={() => setPage(current => Math.min(totalPages, current + 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">
+            Trang sau
+          </button>
+        </div>
+      </nav>
     </div>
   );
 };

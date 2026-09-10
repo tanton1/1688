@@ -25,6 +25,8 @@ const LoadingPanel = () => <div role="status" className="grid min-h-40 place-ite
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AdminTab>("DASHBOARD");
   const [products, setProducts] = useState<WebProduct[]>([]);
+  const [productTotal, setProductTotal] = useState(0);
+  const [dashboardStats, setDashboardStats] = useState<Awaited<ReturnType<typeof AdminApi.getDashboardStats>> | null>(null);
   const [diffLogs, setDiffLogs] = useState<ProductDiffSummary[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<WebProduct | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -127,12 +129,15 @@ export const App: React.FC = () => {
     if (!getAccessToken()) return;
     setIsRefreshing(true);
     try {
-      const [prodRes, diffRes] = await Promise.all([
+      const [prodRes, diffRes, statsRes] = await Promise.all([
         AdminApi.getProducts(),
-        AdminApi.getDiffLogs()
+        AdminApi.getDiffLogs(),
+        AdminApi.getDashboardStats()
       ]);
       setProducts(prodRes.items || []);
+      setProductTotal(prodRes.total || 0);
       setDiffLogs(diffRes.logs || []);
+      setDashboardStats(statsRes);
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu:", err);
       if (String(err.message).includes("401")) { handleLogout(); setShowAuthModal(true); }
@@ -140,6 +145,25 @@ export const App: React.FC = () => {
     } finally {
       setIsRefreshing(false);
     }
+  }, []);
+
+  const loadProductPage = useCallback(async (query: Parameters<typeof AdminApi.getProducts>[0]) => {
+    if (!getAccessToken()) return;
+    setIsRefreshing(true);
+    try {
+      const result = await AdminApi.getProducts(query);
+      setProducts(result.items || []);
+      setProductTotal(result.total || 0);
+    } catch (err: any) {
+      showToast(err.message || "Không thể tải trang sản phẩm", "error");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  const refreshDashboardStats = useCallback(async () => {
+    try { setDashboardStats(await AdminApi.getDashboardStats()); }
+    catch (error) { console.warn("Không thể làm mới KPI:", error); }
   }, []);
 
   useEffect(() => {
@@ -157,6 +181,7 @@ export const App: React.FC = () => {
     try {
       const result = await AdminApi.updateProduct(updated.id!, updated);
       setProducts(prev => prev.map(p => (p.id === updated.id ? result.product : p)));
+      void refreshDashboardStats();
       showToast("Đã lưu thông tin sản phẩm và ma trận SKU thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sản phẩm", "error");
@@ -210,6 +235,7 @@ export const App: React.FC = () => {
         ? await AdminApi.publishProduct(id)
         : await AdminApi.updateProduct(id, { status: "DRAFT" });
       setProducts(prev => prev.map(p => (p.id === id ? result.product : p)));
+      void refreshDashboardStats();
       showToast(
         newStatus === "PUBLISHED"
           ? "Đã xuất bản sản phẩm lên website!"
@@ -230,6 +256,8 @@ export const App: React.FC = () => {
     try {
       await AdminApi.deleteProduct(id);
       setProducts(prev => prev.filter(p => p.id !== id));
+      setProductTotal(total => Math.max(0, total - 1));
+      void refreshDashboardStats();
       showToast("Đã xóa sản phẩm thành công!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa sản phẩm", "error");
@@ -255,9 +283,11 @@ export const App: React.FC = () => {
     }
 
     try {
-      await AdminApi.bulkDelete(ids);
+      const result = await AdminApi.bulkDelete(ids);
       setProducts(prev => prev.filter(p => !ids.includes(p.id!)));
-      showToast(`Đã xóa ${ids.length} sản phẩm!`);
+      setProductTotal(total => Math.max(0, total - result.count));
+      void refreshDashboardStats();
+      showToast(`Đã xóa ${result.count} sản phẩm!`);
     } catch (err: any) {
       showToast(err.message || "Lỗi khi xóa hàng loạt", "error");
     }
@@ -268,6 +298,7 @@ export const App: React.FC = () => {
     try {
       await AdminApi.resolveDiff(webProductId, action);
       setDiffLogs(prev => prev.filter(d => d.webProductId !== webProductId));
+      void refreshDashboardStats();
       showToast(
         action === "APPLY"
           ? "Đã áp dụng thay đổi từ 1688 vào dữ liệu bán hàng!"
@@ -293,6 +324,8 @@ export const App: React.FC = () => {
         autoPublish: false
       });
       setProducts(prev => [result.product, ...prev.filter(p => p.id !== result.product.id)]);
+      setProductTotal(total => total + 1);
+      void refreshDashboardStats();
       setSelectedProduct(result.product);
       showToast("Đã nhập dữ liệu thật. Vui lòng duyệt trước khi đăng bán.");
     } catch (err: any) {
@@ -303,11 +336,23 @@ export const App: React.FC = () => {
   // Lưu cấu hình Backend URL
   const handleSaveBackendUrl = (e: React.FormEvent) => {
     e.preventDefault();
-    setApiBaseUrl(customUrlInput);
-    setBackendUrlState(customUrlInput);
-    setShowSettingsModal(false);
-    showToast("Đã lưu địa chỉ Backend URL mới!");
-    loadData();
+    try {
+      const previousUrl = getApiBaseUrl();
+      setApiBaseUrl(customUrlInput);
+      const nextUrl = getApiBaseUrl();
+      setBackendUrlState(nextUrl);
+      setShowSettingsModal(false);
+      if (previousUrl !== nextUrl) {
+        clearAccessToken();
+        setCurrentUser(null);
+        setProducts([]);
+        setDiffLogs([]);
+        setShowAuthModal(true);
+        showToast("Đã đổi Backend. Vui lòng đăng nhập lại để không chuyển token giữa các máy chủ.");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Backend URL không hợp lệ", "error");
+    }
   };
 
   if (viewMode === "storefront") {
@@ -400,6 +445,7 @@ export const App: React.FC = () => {
           {currentTab === "DASHBOARD" && (
             <DashboardView
               products={products}
+              stats={dashboardStats}
               diffLogs={diffLogs}
               onNavigateTab={setCurrentTab}
               onSelectProduct={setSelectedProduct}
@@ -409,6 +455,10 @@ export const App: React.FC = () => {
           {currentTab === "PRODUCTS" && (
             <ProductsListView
               products={products}
+              availableCategories={dashboardStats ? Object.keys(dashboardStats.categoryCount) : undefined}
+              totalProducts={productTotal}
+              pageSize={25}
+              onQueryChange={loadProductPage}
               onSelectProduct={setSelectedProduct}
               onPublishProduct={handlePublishProduct}
               onDeleteProduct={handleDeleteProduct}
@@ -475,7 +525,7 @@ export const App: React.FC = () => {
       </div>
 
       {/* Modal Chi Tiết & Biên Tập Sản Phẩm */}
-      <React.Suspense fallback={null}><ProductDetailModal
+      {selectedProduct && <React.Suspense fallback={null}><ProductDetailModal
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onSave={handleSaveProduct}
@@ -489,7 +539,7 @@ export const App: React.FC = () => {
           setBannerInitialMode(mode || "TRANSLATE");
           setShowBannerModal(true);
         }}
-      /></React.Suspense>
+      /></React.Suspense>}
 
       {/* Modal E-Commerce Banner & Frame Studio + AI Dịch Chữ Trên Ảnh */}
       <React.Suspense fallback={null}><BannerFrameStudioModal

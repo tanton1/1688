@@ -8,6 +8,7 @@ import {
   VisualSourcingMatch
 } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   Globe,
   Sparkles,
@@ -74,6 +75,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
     percent: 0
   });
   const [batchResults, setBatchResults] = useState<BatchCloneItemResult[] | null>(null);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
 
   // Tải danh sách các nền tảng khi mở modal
   useEffect(() => {
@@ -136,7 +138,12 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
         setEditableTitle(res.preview.translatedTitleVI);
         setEditableCategory(res.preview.categorySuggested || "Thời trang & Phụ kiện");
         setSelectedPlatform(res.preview.sourcePlatform);
-        onShowToast(`Phân tích thành công sản phẩm từ ${res.preview.sourcePlatform}!`, "success");
+        onShowToast(
+          res.preview.extractionStatus === "LIVE"
+            ? `Đã xác minh dữ liệu trực tiếp từ ${res.preview.sourcePlatform}`
+            : `Đã tạo bản xem trước ${res.preview.extractionStatus.toLowerCase()}; chưa thể nhập vào kho`,
+          res.preview.extractionStatus === "LIVE" ? "success" : "error"
+        );
       }
     } catch (err: any) {
       onShowToast(err.message || "Lỗi khi phân tích URL sản phẩm", "error");
@@ -150,6 +157,10 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
     const targetUrl = urlInput.trim() || previewData?.sourceUrl;
     if (!targetUrl) {
       onShowToast("Không có URL sản phẩm để clone", "error");
+      return;
+    }
+    if (!previewData || previewData.extractionStatus !== "LIVE" || previewData.isDemo) {
+      onShowToast("Chỉ dữ liệu LIVE đã xác minh mới được nhập vào kho sản phẩm", "error");
       return;
     }
 
@@ -272,7 +283,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-5xl max-h-[94vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="clone-modal-title" className="relative w-full max-w-5xl max-h-[94vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
         
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">
@@ -282,7 +293,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-lg font-bold text-white tracking-wide">
+                <h2 id="clone-modal-title" className="text-lg font-bold text-white tracking-wide">
                   Clone Sản Phẩm Đa Nền Tảng
                 </h2>
                 <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30">
@@ -326,6 +337,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
 
           <button
             onClick={onClose}
+            aria-label="Đóng cửa sổ clone sản phẩm"
             className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors ml-3"
           >
             ✕
@@ -450,6 +462,13 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
               {/* 3. Live Preview Card */}
               {previewData && (
                 <div className="bg-slate-800/40 border border-slate-700 rounded-xl p-5 space-y-5 animate-fadeIn">
+                  <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/60" aria-label="Quy trình nhập sản phẩm">
+                    {["Nguồn", "Chuẩn hóa", "Duyệt", autoPublish ? "Đăng bán" : "Lưu nháp"].map((step, index) => (
+                      <div key={step} className={`px-2 py-2.5 text-center text-[10px] font-bold border-r last:border-r-0 border-slate-700 ${index < 2 ? "text-emerald-300 bg-emerald-500/10" : index === 2 ? "text-amber-300 bg-amber-500/10" : "text-slate-400"}`}>
+                        <span className="block text-[9px] opacity-70 mb-0.5">{index + 1}</span>{step}
+                      </div>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between border-b border-slate-700/70 pb-3">
                     <div className="flex items-center space-x-2">
                       <span className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1">
@@ -481,6 +500,9 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                       <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         Chất lượng: {previewData.qualityScorePreview}/100
                       </span>
+                      <span className={`px-2 py-0.5 text-xs font-bold rounded border ${previewData.extractionStatus === "LIVE" ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" : previewData.extractionStatus === "DEMO" ? "bg-amber-500/10 text-amber-300 border-amber-500/30" : "bg-rose-500/10 text-rose-300 border-rose-500/30"}`}>
+                        {previewData.extractionStatus} · {Math.round(previewData.confidence * 100)}%
+                      </span>
                       <a
                         href={previewData.sourceUrl}
                         target="_blank"
@@ -492,6 +514,19 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                       </a>
                     </div>
                   </div>
+
+                  {(previewData.warnings.length > 0 || previewData.provenance.length > 0) && (
+                    <div className="grid gap-2 sm:grid-cols-2 text-[11px]">
+                      <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
+                        <div className="font-bold text-slate-300 mb-1">Nguồn dữ liệu</div>
+                        <ul className="space-y-1 text-slate-400">{previewData.provenance.map(item => <li key={item}>• {item}</li>)}</ul>
+                      </div>
+                      <div className={`rounded-lg border p-3 ${previewData.warnings.length ? "border-amber-700/60 bg-amber-950/30" : "border-slate-700 bg-slate-950/50"}`}>
+                        <div className="font-bold text-slate-300 mb-1">Cảnh báo kiểm duyệt</div>
+                        {previewData.warnings.length ? <ul className="space-y-1 text-amber-300">{previewData.warnings.map(item => <li key={item}>• {item}</li>)}</ul> : <span className="text-emerald-400">Không có cảnh báo.</span>}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Visual Sourcing Results Box */}
                   {visualMatches && visualMatches.length > 0 && (
@@ -911,9 +946,10 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
           </div>
 
           <div className="flex items-center space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng cửa sổ clone sản phẩm"
               className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
             >
               Đóng
@@ -923,7 +959,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
               <>
                 <button
                   type="button"
-                  disabled={isCloning}
+                  disabled={isCloning || previewData.extractionStatus !== "LIVE" || previewData.isDemo}
                   onClick={() => handleExecuteClone(false)}
                   className="px-4 py-2 text-xs font-medium text-indigo-300 hover:text-indigo-200 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-700/50 rounded-lg transition-colors flex items-center space-x-1.5"
                 >
@@ -933,7 +969,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
 
                 <button
                   type="button"
-                  disabled={isCloning}
+                  disabled={isCloning || previewData.extractionStatus !== "LIVE" || previewData.isDemo}
                   onClick={() => handleExecuteClone(true)}
                   className="px-5 py-2 text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg shadow-lg shadow-emerald-600/20 flex items-center space-x-2 transition-all"
                 >

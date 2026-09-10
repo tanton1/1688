@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { WebProduct, PersonalizationField } from "@hub1688/shared-types";
 import { Sparkles, Eye, Maximize2, X, RefreshCw, CheckCircle2 } from "lucide-react";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
 interface LiveCustomizerEngineProps {
   product: WebProduct;
@@ -19,6 +20,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   const [showFullPreview, setShowFullPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<"fields" | "preview">("fields");
   const [previewDataUrl, setPreviewDataUrl] = useState<string>("");
+  const previewDialogRef = useAccessibleDialog<HTMLDivElement>(showFullPreview, () => setShowFullPreview(false));
 
   const fields = useMemo(() => product.personalizationFields || [], [product]);
 
@@ -561,7 +563,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
       {/* Full Resolution Preview Modal */}
       {showFullPreview && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div ref={previewDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xem trước bản thiết kế" className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-bold text-white text-sm flex items-center gap-2">
                 <Sparkles className="text-orange-400" size={16} />
@@ -570,6 +572,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
               <button
                 type="button"
                 onClick={() => setShowFullPreview(false)}
+                aria-label="Đóng bản xem trước"
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
               >
                 <X size={18} />

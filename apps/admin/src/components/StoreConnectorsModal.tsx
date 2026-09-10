@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { WebProduct, WooCommerceConfig, ShopifyConfig, TelegramAlertConfig } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   Share2,
   Globe,
@@ -40,30 +41,22 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // WooCommerce State
   const [wcConfig, setWcConfig] = useState<WooCommerceConfig>(() => {
-    const saved = sessionStorage.getItem("hub1688_wc_config");
-    return saved
-      ? JSON.parse(saved)
-      : { storeUrl: "https://shopdemo.vn", consumerKey: "", consumerSecret: "" };
+    return { storeUrl: "", consumerKey: "", consumerSecret: "" };
   });
 
   // Shopify State
   const [shopifyConfig, setShopifyConfig] = useState<ShopifyConfig>(() => {
-    const saved = sessionStorage.getItem("hub1688_shopify_config");
-    return saved
-      ? JSON.parse(saved)
-      : { shopDomain: "mystore.myshopify.com", accessToken: "" };
+    return { shopDomain: "", accessToken: "" };
   });
 
   // Telegram State
   const [telegramConfig, setTelegramConfig] = useState<TelegramAlertConfig>(() => {
-    const saved = sessionStorage.getItem("hub1688_telegram_config");
-    return saved
-      ? JSON.parse(saved)
-      : { botToken: "", chatId: "", enabled: true, alertOnPriceRise: true, alertOnOutOfStock: true };
+    return { botToken: "", chatId: "", enabled: true, alertOnPriceRise: true, alertOnOutOfStock: true };
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<any>(null);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
 
   useEffect(() => {
     if (selectedProduct?.id) {
@@ -77,8 +70,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Lưu cấu hình WooCommerce
   const handleSaveWC = () => {
-    sessionStorage.setItem("hub1688_wc_config", JSON.stringify(wcConfig));
-    onShowToast("Đã lưu thông tin cấu hình WooCommerce!");
+    onShowToast("Thông tin xác thực WooCommerce được quản lý bằng biến môi trường trên máy chủ.");
   };
 
   // Đồng bộ WooCommerce
@@ -87,15 +79,9 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
       onShowToast("Chưa chọn sản phẩm để đồng bộ", "error");
       return;
     }
-    if (!wcConfig.storeUrl || !wcConfig.consumerKey || !wcConfig.consumerSecret) {
-      onShowToast("Vui lòng điền đủ Store URL, Consumer Key và Secret", "error");
-      return;
-    }
-
     setIsProcessing(true);
     setLastResult(null);
     try {
-      handleSaveWC();
       const res = await AdminApi.syncWooCommerce(currentProduct.id, {
         ...wcConfig,
         siteUrl: wcConfig.storeUrl
@@ -115,8 +101,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Lưu cấu hình Shopify
   const handleSaveShopify = () => {
-    sessionStorage.setItem("hub1688_shopify_config", JSON.stringify(shopifyConfig));
-    onShowToast("Đã lưu thông tin cấu hình Shopify!");
+    onShowToast("Thông tin xác thực Shopify được quản lý bằng biến môi trường trên máy chủ.");
   };
 
   // Đồng bộ Shopify
@@ -125,15 +110,9 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
       onShowToast("Chưa chọn sản phẩm để đồng bộ", "error");
       return;
     }
-    if (!shopifyConfig.shopDomain || !shopifyConfig.accessToken) {
-      onShowToast("Vui lòng điền đủ Shop Domain và Admin Access Token", "error");
-      return;
-    }
-
     setIsProcessing(true);
     setLastResult(null);
     try {
-      handleSaveShopify();
       const res = await AdminApi.syncShopify(currentProduct.id, shopifyConfig);
       setLastResult(res.result);
       if (res.success) {
@@ -177,14 +156,8 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Test Telegram
   const handleTestTelegram = async () => {
-    if (!telegramConfig.botToken || !telegramConfig.chatId) {
-      onShowToast("Vui lòng nhập Bot Token và Chat ID Telegram", "error");
-      return;
-    }
-
     setIsProcessing(true);
     try {
-      sessionStorage.setItem("hub1688_telegram_config", JSON.stringify(telegramConfig));
       const res = await AdminApi.testTelegram(telegramConfig.botToken, telegramConfig.chatId);
       if (res.success) {
         onShowToast(`Kết nối Bot @${res.botUsername || res.botName} thành công!`);
@@ -200,11 +173,6 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   // Test gửi alert giá
   const handleSendTestPriceAlert = async () => {
-    if (!telegramConfig.botToken || !telegramConfig.chatId) {
-      onShowToast("Vui lòng nhập Bot Token và Chat ID Telegram", "error");
-      return;
-    }
-
     setIsProcessing(true);
     try {
       const res = await AdminApi.sendTelegramAlert(
@@ -235,7 +203,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Kết nối kênh bán hàng" className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -253,6 +221,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Đóng kết nối kênh bán hàng"
             className="text-slate-400 hover:text-slate-600 text-base font-bold"
           >
             ✕
@@ -333,6 +302,12 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
             </div>
           )}
 
+          {activeTab !== "MARKETPLACE" && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900" role="note">
+              Khóa kết nối chỉ được đọc từ biến môi trường phía máy chủ. Trình duyệt không nhận, gửi hoặc lưu các secret này.
+            </div>
+          )}
+
           {/* TAB 1: WooCommerce */}
           {activeTab === "WOOCOMMERCE" && (
             <div className="space-y-3">
@@ -342,9 +317,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 </label>
                 <input
                   type="text"
+                  disabled
                   value={wcConfig.storeUrl}
                   onChange={(e) => setWcConfig({ ...wcConfig, storeUrl: e.target.value })}
-                  placeholder="https://myshop.vn"
+                  placeholder="WOOCOMMERCE_STORE_URL"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                 />
               </div>
@@ -356,9 +332,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   </label>
                   <input
                     type="password"
+                    disabled
                     value={wcConfig.consumerKey}
                     onChange={(e) => setWcConfig({ ...wcConfig, consumerKey: e.target.value })}
-                    placeholder="ck_xxxxxxxxxxxxxxxx"
+                    placeholder="WOOCOMMERCE_CONSUMER_KEY"
                     className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
@@ -368,9 +345,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   </label>
                   <input
                     type="password"
+                    disabled
                     value={wcConfig.consumerSecret}
                     onChange={(e) => setWcConfig({ ...wcConfig, consumerSecret: e.target.value })}
-                    placeholder="cs_xxxxxxxxxxxxxxxx"
+                    placeholder="WOOCOMMERCE_CONSUMER_SECRET"
                     className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
@@ -389,7 +367,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   onClick={handleSaveWC}
                   className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg"
                 >
-                  Lưu Cấu Hình
+                  Cách Cấu Hình Máy Chủ
                 </button>
                 <button
                   type="button"
@@ -413,9 +391,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 </label>
                 <input
                   type="text"
+                  disabled
                   value={shopifyConfig.shopDomain}
                   onChange={(e) => setShopifyConfig({ ...shopifyConfig, shopDomain: e.target.value })}
-                  placeholder="my-fashion-store.myshopify.com"
+                  placeholder="SHOPIFY_SHOP_DOMAIN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -426,9 +405,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 </label>
                 <input
                   type="password"
+                  disabled
                   value={shopifyConfig.accessToken}
                   onChange={(e) => setShopifyConfig({ ...shopifyConfig, accessToken: e.target.value })}
-                  placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  placeholder="SHOPIFY_ACCESS_TOKEN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -446,7 +426,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   onClick={handleSaveShopify}
                   className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg"
                 >
-                  Lưu Cấu Hình
+                  Cách Cấu Hình Máy Chủ
                 </button>
                 <button
                   type="button"
@@ -524,10 +504,11 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   Telegram Bot Token:
                 </label>
                 <input
-                  type="text"
+                  type="password"
+                  disabled
                   value={telegramConfig.botToken}
                   onChange={(e) => setTelegramConfig({ ...telegramConfig, botToken: e.target.value })}
-                  placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                  placeholder="TELEGRAM_BOT_TOKEN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-[10px] text-slate-500 mt-0.5">
@@ -541,33 +522,16 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 </label>
                 <input
                   type="text"
+                  disabled
                   value={telegramConfig.chatId}
                   onChange={(e) => setTelegramConfig({ ...telegramConfig, chatId: e.target.value })}
-                  placeholder="-1001234567890 hoặc @my_1688_alerts"
+                  placeholder="TELEGRAM_CHAT_ID"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="space-y-2 pt-1">
-                <label className="flex items-center gap-2 text-xs text-slate-700 font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={telegramConfig.alertOnPriceRise}
-                    onChange={(e) => setTelegramConfig({ ...telegramConfig, alertOnPriceRise: e.target.checked })}
-                    className="rounded text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>Tự động bắn tin nhắn khi giá nhập 1688 tăng so với giá lưu hệ thống</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-700 font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={telegramConfig.alertOnOutOfStock}
-                    onChange={(e) => setTelegramConfig({ ...telegramConfig, alertOnOutOfStock: e.target.checked })}
-                    className="rounded text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>Tự động cảnh báo khi xưởng 1688 hết hàng biến thể hoặc ngừng bán</span>
-                </label>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
+                Hiện có thể kiểm tra kết nối và gửi cảnh báo mẫu. Cảnh báo giá/tồn kho tự động chỉ được bật sau khi crawler nguồn xác thực được triển khai.
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">

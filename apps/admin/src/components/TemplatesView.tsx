@@ -6,6 +6,7 @@ import {
   TemplateVariationOption
 } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   LayoutTemplate,
   Plus,
@@ -46,6 +47,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
   const [activeTab, setActiveTab] = useState<"CONTENT" | "VARIATION">("CONTENT");
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const editorDialogRef = useAccessibleDialog<HTMLDivElement>(isEditorOpen && Boolean(editingTemplate), () => setIsEditorOpen(false));
 
   // New tag temporary inputs for Variation Builder
   const [newOption1Val, setNewOption1Val] = useState("");
@@ -754,7 +756,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
       {/* ===================== MODAL EDITOR ===================== */}
       {isEditorOpen && editingTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col my-auto animate-in fade-in zoom-in duration-150">
+          <div ref={editorDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Biên tập mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col my-auto animate-in fade-in zoom-in duration-150">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80 rounded-t-2xl">
               <div>
@@ -768,6 +770,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
               </div>
               <button
                 onClick={() => setIsEditorOpen(false)}
+                aria-label="Đóng biên tập mẫu"
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />

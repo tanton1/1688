@@ -11,6 +11,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { CustomerOrder, StorefrontConfig } from "@hub1688/shared-types";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
 interface StoreOrderSuccessModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
   onOpenTracker
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen && Boolean(order), onClose);
 
   if (!isOpen || !order) return null;
 
@@ -43,7 +45,7 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden text-slate-800">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Đặt hàng thành công" className="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden text-slate-800">
         {/* Banner Success */}
         <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6 text-center space-y-2">
           <div className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center mx-auto shadow-inner animate-in zoom-in">

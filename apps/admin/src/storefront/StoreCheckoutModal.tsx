@@ -14,12 +14,14 @@ import {
 import { StorefrontConfig, StorefrontCheckoutRequest, CustomerOrder } from "@hub1688/shared-types";
 import { CartItem } from "./StoreCartDrawer";
 import { AdminApi } from "../services/api";
+import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
 interface StoreCheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
   config: StorefrontConfig;
+  appliedDiscountCode?: string;
   onOrderSuccess: (order: CustomerOrder, qrCodeUrl?: string) => void;
   onShowToast: (msg: string, type?: "success" | "error") => void;
 }
@@ -29,6 +31,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   onClose,
   items,
   config,
+  appliedDiscountCode = "",
   onOrderSuccess,
   onShowToast
 }) => {
@@ -39,14 +42,19 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<"VIETQR" | "COD">("VIETQR");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
   const totalAmount = items.reduce((sum, item) => sum + item.priceVND * item.quantity, 0);
+  const normalizedDiscountCode = appliedDiscountCode.trim().toUpperCase();
+  const discountAmount = normalizedDiscountCode === "MACORNER10" || normalizedDiscountCode === "GIAM10"
+    ? Math.round(totalAmount * 0.1)
+    : normalizedDiscountCode === "MACORNER50K" ? Math.min(totalAmount, 50000) : 0;
   const freeShipThreshold = config.freeShipThresholdVND || 500000;
-  const isFreeShip = totalAmount >= freeShipThreshold;
+  const isFreeShip = totalAmount >= freeShipThreshold || normalizedDiscountCode === "FREESHIP";
   const shippingFee = isFreeShip ? 0 : 30000;
-  const finalTotal = totalAmount + shippingFee;
+  const finalTotal = Math.max(0, totalAmount - discountAmount) + shippingFee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,15 +84,19 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         customerAddress: customerAddress.trim(),
         note: note.trim() || undefined,
         paymentMethod,
+        discountCode: appliedDiscountCode || undefined,
+        giftAddonsSelected: Array.from(new Set(items.flatMap(item => item.giftAddonsSelected || []))),
         items: items.map(item => ({
           productId: item.productId,
           skuCode: item.skuCode,
+          sourceSkuId: item.sourceSkuId,
           variantName: `${item.productTitle} (${item.variantName})`,
           quantity: item.quantity,
           sellingPriceVND: item.priceVND,
           image: item.customizedPreviewUrl || item.image,
           customizationData: item.customizationData,
-          customizedPreviewUrl: item.customizedPreviewUrl
+          customizedPreviewUrl: item.customizedPreviewUrl,
+          giftAddonsSelected: item.giftAddonsSelected
         }))
       };
 
@@ -105,7 +117,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Thanh toán đơn hàng" className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -119,6 +131,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Đóng thanh toán"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
           >
             <X className="w-5 h-5" />
@@ -277,7 +290,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5">
             <h4 className="text-xs font-bold text-slate-800 flex items-center justify-between">
               <span>Đơn Hàng ({items.length} mặt hàng)</span>
-              <span className="text-[11px] text-slate-500 font-normal">Đã áp dụng ưu đãi</span>
+              {appliedDiscountCode && <span className="text-[11px] text-emerald-600 font-semibold">Mã {normalizedDiscountCode}</span>}
             </h4>
 
             <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-200/50 text-xs">
@@ -298,6 +311,12 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 <span>Tiền hàng:</span>
                 <span className="font-semibold">{totalAmount.toLocaleString("vi-VN")}đ</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Giảm giá:</span>
+                  <span className="font-semibold">-{discountAmount.toLocaleString("vi-VN")}đ</span>
+                </div>
+              )}
               <div className="flex justify-between text-slate-600">
                 <span>Phí vận chuyển:</span>
                 <span className="font-semibold text-emerald-600">
