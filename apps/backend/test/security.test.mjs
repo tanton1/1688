@@ -4,6 +4,9 @@ import supertest from "supertest";
 
 process.env.SUPABASE_SERVICE_ROLE_KEY = "";
 process.env.SUPABASE_ANON_KEY = "";
+process.env.SUPABASE_AUTH_URL = "";
+process.env.SUPABASE_AUTH_ANON_KEY = "";
+process.env.SUPABASE_AUTH_SERVICE_ROLE_KEY = "";
 process.env.NODE_ENV = "test";
 process.env.DEMO_MODE = "false";
 process.env.APIKEY_FUN_API_KEY = "";

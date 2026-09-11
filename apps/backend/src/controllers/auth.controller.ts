@@ -40,11 +40,11 @@ export class AuthController {
       res.status(400).json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() });
       return;
     }
-    if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
+    if (!ENV.SUPABASE_AUTH_URL || !ENV.SUPABASE_AUTH_ANON_KEY) {
       res.status(503).json({ error: "AUTH_NOT_CONFIGURED", message: "Supabase Auth chưa được cấu hình" });
       return;
     }
-    const client = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+    const client = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
     const { data, error } = await client.auth.signInWithPassword(parsed.data);
@@ -71,12 +71,12 @@ export class AuthController {
       res.status(400).json({ error: "VALIDATION_ERROR", message: "Email không hợp lệ" });
       return;
     }
-    if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
+    if (!ENV.SUPABASE_AUTH_URL || !ENV.SUPABASE_AUTH_ANON_KEY) {
       res.status(503).json({ error: "AUTH_NOT_CONFIGURED", message: "Supabase Auth chưa được cấu hình" });
       return;
     }
 
-    const client = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+    const client = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
     const redirectTo = `${publicAppUrl(req)}/?auth=recovery`;
@@ -114,12 +114,12 @@ export class AuthController {
       res.status(401).json({ error: "RECOVERY_TOKEN_REQUIRED", message: "Liên kết đặt lại mật khẩu không hợp lệ" });
       return;
     }
-    if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY || !ENV.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!ENV.SUPABASE_AUTH_URL || !ENV.SUPABASE_AUTH_ANON_KEY || !ENV.SUPABASE_AUTH_SERVICE_ROLE_KEY) {
       res.status(503).json({ error: "AUTH_NOT_CONFIGURED", message: "Dịch vụ đặt lại mật khẩu chưa được cấu hình" });
       return;
     }
 
-    const authClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+    const authClient = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
     const { data, error: tokenError } = await authClient.auth.getUser(token);
@@ -128,7 +128,7 @@ export class AuthController {
       return;
     }
 
-    const adminClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_SERVICE_ROLE_KEY, {
+    const adminClient = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
     const { error: updateError } = await adminClient.auth.admin.updateUserById(data.user.id, {

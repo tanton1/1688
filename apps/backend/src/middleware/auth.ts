@@ -54,13 +54,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
+  if (!ENV.SUPABASE_AUTH_URL || !ENV.SUPABASE_AUTH_ANON_KEY) {
     res.status(401).json({ error: "INVALID_TOKEN", message: "Token không hợp lệ" });
     return;
   }
 
   try {
-    const authClient = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+    const authClient = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
     const { data, error } = await authClient.auth.getUser(token);
