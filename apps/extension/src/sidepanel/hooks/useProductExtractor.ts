@@ -45,6 +45,51 @@ async function extractCommerceProductFromDom(): Promise<any> {
     const url = window.location.href;
     const pathname = window.location.pathname;
 
+    const normalizeImageUrl = (value: any): string | undefined => {
+      if (!value) return undefined;
+      let image = String(value).trim();
+      if (!image || image.startsWith("data:") || image.startsWith("blob:")) return undefined;
+      if (image.startsWith("//")) image = "https:" + image;
+      try { return new URL(image, window.location.href).href; } catch { return undefined; }
+    };
+
+    // Customily/third-party personalization controls are rendered as live DOM
+    // image swatches and are not included in Shopify's product JSON.
+    const extractCustomOptionGroups = () => {
+      const groups: Array<{ name: string; values: Array<{ label: string; imageUrl?: string }> }> = [];
+      const containers = Array.from(doc.querySelectorAll(
+        "#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item"
+      ));
+      for (const container of containers) {
+        const labelEl = container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
+        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "").replace(/\s+/g, " ").trim();
+        if (!name || (/quantity|buy more|shipping/i.test(name) && !/choose|option|design|style/i.test(name))) continue;
+
+        const values: Array<{ label: string; imageUrl?: string }> = [];
+        const swatches = Array.from(container.querySelectorAll(
+          ".swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]"
+        ));
+        for (const swatch of swatches) {
+          const imageEl = swatch.querySelector?.("img") as HTMLImageElement | null;
+          const valueLabel = swatch.querySelector?.(".pb-tooltip-title, [data-value-label], [title], [aria-label]") as HTMLElement | null;
+          const input = swatch.tagName === "INPUT" ? swatch as HTMLInputElement : null;
+          const label = (
+            valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent ||
+            input?.value || swatch.getAttribute("data-value") || swatch.getAttribute("title") || swatch.textContent || ""
+          ).replace(/\s+/g, " ").trim();
+          let imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
+          if (!imageUrl) {
+            const styled = (swatch.querySelector?.("[style*='background-image']") || swatch) as HTMLElement | null;
+            const match = styled?.getAttribute("style")?.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
+            imageUrl = normalizeImageUrl(match?.[1]);
+          }
+          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl });
+        }
+        if (values.length >= 2) groups.push({ name, values });
+      }
+      return groups;
+    };
+
     // 1. Thử gọi API JSON của chính Shopify store ngay trên Tab (same-origin, cực sạch và chính xác 100%)
     if (pathname.includes("/products/")) {
       try {
@@ -80,6 +125,48 @@ async function extractCommerceProductFromDom(): Promise<any> {
               };
             });
 
+            const customGroups = extractCustomOptionGroups();
+            const shopifyOptions = (Array.isArray(shopifyData.options) ? shopifyData.options : [])
+              .map((option: any, index: number) => ({
+                name: String(typeof option === "string" ? option : (option?.name || `Option ${index + 1}`)).trim(),
+                values: Array.isArray(option?.values)
+                  ? option.values.map((value: any) => String(value).trim()).filter(Boolean)
+                  : [...new Set(rawVariants.map((variant: any) => variant[`option${index + 1}`]).filter(Boolean).map((value: any) => String(value).trim()))]
+              }))
+              .filter((option: any) => option.values.length > 0);
+            const baseOptionNames = new Set(shopifyOptions.map((option: any) => option.name.toLowerCase()));
+            const uniqueCustomGroups = customGroups.filter(group => !baseOptionNames.has(group.name.toLowerCase()));
+
+            // Shopify owns price/stock for quantity packs; the personalization
+            // app owns the design image. Combine both into selectable variants.
+            let mergedVariants = rawVariants;
+            if (uniqueCustomGroups.length > 0 && rawVariants.length > 0) {
+              const customCombinations = uniqueCustomGroups.reduce(
+                (combinations: Array<{ values: string[]; imageUrl?: string }>, group: any) => combinations.flatMap(combo =>
+                  group.values.map((value: any) => ({
+                    values: [...combo.values, value.label],
+                    imageUrl: value.imageUrl || combo.imageUrl
+                  }))
+                ),
+                [{ values: [], imageUrl: undefined }]
+              ).slice(0, 5000);
+              mergedVariants = rawVariants.flatMap((base: any) => customCombinations.map((combo, index) => ({
+                ...base,
+                id: `${base.id}__custom_${index}_${combo.values.map((value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-")).join("-")}`,
+                sku: base.sku ? `${base.sku}__${combo.values.join("-")}` : undefined,
+                title: [base.title || base.option1, ...combo.values].filter(Boolean).join(" / "),
+                option1: base.option1,
+                option2: combo.values[0] || undefined,
+                option3: combo.values[1] || undefined,
+                featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
+              })));
+            }
+            const mergedOptions = [
+              ...shopifyOptions,
+              ...uniqueCustomGroups.map(group => ({ name: group.name, values: group.values.map(value => value.label) }))
+            ];
+            const customImages = uniqueCustomGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean));
+
             // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
             const detailImages: string[] = [];
             const descHtml = shopifyData.body_html || shopifyData.description || "";
@@ -100,7 +187,10 @@ async function extractCommerceProductFromDom(): Promise<any> {
             const prices = rawVariants.map((v: any) => normalizePrice(v.price)).filter((price: number) => price > 0);
             const priceMin = prices.length > 0 ? Math.min(...prices) : normalizePrice(shopifyData.price);
             const priceMax = prices.length > 0 ? Math.max(...prices) : priceMin;
-            const productImages = cleanImages.length > 0 ? cleanImages : [shopifyData.featured_image].filter(Boolean);
+            const productImages = [...new Set([
+              ...(cleanImages.length > 0 ? cleanImages : [normalizeImageUrl(shopifyData.featured_image)]),
+              ...customImages
+            ].filter(Boolean))] as string[];
 
             if (!shopifyData.title?.trim() || productImages.length === 0 || priceMin <= 0) {
               return { error: "EXTRACTION_FAILED: Shopify JSON thiếu tiêu đề, ảnh hoặc giá xác thực" };
@@ -118,8 +208,8 @@ async function extractCommerceProductFromDom(): Promise<any> {
               currency: "USD",
               shopName: shopifyData.vendor || window.location.hostname,
               description: shopifyData.description || "",
-              options: shopifyData.options,
-              variants: rawVariants
+              options: mergedOptions,
+              variants: mergedVariants
             };
           }
         }
@@ -488,7 +578,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       variants: verifiedVariants.map((v: any) => {
         let vPrice = Number(v.price) > 0 ? Number(v.price) : originalPrice;
         if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
-        let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
+        let img = v.imageUrl || v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
         if (img && img.startsWith("//")) img = "https:" + img;
 
         return {

@@ -16,7 +16,8 @@
     "*://*.tmall.com/*",
     "*://*.shopee.vn/*",
     "*://shop.tiktok.com/*",
-    "*://*.aliexpress.com/*"
+    "*://*.aliexpress.com/*",
+    "*://*.macorner.co/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
@@ -40,7 +41,8 @@
         "*://*.tmall.com/*",
         "*://*.shopee.vn/*",
         "*://shop.tiktok.com/*",
-        "*://*.aliexpress.com/*"
+        "*://*.aliexpress.com/*",
+        "*://*.macorner.co/*"
       ],
       "js": [
         "src/content/index.js"

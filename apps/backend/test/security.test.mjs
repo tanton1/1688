@@ -56,6 +56,14 @@ test("CORS permits same-origin deployment traffic and rejects unknown origins", 
   assert.equal(denied.body.error, "CORS_ORIGIN_DENIED");
 });
 
+test("CORS permits a well-formed Chrome extension origin", async () => {
+  const response = await request.get("/health")
+    .set("Host", "store.example.com")
+    .set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+    .expect(200);
+  assert.equal(response.headers["access-control-allow-origin"], "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
+});
+
 test("protected routes reject anonymous requests", async () => {
   const response = await request.get("/api/v1/products").expect(401);
   assert.equal(response.body.error, "AUTH_REQUIRED");

@@ -24,10 +24,14 @@ app.use((req, res, next) => {
 app.use(cors((req, callback) => {
   const origin = req.header("origin");
   const requestOrigin = `${req.protocol}://${req.get("host")}`;
+  // Chrome extension IDs are immutable 32-character base16-like values (a-p).
+  // The extension authenticates API calls with its bearer token, so allowing
+  // this well-formed origin does not make the API publicly writable.
+  const isChromeExtensionOrigin = !!origin && /^chrome-extension:\/\/[a-p]{32}$/.test(origin);
   const isAllowed = !origin ||
     origin === requestOrigin ||
     ENV.CORS_ALLOWED_ORIGINS.includes(origin) ||
-    (ENV.NODE_ENV !== "production" && /^chrome-extension:\/\/[a-z]{32}$/.test(origin));
+    isChromeExtensionOrigin;
 
   callback(isAllowed ? null : new Error("CORS_ORIGIN_DENIED"), {
     credentials: true,

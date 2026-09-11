@@ -189,6 +189,13 @@ export class UniversalPlatformExtractor {
       if (images.length >= 8) break;
     }
 
+    // Personalized image swatches (e.g. Macorner/Customily) are part of the
+    // product choices and should be available in the imported gallery too.
+    document.querySelectorAll("#custom-options .swatch-container img, .personalized-form .swatch-container img, [data-personalization] img").forEach(img => {
+      const el = img as HTMLImageElement;
+      addImg(el.getAttribute("data-src") || el.getAttribute("data-original") || el.src);
+    });
+
     // 4. Nếu vẫn chưa có ảnh, quét các img có kích thước lớn (> 220px) ngoài header/footer/recommendation
     if (images.length === 0) {
       document.querySelectorAll("main img, #content img, .main-content img").forEach(img => {
@@ -494,6 +501,85 @@ export class UniversalPlatformExtractor {
     }
 
     if (parsedVariants.length > 0) {
+      // Macorner/Customily and similar apps render personalization choices as
+      // image swatches outside Shopify's native variant array. Merge those
+      // choices with the native variant (usually quantity pack) so the content
+      // script returns the same complete matrix as the side panel injector.
+      const normalizeImageUrl = (value: any): string | undefined => {
+        if (!value) return undefined;
+        let image = String(value).trim();
+        if (!image || image.startsWith("data:") || image.startsWith("blob:")) return undefined;
+        if (image.startsWith("//")) image = "https:" + image;
+        try { return new URL(image, window.location.href).href; } catch { return undefined; }
+      };
+      const customGroups: Array<{ name: string; values: Array<{ label: string; imageUrl?: string }> }> = [];
+      document.querySelectorAll("#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item").forEach(container => {
+        const labelEl = container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
+        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "").replace(/\s+/g, " ").trim();
+        if (!name || (/quantity|buy more|shipping/i.test(name) && !/choose|option|design|style/i.test(name))) return;
+        const values: Array<{ label: string; imageUrl?: string }> = [];
+        container.querySelectorAll(".swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]").forEach(swatch => {
+          const imageEl = swatch.querySelector("img") as HTMLImageElement | null;
+          const valueLabel = swatch.querySelector(".pb-tooltip-title, [data-value-label], [title], [aria-label]") as HTMLElement | null;
+          const input = swatch.tagName === "INPUT" ? swatch as HTMLInputElement : null;
+          const label = (valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent || input?.value || swatch.getAttribute("data-value") || swatch.getAttribute("title") || swatch.textContent || "").replace(/\s+/g, " ").trim();
+          let imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
+          if (!imageUrl) {
+            const styled = (swatch.querySelector("[style*='background-image']") || swatch) as HTMLElement | null;
+            const match = styled?.getAttribute("style")?.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
+            imageUrl = normalizeImageUrl(match?.[1]);
+          }
+          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl });
+        });
+        if (values.length >= 2) customGroups.push({ name, values });
+      });
+
+      if (customGroups.length > 0) {
+        const nativeOptionName = /\bpcs?\b/i.test(String((parsedVariants[0] as any).option1 || "")) ? "Số lượng" : "Phân loại";
+        const nativeValues = [...new Set(parsedVariants.map((variant: any) => variant.option1).filter(Boolean).map(String))];
+        const customCombinations = customGroups.reduce(
+          (combinations: Array<{ values: string[]; imageUrl?: string }>, group) => combinations.flatMap(combo =>
+            group.values.map(value => ({ values: [...combo.values, value.label], imageUrl: value.imageUrl || combo.imageUrl }))
+          ),
+          [{ values: [], imageUrl: undefined }]
+        ).slice(0, 5000);
+        const mergedVariants = parsedVariants.flatMap((base: any) => customCombinations.map((combo, index) => ({
+          ...base,
+          id: `${base.id}__custom_${index}_${combo.values.map(value => value.toLowerCase().replace(/[^a-z0-9]+/g, "-")).join("-")}`,
+          title: [base.title || base.option1, ...combo.values].filter(Boolean).join(" / "),
+          option1: base.option1,
+          option2: combo.values[0] || undefined,
+          option3: combo.values[1] || undefined,
+          featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
+        })));
+        const skuProps: Raw1688SkuProp[] = [
+          { propId: "prop_1", propNameCN: nativeOptionName, values: nativeValues.map((value, idx) => ({ valueId: `v1_${idx}`, valueCN: value })) },
+          ...customGroups.map((group, groupIndex) => ({
+            propId: `prop_${groupIndex + 2}`,
+            propNameCN: group.name,
+            values: group.values.map((value, idx) => ({ valueId: `v${groupIndex + 2}_${idx}`, valueCN: value.label, imageUrl: value.imageUrl }))
+          }))
+        ];
+        const skuMap: Record<string, Raw1688SkuItem> = {};
+        mergedVariants.forEach((v: any) => {
+          let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
+          if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+          const priceCNY = toCny(vPrice);
+          const attributes: Record<string, string> = { [nativeOptionName]: v.option1 || "" };
+          customGroups.forEach((group, index) => { attributes[group.name] = v[`option${index + 2}`] || ""; });
+          const skuItem: Raw1688SkuItem = {
+            skuId: String(v.id), attributes, priceCNY: priceCNY > 0 ? priceCNY : basePriceCNY,
+            stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+            imageUrl: normalizeImageUrl(v.featured_image?.src || v.imageUrl)
+          };
+          skuMap[skuItem.skuId] = skuItem;
+          const key = Object.values(attributes).join(" / ");
+          skuMap[key] = skuItem;
+          if (v.title) skuMap[v.title] = skuItem;
+        });
+        return { skuProps, skuMap };
+      }
+
       const opt1Vals = [...new Set(parsedVariants.map(v => v.option1).filter(Boolean))] as string[];
       const opt2Vals = [...new Set(parsedVariants.map(v => v.option2).filter(Boolean))] as string[];
 
