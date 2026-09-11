@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
+import { VariantMockupPreview, getVariantVisual, MOCKUP_VISUAL_TYPE_KEY } from "./VariantMockupPreview";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   X,
@@ -13,7 +14,8 @@ import {
   Video,
   Sparkles,
   Gift,
-  Star
+  Star,
+  Layers
 } from "lucide-react";
 
 interface StoreProductDetailModalProps {
@@ -51,6 +53,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     type: "image",
     url: product.primaryImage || ""
   });
+  // Keep the mockup as the primary view after a variant is selected. Users can
+  // still switch to the original source image from the thumbnail strip.
+  const [mediaView, setMediaView] = useState<"mockup" | "source">("source");
+  const [variantPreviewActive, setVariantPreviewActive] = useState(validVariants.length <= 1);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<"desc" | "specs" | "reviews">("desc");
 
@@ -70,6 +76,13 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
         type: "image",
         url: firstVar?.imageUrl || product.primaryImage || ""
       });
+      const supportsMockup = Boolean(
+        product.isPersonalized ||
+        product.customizerMockupTemplateUrl ||
+        product.variants.some(variant => variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+      );
+      setMediaView(supportsMockup ? "mockup" : "source");
+      setVariantPreviewActive(validVariants.length <= 1);
       setQuantity(1);
 
       // Default customization values
@@ -121,8 +134,16 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const handleSelectVariant = (variant: WebProductVariant) => {
     setSelectedVariant(variant);
+    setVariantPreviewActive(true);
     if (variant.imageUrl) {
       setActiveMedia({ type: "image", url: variant.imageUrl });
+    }
+    if (
+      product.isPersonalized ||
+      product.customizerMockupTemplateUrl ||
+      product.variants.some(item => item.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+    ) {
+      setMediaView("mockup");
     }
   };
 
@@ -139,6 +160,15 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const currentStock = selectedVariant?.stockQuantity ?? 0;
   const isOutOfStock = currentStock <= 0;
   const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
+  const hasMockup = Boolean(
+    product.isPersonalized ||
+    product.customizerMockupTemplateUrl ||
+    product.variants.some(variant => variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+  );
+  const selectedVariantVisual = useMemo(
+    () => getVariantVisual(product, variantPreviewActive ? selectedVariant : undefined),
+    [product, selectedVariant, variantPreviewActive]
+  );
 
   // Add-ons total calculation
   const addonsTotal = (product.giftAddons || [])
@@ -201,7 +231,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           <div className="lg:col-span-6 space-y-3 sm:space-y-4">
             {/* Active Display Window */}
             <div className="relative aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-200/90 shadow-inner group">
-              {activeMedia.type === "video" ? (
+              {mediaView === "mockup" && hasMockup ? (
+                <VariantMockupPreview product={product} variant={variantPreviewActive ? selectedVariant : undefined} className="h-full rounded-none" />
+              ) : activeMedia.type === "video" ? (
                 <video
                   src={activeMedia.url}
                   controls
@@ -233,10 +265,31 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
             {/* Thumbnails list */}
             <div className="flex gap-2 overflow-x-auto pb-1.5 no-scrollbar scroll-smooth">
+              {hasMockup && (
+                <button
+                  type="button"
+                  onClick={() => setMediaView("mockup")}
+                  aria-label="Xem mockup nền trơn của biến thể"
+                  className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-gradient-to-br from-slate-50 via-white to-slate-200 ${
+                    mediaView === "mockup"
+                      ? "border-orange-600 ring-2 ring-orange-500/20"
+                      : "border-stone-200 hover:border-stone-300"
+                  }`}
+                >
+                  <div className="absolute inset-0 grid place-items-center text-slate-500">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                  <span className="absolute inset-x-0 bottom-0 bg-slate-950/65 px-1 py-0.5 text-[8px] font-bold text-white">Mockup</span>
+                </button>
+              )}
+
               {product.videoUrl && (
                 <button
                   type="button"
-                  onClick={() => setActiveMedia({ type: "video", url: product.videoUrl! })}
+                  onClick={() => {
+                    setMediaView("source");
+                    setActiveMedia({ type: "video", url: product.videoUrl! });
+                  }}
                   className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all flex flex-col items-center justify-center bg-stone-900 text-white cursor-pointer ${
                     activeMedia.type === "video"
                       ? "border-orange-600 ring-2 ring-orange-500/20"
@@ -252,9 +305,12 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => setActiveMedia({ type: "image", url: img })}
+                  onClick={() => {
+                    setMediaView("source");
+                    setActiveMedia({ type: "image", url: img });
+                  }}
                   className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                    activeMedia.type === "image" && activeMedia.url === img
+                    mediaView === "source" && activeMedia.type === "image" && activeMedia.url === img
                       ? "border-orange-600 ring-2 ring-orange-500/20"
                       : "border-stone-200 hover:border-stone-300"
                   }`}
@@ -364,7 +420,12 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 <div className="mt-4 space-y-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs font-bold text-stone-900">Chọn phân loại</span>
-                    <span className="truncate text-[11px] font-bold text-orange-700">{getVariantDisplayName(selectedVariant)}</span>
+                    <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-bold text-orange-700">
+                      <span className="truncate">{getVariantDisplayName(selectedVariant)}</span>
+                      <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold text-stone-500 ring-1 ring-stone-200">
+                        {selectedVariantVisual.type === "DESIGN" ? "Design" : selectedVariantVisual.type === "COLOR" ? "Màu" : "Mặc định"}
+                      </span>
+                    </span>
                   </div>
 
                   {colorOptions.length > 0 && (

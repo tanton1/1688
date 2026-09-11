@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
 import { AdminApi, type AIGeneratedProductCopy } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
+import { getVariantVisual, MOCKUP_COLOR_HEX_KEY, MOCKUP_VISUAL_TYPE_KEY } from "../storefront/VariantMockupPreview";
 import {
   generateSlug,
   extractSEOKeywords,
@@ -308,6 +309,25 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         maxPriceVND: Math.max(...validPrices)
       }));
     }
+  };
+
+  const handleVariantMockupModeChange = (index: number, mode: "AUTO" | "DESIGN" | "COLOR" | "PLAIN") => {
+    const nextSpecDetails = { ...(variants[index].specDetails || {}) };
+    if (mode === "AUTO") {
+      delete nextSpecDetails[MOCKUP_VISUAL_TYPE_KEY];
+      delete nextSpecDetails[MOCKUP_COLOR_HEX_KEY];
+    } else {
+      nextSpecDetails[MOCKUP_VISUAL_TYPE_KEY] = mode;
+    }
+    handleVariantChange(index, "specDetails", nextSpecDetails);
+  };
+
+  const handleVariantMockupColorChange = (index: number, colorHex: string) => {
+    handleVariantChange(index, "specDetails", {
+      ...(variants[index].specDetails || {}),
+      [MOCKUP_VISUAL_TYPE_KEY]: "COLOR",
+      [MOCKUP_COLOR_HEX_KEY]: colorHex
+    });
   };
 
   // Bật/tắt bán variant
@@ -1167,11 +1187,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </div>
 
               <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-white">
-                <table className="min-w-[920px] w-full text-left text-xs">
+                <table className="min-w-[1120px] w-full text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 shadow-xs">
                     <tr>
                       <th className="p-3 w-12 text-center">Bán</th>
                       <th className="p-3">Phân Loại ({editLang === "VI" ? "Màu / Size" : "Color / Size"})</th>
+                      <th className="p-3">Hiển thị mockup</th>
                       <th className="p-3">Giá Vốn VNĐ</th>
                       <th className="p-3">Giá Bán Web VNĐ</th>
                       <th className="p-3">Margin %</th>
@@ -1211,8 +1232,48 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                               <div>
                                 <div className="font-bold text-slate-800">{displayColor}</div>
                                 <div className="text-[11px] text-slate-500">{displaySize}</div>
+                                <input
+                                  type="url"
+                                  value={v.imageUrl || ""}
+                                  onChange={(event) => handleVariantChange(idx, "imageUrl", event.target.value.trim() || undefined)}
+                                  placeholder="URL ảnh riêng của SKU"
+                                  aria-label={`Ảnh SKU ${v.sourceSkuId}`}
+                                  className="mt-1.5 w-56 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-normal text-slate-600 outline-none focus:border-orange-400"
+                                />
                               </div>
                             </div>
+                          </td>
+
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={(v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY] || "AUTO").toUpperCase()}
+                                onChange={(event) => handleVariantMockupModeChange(idx, event.target.value as "AUTO" | "DESIGN" | "COLOR" | "PLAIN")}
+                                aria-label={`Kiểu mockup ${v.sourceSkuId}`}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
+                              >
+                                <option value="AUTO">Tự nhận diện</option>
+                                <option value="DESIGN">Ảnh design</option>
+                                <option value="COLOR">Màu sản phẩm</option>
+                                <option value="PLAIN">Nền trơn</option>
+                              </select>
+                              {v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "COLOR" && (
+                                <input
+                                  type="color"
+                                  value={v.specDetails?.[MOCKUP_COLOR_HEX_KEY] || getVariantVisual({ ...formData, variants }, v).colorHex || "#f8fafc"}
+                                  onChange={(event) => handleVariantMockupColorChange(idx, event.target.value)}
+                                  aria-label={`Màu mockup ${v.sourceSkuId}`}
+                                  className="h-8 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                                />
+                              )}
+                            </div>
+                            <p className="mt-1 text-[9px] leading-3 text-slate-400">
+                              {v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "DESIGN"
+                                ? (v.imageUrl ? "Dùng ảnh riêng của SKU" : "Cần nhập URL ảnh SKU")
+                                : v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "COLOR"
+                                  ? "Phủ màu lên vùng in"
+                                  : "Có thể để hệ thống tự chọn"}
+                            </p>
                           </td>
 
                           <td className="p-3 font-mono font-semibold text-slate-600">
@@ -1253,7 +1314,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       );
                     })}
                     {visibleVariants.length === 0 && (
-                      <tr><td colSpan={7} className="p-8 text-center text-xs text-slate-500">Không tìm thấy biến thể phù hợp.</td></tr>
+                      <tr><td colSpan={8} className="p-8 text-center text-xs text-slate-500">Không tìm thấy biến thể phù hợp.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1264,6 +1325,67 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* TAB 3: MEDIA & VIDEO */}
           {activeTab === "media" && (
             <div className="space-y-6">
+              {/* 0. Mockup nền trơn & vùng đặt design */}
+              <div className="overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 shadow-sm">
+                <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="rounded-lg bg-orange-100 p-2 text-orange-700">
+                        <Layers className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                          Mockup nền trơn cho biến thể
+                          {formData.customizerMockupTemplateUrl ? (
+                            <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Đã cấu hình</span>
+                          ) : (
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">CSS fallback</span>
+                          )}
+                        </h3>
+                        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
+                          Storefront sẽ mở mockup nền trơn. Khi khách chọn variant có ảnh riêng, ảnh design được đặt lên mockup; variant chỉ có màu sẽ được phủ màu tương ứng.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        type="url"
+                        value={formData.customizerMockupTemplateUrl || ""}
+                        onChange={(e) => handleFieldChange("customizerMockupTemplateUrl", e.target.value.trim() || undefined)}
+                        placeholder="https://.../mockup-nen-tron.png"
+                        className="min-w-0 flex-1 rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                        aria-label="URL mockup nền trơn"
+                      />
+                      {formData.customizerMockupTemplateUrl && (
+                        <button
+                          type="button"
+                          onClick={() => handleFieldChange("customizerMockupTemplateUrl", undefined)}
+                          className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+                        >
+                          Xóa mockup
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Khuyến nghị PNG/WebP nền trong suốt hoặc ảnh sản phẩm trơn, tỉ lệ vuông. Để trống để dùng mockup CSS tự động theo danh mục.
+                    </p>
+                  </div>
+
+                  {formData.customizerMockupTemplateUrl && (
+                    <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-orange-200 bg-white shadow-inner sm:h-32 sm:w-32">
+                      <img
+                        src={formData.customizerMockupTemplateUrl}
+                        alt="Xem trước mockup nền trơn"
+                        className="h-full w-full object-contain p-1"
+                        onLoad={(event) => { event.currentTarget.style.opacity = "1"; }}
+                        onError={(event) => { event.currentTarget.style.opacity = "0.25"; }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* 1. Video Sản Phẩm 1688 */}
               <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 shadow-lg border border-slate-800">
                 <div className="flex items-center justify-between">
