@@ -69,6 +69,7 @@ const aiLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders:
 
 // Public endpoints: login and platform metadata only.
 apiRouter.post("/auth/login", loginLimiter, (req, res) => authCtrl.login(req, res));
+apiRouter.post("/auth/refresh", loginLimiter, (req, res) => authCtrl.refresh(req, res));
 apiRouter.post("/auth/password-reset/request", passwordResetLimiter, (req, res) => authCtrl.requestPasswordReset(req, res));
 apiRouter.post("/auth/password-reset/confirm", passwordResetLimiter, (req, res) => authCtrl.confirmPasswordReset(req, res));
 apiRouter.get("/clone/supported-platforms", (req, res) => cloneController.getSupportedPlatforms(req, res));

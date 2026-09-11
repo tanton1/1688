@@ -16,6 +16,10 @@ const passwordResetConfirmSchema = z.object({
   password: z.string().min(8).max(128)
 });
 
+const refreshSchema = z.object({
+  refreshToken: z.string().min(20).max(4_096)
+});
+
 const bearerToken = (req: Request): string => {
   const value = req.header("authorization") || "";
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
@@ -55,6 +59,41 @@ export class AuthController {
     const role = data.user.app_metadata?.role === "ADMIN" ? "ADMIN" : "SOURCING";
     res.json({
       accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.user_metadata?.name || data.user.email?.split("@")[0],
+        role
+      }
+    });
+  }
+
+  public async refresh(req: Request, res: Response): Promise<void> {
+    const parsed = refreshSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "VALIDATION_ERROR", message: "Phiên đăng nhập không hợp lệ" });
+      return;
+    }
+    if (!ENV.SUPABASE_AUTH_URL || !ENV.SUPABASE_AUTH_ANON_KEY) {
+      res.status(503).json({ error: "AUTH_NOT_CONFIGURED", message: "Supabase Auth chưa được cấu hình" });
+      return;
+    }
+
+    const client = createClient(ENV.SUPABASE_AUTH_URL, ENV.SUPABASE_AUTH_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    const { data, error } = await client.auth.refreshSession({ refresh_token: parsed.data.refreshToken });
+    if (error || !data.session || !data.user) {
+      res.status(401).json({ error: "INVALID_REFRESH_TOKEN", message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
+      return;
+    }
+
+    const role = data.user.app_metadata?.role === "ADMIN" ? "ADMIN" : "SOURCING";
+    res.json({
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
       expiresAt: data.session.expires_at,
       user: {
         id: data.user.id,

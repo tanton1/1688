@@ -18,6 +18,19 @@ export class UniversalPlatformExtractor {
     const url = window.location.href;
     const platform = detectProductPlatform(url);
 
+    if (/macorner\.co$/i.test(window.location.hostname) && window.location.pathname.includes("/products/") && !document.querySelector("#custom-options .swatch-container, .personalized-form .swatch-container")) {
+      await new Promise<void>(resolve => {
+        const observer = new MutationObserver(() => {
+          if (document.querySelector("#custom-options .swatch-container, .personalized-form .swatch-container")) {
+            observer.disconnect();
+            resolve();
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        window.setTimeout(() => { observer.disconnect(); resolve(); }, 2500);
+      });
+    }
+
     // 1. Nếu là 1688, dùng extractor chuyên biệt cho 1688
     if (platform === "1688") {
       const prod = await Detail1688Extractor.extract();

@@ -93,6 +93,12 @@ test("password recovery endpoints validate input and require a recovery token", 
   assert.equal(missingToken.body.error, "RECOVERY_TOKEN_REQUIRED");
 });
 
+test("auth refresh rejects a malformed refresh token before provider lookup", async () => {
+  const response = await request.post("/api/v1/auth/refresh")
+    .send({ refreshToken: "short" }).expect(400);
+  assert.equal(response.body.error, "VALIDATION_ERROR");
+});
+
 test("SOURCING token cannot mutate admin pricing configuration", async () => {
   const response = await request.post("/api/v1/pricing/rules")
     .set("Authorization", "Bearer test-extension-token")

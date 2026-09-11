@@ -121,7 +121,9 @@ export function generateCartesianCombinations(
       const priceCNY = rawPrice > 0 ? rawPrice : defaultPriceCNY;
       const stock = matchingSku?.stock ?? 0;
       const skuId = matchingSku?.skuId || matchingSku?.specId || `SKU_${v1.valueId}_${v2.valueId}`;
-      const imageUrl = v1.imageUrl || matchingSku?.imageUrl;
+      // Ảnh variation có thể thuộc bất kỳ trục nào (Macorner thường đặt ảnh
+      // ở trục thứ hai "Choose Your Option", sau trục số lượng).
+      const imageUrl = v1.imageUrl || v2.imageUrl || matchingSku?.imageUrl;
 
       const pricing = calculateVerifiedPrice(priceCNY, pricingRule);
 

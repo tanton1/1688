@@ -3,6 +3,7 @@ import { useProductExtractor } from "./hooks/useProductExtractor.js";
 import { Header } from "./components/Header.js";
 import { QuickImportCard } from "./components/QuickImportCard.js";
 import { AdvancedImportTabs } from "./components/AdvancedImportTabs.js";
+import { ExtensionLoginCard } from "./components/ExtensionLoginCard.js";
 import {
   TranslationMode,
   WebProductVariant,
@@ -15,7 +16,13 @@ import {
   generateCartesianCombinations
 } from "@hub1688/shared-utils";
 import { CheckCircle, Zap, SlidersHorizontal, Loader2, Video, Globe, Play, Search, AlertCircle } from "lucide-react";
-import { apiFetch } from "../shared/config.js";
+import {
+  apiFetch,
+  clearAuthSession,
+  ExtensionAuthUser,
+  getAuthenticatedUser,
+  loginWithPassword
+} from "../shared/config.js";
 
 export const App: React.FC = () => {
   const { product, loading, error, currentUrl, refresh, extractByCustomUrl } = useProductExtractor();
@@ -27,6 +34,45 @@ export const App: React.FC = () => {
   const [multiplier, setMultiplier] = useState<number>(2.2);
   const [importing, setImporting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<ExtensionAuthUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      const storedUser = await getAuthenticatedUser();
+      if (!storedUser) {
+        if (active) setAuthReady(true);
+        return;
+      }
+      try {
+        const response = await apiFetch("/api/v1/auth/me");
+        const data = await response.json().catch(() => ({}));
+        if (active && response.ok && data.user) setAuthUser(data.user);
+        else if (!response.ok) await clearAuthSession();
+      } catch {
+        if (active) setAuthError("Chưa thể kiểm tra phiên đăng nhập. Hãy thử đăng nhập lại.");
+      } finally {
+        if (active) setAuthReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleLogin = async (email: string, password: string) => {
+    setAuthError("");
+    const user = await loginWithPassword(email, password);
+    setAuthUser(user);
+    setSuccessMessage(`✓ Đã đăng nhập: ${user.email}`);
+    return user;
+  };
+
+  const handleLogout = async () => {
+    await clearAuthSession();
+    setAuthUser(null);
+    setSuccessMessage(null);
+  };
 
   // Tự động điền link của tab web đang xem vào thanh URL để người dùng dễ kiểm soát
   React.useEffect(() => {
@@ -66,6 +112,11 @@ export const App: React.FC = () => {
 
   const executeImport = async (autoPublish: boolean = false) => {
     if (!product) return;
+    if (!authUser) {
+      setAuthError("Vui lòng đăng nhập tài khoản Supabase/Admin Hub trước khi lưu sản phẩm.");
+      setSuccessMessage(null);
+      return;
+    }
     setImporting(true);
     setSuccessMessage(null);
 
@@ -169,6 +220,11 @@ export const App: React.FC = () => {
           });
         }
       } else {
+        if (res.status === 401) {
+          await clearAuthSession();
+          setAuthUser(null);
+          setAuthError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        }
         setSuccessMessage(`⚠ ${data.message || "Lỗi khi đồng bộ về website"}`);
       }
     } catch (err: any) {
@@ -180,9 +236,10 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col font-sans text-gray-800">
-      <Header shop={product?.shop} onRefresh={refresh} loading={loading} />
+      <Header shop={product?.shop} authUser={authUser} onLogout={handleLogout} onRefresh={refresh} loading={loading} />
 
       <main className="p-3.5 space-y-3 flex-1">
+        {authReady && !authUser && <ExtensionLoginCard onLogin={handleLogin} error={authError} />}
         {/* Quick URL Input Bar: Cho phép dán bất kỳ link sản phẩm nào (Macorner, Shopee, Taobao, 1688...) */}
         <div className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between text-[11px] font-bold text-gray-700">

@@ -90,6 +90,22 @@ async function extractCommerceProductFromDom(): Promise<any> {
       return groups;
     };
 
+    // Customily mounts its swatches asynchronously after the Shopify shell.
+    // Give it a short window so opening the side panel immediately still gets
+    // the option images instead of returning only the native quantity SKUs.
+    if (/macorner\.co$/i.test(window.location.hostname) && pathname.includes("/products/") && extractCustomOptionGroups().length === 0) {
+      await new Promise<void>(resolve => {
+        const observer = new MutationObserver(() => {
+          if (extractCustomOptionGroups().length > 0) {
+            observer.disconnect();
+            resolve();
+          }
+        });
+        observer.observe(doc.documentElement, { childList: true, subtree: true });
+        window.setTimeout(() => { observer.disconnect(); resolve(); }, 2500);
+      });
+    }
+
     // 1. Thử gọi API JSON của chính Shopify store ngay trên Tab (same-origin, cực sạch và chính xác 100%)
     if (pathname.includes("/products/")) {
       try {

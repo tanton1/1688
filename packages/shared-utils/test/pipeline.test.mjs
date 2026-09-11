@@ -764,4 +764,18 @@ test("13. Variant Sample Images, Detail Description Images & Synchronization Int
 
   assert.equal(normalizedVariants.length, 4);
   assert.ok(normalizedVariants.every(v => v.imageUrl && v.imageUrl.startsWith("https://")));
+
+  const secondaryImageProps = [
+    { propId: "prop_quantity", propNameCN: "Số lượng", values: [{ valueId: "q1", valueCN: "1 PC" }, { valueId: "q2", valueCN: "2 PCS" }] },
+    { propId: "prop_design", propNameCN: "Choose Your Option", values: [
+      { valueId: "lincoln", valueCN: "Abraham Lincoln", imageUrl: "https://cdn.example.com/lincoln.jpg" },
+      { valueId: "washington", valueCN: "George Washington", imageUrl: "https://cdn.example.com/washington.jpg" }
+    ] }
+  ];
+  const secondaryImageVariants = generateCartesianCombinations(secondaryImageProps, {
+    "1 PC / Abraham Lincoln": { skuId: "Q1-L", priceCNY: 30, stock: 10, attributes: { "Số lượng": "1 PC", "Choose Your Option": "Abraham Lincoln" } },
+    "2 PCS / George Washington": { skuId: "Q2-W", priceCNY: 30, stock: 10, attributes: { "Số lượng": "2 PCS", "Choose Your Option": "George Washington" } }
+  }, DEFAULT_PRICING_RULE);
+  assert.equal(secondaryImageVariants[0].imageUrl, "https://cdn.example.com/lincoln.jpg", "Ảnh ở trục variation thứ hai phải được giữ lại");
+  assert.equal(secondaryImageVariants[1].imageUrl, "https://cdn.example.com/washington.jpg", "Ảnh ở trục variation thứ hai phải được giữ lại cho mọi số lượng");
 });
