@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
 import { AdminApi, type AIGeneratedProductCopy } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
-import { getVariantVisual, MOCKUP_COLOR_HEX_KEY, MOCKUP_VISUAL_TYPE_KEY } from "../storefront/VariantMockupPreview";
+import { getVariantVisual } from "../storefront/VariantMockupPreview";
 import {
   generateSlug,
   extractSEOKeywords,
@@ -312,22 +312,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   const handleVariantMockupModeChange = (index: number, mode: "AUTO" | "DESIGN" | "COLOR" | "PLAIN") => {
-    const nextSpecDetails = { ...(variants[index].specDetails || {}) };
-    if (mode === "AUTO") {
-      delete nextSpecDetails[MOCKUP_VISUAL_TYPE_KEY];
-      delete nextSpecDetails[MOCKUP_COLOR_HEX_KEY];
-    } else {
-      nextSpecDetails[MOCKUP_VISUAL_TYPE_KEY] = mode;
-    }
-    handleVariantChange(index, "specDetails", nextSpecDetails);
+    const sourceSkuId = variants[index].sourceSkuId;
+    setFormData(prev => {
+      const variantMockupVisuals = { ...(prev.seo?.variantMockupVisuals || {}) };
+      if (mode === "AUTO") delete variantMockupVisuals[sourceSkuId];
+      else variantMockupVisuals[sourceSkuId] = { ...variantMockupVisuals[sourceSkuId], type: mode };
+      return { ...prev, seo: { ...(prev.seo || {}), variantMockupVisuals } };
+    });
   };
 
   const handleVariantMockupColorChange = (index: number, colorHex: string) => {
-    handleVariantChange(index, "specDetails", {
-      ...(variants[index].specDetails || {}),
-      [MOCKUP_VISUAL_TYPE_KEY]: "COLOR",
-      [MOCKUP_COLOR_HEX_KEY]: colorHex
-    });
+    const sourceSkuId = variants[index].sourceSkuId;
+    setFormData(prev => ({
+      ...prev,
+      seo: {
+        ...(prev.seo || {}),
+        variantMockupVisuals: {
+          ...(prev.seo?.variantMockupVisuals || {}),
+          [sourceSkuId]: { type: "COLOR", colorHex }
+        }
+      }
+    }));
   };
 
   // Bật/tắt bán variant
@@ -1208,6 +1213,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                       const displayColor = editLang === "VI" ? (v.colorName || "Mặc định") : (v.colorNameEN || v.colorName || "Default");
                       const displaySize = editLang === "VI" ? (v.sizeName || "Freesize") : (v.sizeNameEN || v.sizeName || "Freesize");
+                      const visualConfig = formData.seo?.variantMockupVisuals?.[v.sourceSkuId];
 
                       return (
                         <tr key={v.sourceSkuId} className={`hover:bg-slate-50 ${!v.selectedForSale ? "opacity-50 bg-slate-50/60" : ""}`}>
@@ -1247,7 +1253,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                           <td className="p-3">
                             <div className="flex items-center gap-2">
                               <select
-                                value={(v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY] || "AUTO").toUpperCase()}
+                                value={visualConfig?.type || "AUTO"}
                                 onChange={(event) => handleVariantMockupModeChange(idx, event.target.value as "AUTO" | "DESIGN" | "COLOR" | "PLAIN")}
                                 aria-label={`Kiểu mockup ${v.sourceSkuId}`}
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15"
@@ -1257,10 +1263,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                                 <option value="COLOR">Màu sản phẩm</option>
                                 <option value="PLAIN">Nền trơn</option>
                               </select>
-                              {v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "COLOR" && (
+                              {visualConfig?.type === "COLOR" && (
                                 <input
                                   type="color"
-                                  value={v.specDetails?.[MOCKUP_COLOR_HEX_KEY] || getVariantVisual({ ...formData, variants }, v).colorHex || "#f8fafc"}
+                                  value={visualConfig.colorHex || getVariantVisual({ ...formData, variants }, v).colorHex || "#f8fafc"}
                                   onChange={(event) => handleVariantMockupColorChange(idx, event.target.value)}
                                   aria-label={`Màu mockup ${v.sourceSkuId}`}
                                   className="h-8 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
@@ -1268,9 +1274,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                               )}
                             </div>
                             <p className="mt-1 text-[9px] leading-3 text-slate-400">
-                              {v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "DESIGN"
+                              {visualConfig?.type === "DESIGN"
                                 ? (v.imageUrl ? "Dùng ảnh riêng của SKU" : "Cần nhập URL ảnh SKU")
-                                : v.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase() === "COLOR"
+                                : visualConfig?.type === "COLOR"
                                   ? "Phủ màu lên vùng in"
                                   : "Có thể để hệ thống tự chọn"}
                             </p>

@@ -72,6 +72,11 @@ export interface ProductSEOMetadata {
   jsonLdSchema?: Record<string, any>;
   imagesSEO?: ProductImageSEO[];
   seoScore?: number;
+  /** Storefront-only visual treatment for each SKU, persisted in product metadata. */
+  variantMockupVisuals?: Record<string, {
+    type: "DESIGN" | "COLOR" | "PLAIN";
+    colorHex?: string;
+  }>;
 }
 
 export type StoreConnectorType = "WOOCOMMERCE" | "SHOPIFY" | "SHOPEE" | "TIKTOK_SHOP";

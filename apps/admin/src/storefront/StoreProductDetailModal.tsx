@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
-import { VariantMockupPreview, getVariantVisual, MOCKUP_VISUAL_TYPE_KEY } from "./VariantMockupPreview";
+import { VariantMockupPreview, getVariantVisual } from "./VariantMockupPreview";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   X,
@@ -79,7 +79,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       const supportsMockup = Boolean(
         product.isPersonalized ||
         product.customizerMockupTemplateUrl ||
-        product.variants.some(variant => variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+        Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
       );
       setMediaView(supportsMockup ? "mockup" : "source");
       setVariantPreviewActive(validVariants.length <= 1);
@@ -141,7 +141,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     if (
       product.isPersonalized ||
       product.customizerMockupTemplateUrl ||
-      product.variants.some(item => item.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+      Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
     ) {
       setMediaView("mockup");
     }
@@ -163,7 +163,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const hasMockup = Boolean(
     product.isPersonalized ||
     product.customizerMockupTemplateUrl ||
-    product.variants.some(variant => variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY])
+    Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
   );
   const selectedVariantVisual = useMemo(
     () => getVariantVisual(product, variantPreviewActive ? selectedVariant : undefined),

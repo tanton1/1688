@@ -49,7 +49,8 @@ function getVariantVisual(product: WebProduct, variant?: WebProductVariant): Var
     : "Chọn biến thể để xem design / màu";
   if (!variant) return { type: "PLAIN", label };
 
-  const explicitType = variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase();
+  const explicitConfig = product.seo?.variantMockupVisuals?.[variant.sourceSkuId];
+  const explicitType = explicitConfig?.type || variant.specDetails?.[MOCKUP_VISUAL_TYPE_KEY]?.toUpperCase();
   const variantImage = normalizeUrl(variant.imageUrl);
   const nonDesignUrls = new Set([
     normalizeUrl(product.primaryImage),
@@ -63,7 +64,7 @@ function getVariantVisual(product: WebProduct, variant?: WebProductVariant): Var
   const colorText = [variant.colorName, variant.colorNameEN, ...Object.entries(variant.specDetails || {})
     .filter(([key]) => /color|màu|颜色/i.test(key))
     .map(([, value]) => value)].filter(Boolean).join(" ");
-  const explicitColorHex = variant.specDetails?.[MOCKUP_COLOR_HEX_KEY];
+  const explicitColorHex = explicitConfig?.colorHex || variant.specDetails?.[MOCKUP_COLOR_HEX_KEY];
   if (explicitType === "COLOR") {
     return { type: "COLOR", colorHex: findColorHex(`${explicitColorHex || ""} ${colorText}`) || "#f8fafc", label };
   }
