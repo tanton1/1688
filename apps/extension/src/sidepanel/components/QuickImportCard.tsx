@@ -26,6 +26,8 @@ export const QuickImportCard: React.FC<QuickImportCardProps> = ({
 
   const uniqueSkuIds = new Set(Object.values(product.skuMap || {}).map(item => item.skuId));
   const skuCount = uniqueSkuIds.size;
+  const uniqueSkuItems = [...new Map(Object.values(product.skuMap || {}).map(item => [item.skuId, item])).values()];
+  const variantImages = uniqueSkuItems.map(item => item.imageUrl).filter((url): url is string => Boolean(url));
   const totalStock = [...uniqueSkuIds].reduce((sum, skuId) => {
     const item = Object.values(product.skuMap || {}).find(candidate => candidate.skuId === skuId);
     return sum + (item?.stock || 0);
@@ -56,12 +58,24 @@ export const QuickImportCard: React.FC<QuickImportCardProps> = ({
           <div className="mt-1 flex items-center space-x-3 text-[11px] text-gray-500 font-medium">
             <span>{skuCount} SKU</span>
             <span>•</span>
+            <span>Ảnh var: {variantImages.length}/{skuCount}</span>
+            <span>•</span>
             <span>Tồn: {totalStock.toLocaleString()}</span>
             <span>•</span>
             <span>MOQ: {product.moq}</span>
           </div>
         </div>
       </div>
+
+      {variantImages.length > 0 && (
+        <div className="flex items-center gap-1.5 border-b border-gray-100 bg-white px-4 py-2">
+          <span className="mr-1 text-[10px] font-semibold text-gray-500">Ảnh biến thể</span>
+          {variantImages.slice(0, 8).map((imageUrl, index) => (
+            <img key={`${imageUrl}-${index}`} src={imageUrl} alt="" className="h-7 w-7 rounded border border-gray-200 object-cover" />
+          ))}
+          {variantImages.length > 8 && <span className="text-[10px] text-gray-500">+{variantImages.length - 8}</span>}
+        </div>
+      )}
 
       {/* Sync configuration checkboxes */}
       <div className="p-4 space-y-2.5">

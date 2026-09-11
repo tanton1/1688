@@ -53,29 +53,30 @@ interface ExtensionAuthSession {
 
 export async function getAccessToken(): Promise<string> {
   if (typeof chrome === "undefined" || !chrome.storage) return "";
-  const local = chrome.storage.local ? await chrome.storage.local.get([ACCESS_TOKEN_KEY]) : {};
-  if (typeof local[ACCESS_TOKEN_KEY] === "string") return local[ACCESS_TOKEN_KEY];
-  const legacy = chrome.storage.session ? await chrome.storage.session.get([ACCESS_TOKEN_KEY]) : {};
+  const session = chrome.storage.session ? await chrome.storage.session.get([ACCESS_TOKEN_KEY]) : {};
+  if (typeof session[ACCESS_TOKEN_KEY] === "string") return session[ACCESS_TOKEN_KEY];
+  // Read the old location once for backwards compatibility with pre-login builds.
+  const legacy = chrome.storage.local ? await chrome.storage.local.get([ACCESS_TOKEN_KEY]) : {};
   return typeof legacy[ACCESS_TOKEN_KEY] === "string" ? legacy[ACCESS_TOKEN_KEY] : "";
 }
 
 export async function setAccessToken(token: string): Promise<void> {
-  if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+  if (typeof chrome === "undefined" || !chrome.storage) return;
   const clean = token.trim();
-  if (clean) await chrome.storage.local.set({ [ACCESS_TOKEN_KEY]: clean });
-  else await chrome.storage.local.remove([ACCESS_TOKEN_KEY]);
-  await chrome.storage.session?.remove([ACCESS_TOKEN_KEY]);
+  if (clean) await chrome.storage.session?.set({ [ACCESS_TOKEN_KEY]: clean });
+  else await chrome.storage.session?.remove([ACCESS_TOKEN_KEY]);
+  await chrome.storage.local?.remove([ACCESS_TOKEN_KEY]);
 }
 
 async function saveAuthSession(session: ExtensionAuthSession): Promise<void> {
   if (typeof chrome === "undefined" || !chrome.storage?.local) return;
   await chrome.storage.local.set({
-    [ACCESS_TOKEN_KEY]: session.accessToken,
     [REFRESH_TOKEN_KEY]: session.refreshToken || "",
     [EXPIRES_AT_KEY]: session.expiresAt || 0,
     [AUTH_USER_KEY]: session.user
   });
-  await chrome.storage.session?.remove([ACCESS_TOKEN_KEY]);
+  await chrome.storage.session?.set({ [ACCESS_TOKEN_KEY]: session.accessToken });
+  await chrome.storage.local.remove([ACCESS_TOKEN_KEY]);
 }
 
 export async function clearAuthSession(): Promise<void> {
@@ -121,8 +122,9 @@ async function refreshAuthSession(force = false): Promise<ExtensionAuthSession |
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     if (typeof chrome === "undefined" || !chrome.storage?.local) return null;
-    const stored = await chrome.storage.local.get([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, EXPIRES_AT_KEY, AUTH_USER_KEY]);
-    const accessToken = typeof stored[ACCESS_TOKEN_KEY] === "string" ? stored[ACCESS_TOKEN_KEY] : "";
+    const stored = await chrome.storage.local.get([REFRESH_TOKEN_KEY, EXPIRES_AT_KEY, AUTH_USER_KEY]);
+    const sessionStored = chrome.storage.session ? await chrome.storage.session.get([ACCESS_TOKEN_KEY]) : {};
+    const accessToken = typeof sessionStored[ACCESS_TOKEN_KEY] === "string" ? sessionStored[ACCESS_TOKEN_KEY] : await getAccessToken();
     const refreshToken = typeof stored[REFRESH_TOKEN_KEY] === "string" ? stored[REFRESH_TOKEN_KEY] : "";
     const expiresAt = Number(stored[EXPIRES_AT_KEY]) || 0;
     const user = stored[AUTH_USER_KEY] as ExtensionAuthUser | undefined;

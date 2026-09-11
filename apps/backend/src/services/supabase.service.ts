@@ -470,7 +470,8 @@ export class SupabaseDataService {
       return null;
     }
 
-    const variantRows = Object.values(raw.skuMap || {}).map(item => ({
+    const uniqueSourceVariants = [...new Map(Object.values(raw.skuMap || {}).map(item => [item.skuId, item])).values()];
+    const variantRows = uniqueSourceVariants.map(item => ({
       source_product_id: sourceProd.id,
       source_sku_id: item.skuId,
       attributes_json: item.attributes,

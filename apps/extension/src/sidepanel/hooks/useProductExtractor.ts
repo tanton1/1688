@@ -102,7 +102,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
           }
         });
         observer.observe(doc.documentElement, { childList: true, subtree: true });
-        window.setTimeout(() => { observer.disconnect(); resolve(); }, 2500);
+        window.setTimeout(() => { observer.disconnect(); resolve(); }, 8000);
       });
     }
 
