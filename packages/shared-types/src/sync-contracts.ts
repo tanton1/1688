@@ -70,6 +70,8 @@ export interface CustomerOrderItem {
   // POD Customization data (Tên, avatar, kiểu tóc, lời chúc, ảnh preview đã custom)
   customizationData?: Record<string, any>;
   customizedPreviewUrl?: string;
+  customizationId?: string;
+  customizationSchemaVersion?: number;
 }
 
 export interface CustomerOrder {
@@ -139,6 +141,8 @@ export interface StorefrontCheckoutRequest {
     image?: string;
     customizationData?: Record<string, any>;
     customizedPreviewUrl?: string;
+    customizationId?: string;
+    customizationSchemaVersion?: number;
     giftAddonsSelected?: string[];
   }>;
   giftAddonsSelected?: string[];

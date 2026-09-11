@@ -6,13 +6,18 @@ import { WebProduct, WooCommerceConfig, ShopifyConfig } from "@hub1688/shared-ty
 export function buildWooCommercePayload(product: WebProduct, config?: Partial<WooCommerceConfig>): Record<string, any> {
   const isVariable = (product.variants?.length || 0) > 1;
 
-  const images = [
+  const imageCandidates = [
     ...(product.primaryImage ? [{ src: product.primaryImage, alt: product.titleVI }] : []),
     ...(product.galleryImages || []).map((img, i) => ({
       src: img,
       alt: `${product.titleVI} - Ảnh #${i + 1}`
+    })),
+    ...(product.variants || []).filter(variant => variant.imageUrl).map(variant => ({
+      src: variant.imageUrl!,
+      alt: `SKU:${variant.sourceSkuId} - ${[variant.colorName, variant.sizeName].filter(Boolean).join(" - ")}`
     }))
   ];
+  const images = imageCandidates.filter((image, index) => imageCandidates.findIndex(candidate => candidate.src === image.src) === index);
 
   // Thu thập các giá trị thuộc tính duy nhất
   const colors = Array.from(new Set(product.variants.map(v => v.colorName).filter(Boolean)));
@@ -47,7 +52,14 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
     stock_quantity: product.variants.reduce((sum, v) => sum + v.stockQuantity, 0),
     categories: product.categoryName ? [{ name: product.categoryName }] : [],
     images,
-    attributes
+    attributes,
+    meta_data: product.isPersonalized ? [
+      { key: "_hub1688_personalized", value: "yes" },
+      { key: "_hub1688_personalization_schema_version", value: String(product.version || 1) },
+      { key: "_hub1688_personalization_schema", value: JSON.stringify(product.personalizationFields || []) },
+      { key: "_hub1688_customizer_mockup", value: product.customizerMockupTemplateUrl || "" },
+      { key: "_hub1688_variant_image_map", value: JSON.stringify(Object.fromEntries((product.variants || []).filter(variant => variant.imageUrl).map(variant => [variant.sourceSkuId, variant.imageUrl]))) }
+    ] : []
   };
 }
 
@@ -55,13 +67,18 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
  * Sinh cấu trúc payload chuẩn Shopify Admin REST API
  */
 export function buildShopifyPayload(product: WebProduct, config?: Partial<ShopifyConfig>): Record<string, any> {
-  const images = [
+  const imageCandidates = [
     ...(product.primaryImage ? [{ src: product.primaryImage, alt: product.titleEN || product.titleVI }] : []),
     ...(product.galleryImages || []).map((img, i) => ({
       src: img,
       alt: `${product.titleEN || product.titleVI} - Detail #${i + 1}`
+    })),
+    ...(product.variants || []).filter(variant => variant.imageUrl).map(variant => ({
+      src: variant.imageUrl!,
+      alt: `SKU:${variant.sourceSkuId} - ${[variant.colorNameEN || variant.colorName, variant.sizeNameEN || variant.sizeName].filter(Boolean).join(" - ")}`
     }))
   ];
+  const images = imageCandidates.filter((image, index) => imageCandidates.findIndex(candidate => candidate.src === image.src) === index);
 
   const shopifyCurrency = config?.currency || "VND";
   const vndPerUsd = config?.exchangeRateVNDToUSD;
@@ -94,7 +111,14 @@ export function buildShopifyPayload(product: WebProduct, config?: Partial<Shopif
         { name: "Color" },
         { name: "Size" }
       ],
-      variants
+      variants,
+      metafields: product.isPersonalized ? [
+        { namespace: "hub1688", key: "personalized", type: "boolean", value: "true" },
+        { namespace: "hub1688", key: "personalization_schema_version", type: "number_integer", value: String(product.version || 1) },
+        { namespace: "hub1688", key: "personalization_schema", type: "json", value: JSON.stringify(product.personalizationFields || []) },
+        ...(product.customizerMockupTemplateUrl ? [{ namespace: "hub1688", key: "customizer_mockup", type: "single_line_text_field", value: product.customizerMockupTemplateUrl }] : []),
+        { namespace: "hub1688", key: "variant_image_map", type: "json", value: JSON.stringify(Object.fromEntries((product.variants || []).filter(variant => variant.imageUrl).map(variant => [variant.sourceSkuId, variant.imageUrl]))) }
+      ] : []
     }
   };
 }

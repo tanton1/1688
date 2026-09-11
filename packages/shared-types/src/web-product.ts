@@ -122,11 +122,47 @@ export type PersonalizationFieldType =
   | "TEXT" 
   | "TEXTAREA" 
   | "SELECT" 
+  | "ASSET_PICKER"
+  | "IMAGE_UPLOAD"
+  | "REPEAT_GROUP"
   | "AVATAR_BUILDER" 
   | "PET_BUILDER" 
   | "COLOR_SWATCH" 
   | "NUMBER" 
   | "CHECKBOX";
+
+export type PersonalizationConditionOperator = "EQUALS" | "NOT_EQUALS" | "IN" | "NOT_EMPTY";
+
+export interface PersonalizationVisibilityRule {
+  fieldId: string;
+  operator?: PersonalizationConditionOperator;
+  value?: string | number | boolean;
+  values?: Array<string | number | boolean>;
+}
+
+export interface PersonalizationPreviewPlacement {
+  xPercent?: number;
+  yPercent?: number;
+  widthPercent?: number;
+  heightPercent?: number;
+  rotationDeg?: number;
+  shape?: "RECT" | "CIRCLE";
+  fontFamily?: string;
+  fontSizePercent?: number;
+  fontWeight?: "normal" | "bold";
+  color?: string;
+  textAlign?: "left" | "center" | "right";
+}
+
+export interface PersonalizationImageValue {
+  url: string;
+  fileName?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  crop?: { x: number; y: number; zoom: number; rotation: number };
+}
 
 export interface PersonalizationOptionItem {
   id: string;
@@ -147,7 +183,22 @@ export interface PersonalizationField {
   options?: PersonalizationOptionItem[];
   defaultValue?: any;
   group?: string;
+  step?: string;
   helpText?: string;
+  visibleWhen?: PersonalizationVisibilityRule;
+  min?: number;
+  max?: number;
+  accept?: string[];
+  maxFileSizeMB?: number;
+  minImageWidth?: number;
+  minImageHeight?: number;
+  preview?: PersonalizationPreviewPlacement;
+  repeat?: {
+    minItems: number;
+    maxItems: number;
+    itemLabel?: string;
+    fields: PersonalizationField[];
+  };
 }
 
 export interface VolumeDiscountTier {

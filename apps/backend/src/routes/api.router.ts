@@ -30,6 +30,7 @@ import {
   resolveDiffSchema,
   shopifySyncSchema,
   storeSettingsSchema,
+  storefrontCustomizationUploadSchema,
   templateCreateSchema,
   templateUpdateSchema,
   trackOrderSchema,
@@ -65,6 +66,7 @@ const trackingLimiter = rateLimit({
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "LOGIN_RATE_LIMITED" } });
 const passwordResetLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "PASSWORD_RESET_RATE_LIMITED", message: "Đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau." } });
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "CHECKOUT_RATE_LIMITED" } });
+const customizationUploadLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "UPLOAD_RATE_LIMITED", message: "Đã tải quá nhiều ảnh; vui lòng thử lại sau" } });
 const aiLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "AI_RATE_LIMITED" } });
 
 // Public endpoints: login and platform metadata only.
@@ -80,6 +82,7 @@ apiRouter.post("/sync/cron", requireCronSecret, (req, res) => syncCtrl.runCronSy
 apiRouter.get("/store/info", (req, res) => storefrontController.getStoreInfo(req, res));
 apiRouter.get("/store/products", (req, res) => storefrontController.listPublicProducts(req, res));
 apiRouter.get("/store/products/:idOrSlug", (req, res) => storefrontController.getProductDetail(req, res));
+apiRouter.post("/store/customizations/upload", customizationUploadLimiter, validateBody(storefrontCustomizationUploadSchema), (req, res) => storefrontController.uploadCustomizationImage(req, res));
 apiRouter.post("/store/orders", checkoutLimiter, requirePersistence, validateBody(checkoutSchema), (req, res) => storefrontController.checkoutOrder(req, res));
 apiRouter.post("/store/orders/track", trackingLimiter, validateBody(trackOrderSchema), (req, res) => storefrontController.trackOrder(req, res));
 

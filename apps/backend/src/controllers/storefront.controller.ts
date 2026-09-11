@@ -3,10 +3,41 @@ import { inMemoryProducts } from "./import.controller.js";
 import { ordersService } from "../services/orders.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { StorefrontConfig, StorefrontCheckoutRequest, WebProduct, CustomerOrder, CustomerOrderItem } from "@hub1688/shared-types";
-import { calculateStorefrontPricing, generateVietQRUrl } from "@hub1688/shared-utils";
+import { calculateStorefrontPricing, generateVietQRUrl, validatePersonalizationValues } from "@hub1688/shared-utils";
 import { supabaseService } from "../services/supabase.service.js";
+import { mediaMirrorService } from "../services/media-mirror.service.js";
 import crypto from "node:crypto";
 import { ENV } from "../config/env.js";
+
+const readImageDimensions = (buffer: Buffer, mimeType: string): { width: number; height: number } | null => {
+  if (mimeType === "image/png" && buffer.length >= 24) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (mimeType === "image/jpeg") {
+    let offset = 2;
+    const sofMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) { offset += 1; continue; }
+      const marker = buffer[offset + 1];
+      if (sofMarkers.has(marker)) {
+        return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+      }
+      const segmentLength = buffer.readUInt16BE(offset + 2);
+      if (segmentLength < 2) break;
+      offset += segmentLength + 2;
+    }
+  }
+  if (mimeType === "image/webp" && buffer.length >= 30) {
+    const chunk = buffer.subarray(12, 16).toString("ascii");
+    if (chunk === "VP8X") return { width: buffer.readUIntLE(24, 3) + 1, height: buffer.readUIntLE(27, 3) + 1 };
+    if (chunk === "VP8 ") return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+    if (chunk === "VP8L" && buffer[20] === 0x2f) {
+      const b1 = buffer[21], b2 = buffer[22], b3 = buffer[23], b4 = buffer[24];
+      return { width: 1 + (((b2 & 0x3f) << 8) | b1), height: 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6)) };
+    }
+  }
+  return null;
+};
 
 export let currentStorefrontConfig: StorefrontConfig = {
   storeName: "1688 STORE",
@@ -26,6 +57,63 @@ export let currentStorefrontConfig: StorefrontConfig = {
 };
 
 export class StorefrontController {
+  /**
+   * Upload ảnh cá nhân hóa cho phiên khách, không yêu cầu đăng nhập.
+   * Ảnh đã được trình duyệt nén trước; máy chủ vẫn kiểm tra MIME, magic bytes và kích thước.
+   */
+  public async uploadCustomizationImage(req: Request, res: Response): Promise<void> {
+    const { dataUrl, fileName, guestSessionId, width, height } = req.body as {
+      dataUrl: string;
+      fileName: string;
+      guestSessionId: string;
+      width: number;
+      height: number;
+    };
+    const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
+    if (!match) {
+      res.status(400).json({ error: "INVALID_IMAGE", message: "Định dạng ảnh không hợp lệ" });
+      return;
+    }
+
+    const mimeType = `image/${match[1]}`;
+    const buffer = Buffer.from(match[2], "base64");
+    if (buffer.length === 0 || buffer.length > 2_500_000) {
+      res.status(413).json({ error: "IMAGE_TOO_LARGE", message: "Ảnh sau khi nén phải nhỏ hơn 2.5MB" });
+      return;
+    }
+    const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isWebp = buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+    if ((mimeType === "image/jpeg" && !isJpeg) || (mimeType === "image/png" && !isPng) || (mimeType === "image/webp" && !isWebp)) {
+      res.status(400).json({ error: "INVALID_IMAGE_SIGNATURE", message: "Nội dung tệp không khớp định dạng ảnh" });
+      return;
+    }
+    const actualDimensions = readImageDimensions(buffer, mimeType);
+    if (!actualDimensions || actualDimensions.width <= 0 || actualDimensions.height <= 0 || actualDimensions.width > 20_000 || actualDimensions.height > 20_000) {
+      res.status(400).json({ error: "INVALID_IMAGE_DIMENSIONS", message: "Không đọc được kích thước ảnh" });
+      return;
+    }
+    if (actualDimensions.width !== width || actualDimensions.height !== height) {
+      res.status(400).json({ error: "IMAGE_DIMENSIONS_MISMATCH", message: "Kích thước ảnh khai báo không khớp nội dung tệp" });
+      return;
+    }
+
+    const safeBase = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").slice(0, 60) || "upload";
+    const extension = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+    const datePrefix = new Date().toISOString().slice(0, 7).replace("-", "/");
+    const objectName = `${datePrefix}/${guestSessionId}/${safeBase}-${crypto.randomBytes(6).toString("hex")}.${extension}`;
+    const url = await mediaMirrorService.uploadToStorage(buffer, mimeType, objectName, "customizations");
+    if (!url) {
+      res.status(503).json({ error: "UPLOAD_UNAVAILABLE", message: "Kho ảnh chưa sẵn sàng, vui lòng thử lại" });
+      return;
+    }
+
+    res.status(201).json({
+      success: true,
+      image: { url, fileName, mimeType, width: actualDimensions.width, height: actualDimensions.height, sizeBytes: buffer.length }
+    });
+  }
+
   /**
    * Đồng bộ nạp sản phẩm từ Supabase nếu có
    */
@@ -238,6 +326,24 @@ export class StorefrontController {
         res.status(409).json({ error: "VARIANT_UNAVAILABLE", message: `Phân loại của ${matchedProd.titleVI} không còn bán` });
         return;
       }
+      if (matchedProd.isPersonalized) {
+        const personalization = validatePersonalizationValues(
+          matchedProd.personalizationFields || [],
+          item.customizationData || {}
+        );
+        if (!personalization.valid) {
+          res.status(422).json({
+            error: "PERSONALIZATION_INCOMPLETE",
+            message: `Thông tin cá nhân hóa của ${matchedProd.titleVI} chưa hoàn chỉnh`,
+            fieldErrors: personalization.errors
+          });
+          return;
+        }
+        if (!item.customizationId) {
+          res.status(422).json({ error: "PERSONALIZATION_ID_REQUIRED", message: "Thiếu mã cấu hình cá nhân hóa" });
+          return;
+        }
+      }
       if (matchedVar.stockQuantity < qty) {
         res.status(409).json({ error: "INSUFFICIENT_STOCK", message: `${matchedProd.titleVI} chỉ còn ${matchedVar.stockQuantity} sản phẩm` });
         return;
@@ -268,7 +374,9 @@ export class StorefrontController {
         sourceSkuId: matchedVar.sourceSkuId,
         image: item.customizedPreviewUrl || matchedVar.imageUrl || matchedProd.primaryImage,
         customizationData: item.customizationData,
-        customizedPreviewUrl: item.customizedPreviewUrl
+        customizedPreviewUrl: item.customizedPreviewUrl,
+        customizationId: item.customizationId,
+        customizationSchemaVersion: matchedProd.version || 1
       });
     }
 

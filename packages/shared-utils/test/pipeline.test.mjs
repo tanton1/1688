@@ -332,6 +332,21 @@ test("7. Omnichannel Connectors Payload Builders", (t) => {
   assert.equal(shopify.product.variants.length, 2);
   assert.equal(shopify.product.options[0].name, "Color");
 
+  const customProduct = {
+    ...dummyProduct,
+    version: 3,
+    isPersonalized: true,
+    customizerMockupTemplateUrl: "https://example.com/plain-mockup.jpg",
+    personalizationFields: [{ id: "name", label: "Tên", type: "TEXT", required: true }],
+    variants: dummyProduct.variants.map((variant, index) => ({ ...variant, imageUrl: `https://example.com/variant-${index + 1}.jpg` }))
+  };
+  const customWoo = buildWooCommercePayload(customProduct);
+  assert.equal(customWoo.images.length, 4);
+  assert.equal(customWoo.meta_data.find(item => item.key === "_hub1688_personalization_schema_version").value, "3");
+  const customShopify = buildShopifyPayload(customProduct);
+  assert.equal(customShopify.product.images.length, 4);
+  assert.equal(customShopify.product.metafields.find(item => item.key === "personalization_schema").type, "json");
+
   // Shopee CSV
   const shopeeCSV = buildMarketplaceCSV([dummyProduct], "SHOPEE");
   assert.ok(shopeeCSV.includes("Mã Ngành Hàng"));

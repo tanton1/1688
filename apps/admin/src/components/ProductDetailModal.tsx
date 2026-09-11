@@ -4,6 +4,7 @@ import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopyw
 import { AdminApi, type AIGeneratedProductCopy } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import { getVariantVisual } from "../storefront/VariantMockupPreview";
+import { PersonalizationBuilder } from "./PersonalizationBuilder";
 import {
   generateSlug,
   extractSEOKeywords,
@@ -49,7 +50,8 @@ import {
   Factory,
   RefreshCw,
   LayoutTemplate,
-  CloudDownload
+  CloudDownload,
+  Settings2
 } from "lucide-react";
 
 interface ProductDetailModalProps {
@@ -73,7 +75,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 }) => {
   const dialogRef = useAccessibleDialog<HTMLDivElement>(true, onClose);
 
-  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality" | "copywriter" | "sourcing">("content");
+  const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "personalization" | "seo" | "quality" | "copywriter" | "sourcing">("content");
   const [copyStyle, setCopyStyle] = useState<AICopywritingStyle>("AIDA");
   const [copyLang, setCopyLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
   const [generatedCopy, setGeneratedCopy] = useState<AIGeneratedProductCopy | null>(null);
@@ -739,6 +741,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           >
             <ImageIcon className="w-3.5 h-3.5" />
             Media & Video ({mediaCount})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("personalization")}
+            className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
+              activeTab === "personalization"
+                ? "border-orange-600 text-orange-600"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Cá Nhân Hóa ({formData.personalizationFields?.length || 0})
           </button>
 
           {/* TAB: TỐI ƯU SEO & SERP */}
@@ -1699,6 +1713,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
               </div>
             </div>
+          )}
+
+          {activeTab === "personalization" && (
+            <PersonalizationBuilder
+              enabled={Boolean(formData.isPersonalized)}
+              mockupUrl={formData.customizerMockupTemplateUrl}
+              previewImageUrl={formData.primaryImage}
+              fields={formData.personalizationFields || []}
+              onEnabledChange={isPersonalized => handleFieldChange("isPersonalized", isPersonalized)}
+              onMockupUrlChange={customizerMockupTemplateUrl => handleFieldChange("customizerMockupTemplateUrl", customizerMockupTemplateUrl)}
+              onFieldsChange={personalizationFields => handleFieldChange("personalizationFields", personalizationFields)}
+            />
           )}
 
           {/* TAB 4: TỐI ƯU SEO & SERP */}

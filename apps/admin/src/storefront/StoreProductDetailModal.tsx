@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
+import { validatePersonalizationValues } from "@hub1688/shared-utils";
+import { AdminApi } from "../services/api";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
 import { VariantMockupPreview, getVariantVisual } from "./VariantMockupPreview";
+import { createCustomizationId, getCustomizationGuestSessionId } from "./personalizationImage";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   X,
@@ -27,7 +30,9 @@ interface StoreProductDetailModalProps {
     product: WebProduct,
     customizationData?: Record<string, any>,
     customizedPreviewUrl?: string,
-    giftAddonsSelected?: string[]
+    giftAddonsSelected?: string[],
+    customizationId?: string,
+    customizationSchemaVersion?: number
   ) => void;
   onBuyNow: (
     variant: WebProductVariant,
@@ -35,7 +40,9 @@ interface StoreProductDetailModalProps {
     product: WebProduct,
     customizationData?: Record<string, any>,
     customizedPreviewUrl?: string,
-    giftAddonsSelected?: string[]
+    giftAddonsSelected?: string[],
+    customizationId?: string,
+    customizationSchemaVersion?: number
   ) => void;
 }
 
@@ -63,6 +70,11 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   // Customization & Add-ons state
   const [customizationValues, setCustomizationValues] = useState<Record<string, any>>({});
   const [renderedPreviewUrl, setRenderedPreviewUrl] = useState<string | undefined>(undefined);
+  const [persistedPreviewUrl, setPersistedPreviewUrl] = useState<string | undefined>(undefined);
+  const [customizationId, setCustomizationId] = useState(createCustomizationId);
+  const [showCustomizationValidation, setShowCustomizationValidation] = useState(false);
+  const [purchaseError, setPurchaseError] = useState("");
+  const [isPreparingPurchase, setIsPreparingPurchase] = useState(false);
   const [selectedAddons, setSelectedAddons] = useState<string[]>(() => {
     return (product.giftAddons || []).filter(a => a.defaultChecked).map(a => a.id);
   });
@@ -85,14 +97,26 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       setVariantPreviewActive(validVariants.length <= 1);
       setQuantity(1);
 
-      // Default customization values
+      // Default customization values or the guest's saved draft for this exact SKU.
       const initialCustom: Record<string, any> = {};
       (product.personalizationFields || []).forEach(f => {
         if (f.defaultValue !== undefined) {
           initialCustom[f.id] = f.defaultValue;
         }
       });
-      setCustomizationValues(initialCustom);
+      const draftKey = `hub1688_customization_draft:${product.id || product.slug}:${firstVar?.sourceSkuId || "default"}`;
+      try {
+        const draft = JSON.parse(localStorage.getItem(draftKey) || "null");
+        setCustomizationValues(draft?.values && typeof draft.values === "object" ? { ...initialCustom, ...draft.values } : initialCustom);
+        setCustomizationId(typeof draft?.customizationId === "string" ? draft.customizationId : createCustomizationId());
+      } catch {
+        setCustomizationValues(initialCustom);
+        setCustomizationId(createCustomizationId());
+      }
+      setRenderedPreviewUrl(undefined);
+      setPersistedPreviewUrl(undefined);
+      setShowCustomizationValidation(false);
+      setPurchaseError("");
       setSelectedAddons((product.giftAddons || []).filter(a => a.defaultChecked).map(a => a.id));
     }
   }, [product]);
@@ -133,6 +157,14 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   ), [product.fullDescVI, product.shortDescVI]);
 
   const handleSelectVariant = (variant: WebProductVariant) => {
+    if (product.isPersonalized && selectedVariant) {
+      const currentKey = `hub1688_customization_draft:${product.id || product.slug}:${selectedVariant.sourceSkuId || "default"}`;
+      try {
+        localStorage.setItem(currentKey, JSON.stringify({ customizationId, values: customizationValues, updatedAt: new Date().toISOString() }));
+      } catch {
+        // Storage may be disabled; keep the active customization in memory.
+      }
+    }
     setSelectedVariant(variant);
     setVariantPreviewActive(true);
     if (variant.imageUrl) {
@@ -144,6 +176,22 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
     ) {
       setMediaView("mockup");
+    }
+    if (product.isPersonalized) {
+      const defaults = Object.fromEntries((product.personalizationFields || []).filter(field => field.defaultValue !== undefined).map(field => [field.id, field.defaultValue]));
+      const nextKey = `hub1688_customization_draft:${product.id || product.slug}:${variant.sourceSkuId || "default"}`;
+      try {
+        const draft = JSON.parse(localStorage.getItem(nextKey) || "null");
+        setCustomizationValues(draft?.values && typeof draft.values === "object" ? { ...defaults, ...draft.values } : defaults);
+        setCustomizationId(typeof draft?.customizationId === "string" ? draft.customizationId : createCustomizationId());
+      } catch {
+        setCustomizationValues(defaults);
+        setCustomizationId(createCustomizationId());
+      }
+      setRenderedPreviewUrl(undefined);
+      setPersistedPreviewUrl(undefined);
+      setShowCustomizationValidation(false);
+      setPurchaseError("");
     }
   };
 
@@ -192,18 +240,62 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const handleCustomizerChange = (newValues: Record<string, any>, previewUrl?: string) => {
     setCustomizationValues(newValues);
+    if (!previewUrl) setPersistedPreviewUrl(undefined);
     if (previewUrl) {
       setRenderedPreviewUrl(previewUrl);
     }
+    if (selectedVariant) {
+      const draftKey = `hub1688_customization_draft:${product.id || product.slug}:${selectedVariant.sourceSkuId || "default"}`;
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({ customizationId, values: newValues, updatedAt: new Date().toISOString() }));
+      } catch {
+        // Storage may be disabled; personalization still works for the active page.
+      }
+    }
   };
 
-  const handleAddToCartClick = () => {
-    onAddToCart(selectedVariant, quantity, product, customizationValues, renderedPreviewUrl, selectedAddons);
+  const customizationValidation = useMemo(
+    () => validatePersonalizationValues(product.personalizationFields || [], customizationValues),
+    [product.personalizationFields, customizationValues]
+  );
+
+  const resolvePersistentPreview = async (): Promise<string | undefined> => {
+    if (!renderedPreviewUrl?.startsWith("data:")) return renderedPreviewUrl;
+    if (persistedPreviewUrl) return persistedPreviewUrl;
+    const response = await AdminApi.uploadCustomizationImage({
+      dataUrl: renderedPreviewUrl,
+      fileName: `preview-${customizationId}.jpg`,
+      guestSessionId: getCustomizationGuestSessionId(),
+      width: 1000,
+      height: 1000
+    });
+    setPersistedPreviewUrl(response.image.url);
+    return response.image.url;
   };
 
-  const handleBuyNowClick = () => {
-    onBuyNow(selectedVariant, quantity, product, customizationValues, renderedPreviewUrl, selectedAddons);
+  const executePurchase = async (mode: "cart" | "buy") => {
+    setPurchaseError("");
+    if (product.isPersonalized && !customizationValidation.valid) {
+      setShowCustomizationValidation(true);
+      setPurchaseError("Vui lòng hoàn thành các mục cá nhân hoá bắt buộc trước khi đặt hàng.");
+      requestAnimationFrame(() => document.getElementById("product-personalizer")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
+    setIsPreparingPurchase(true);
+    try {
+      const previewUrl = product.isPersonalized ? await resolvePersistentPreview() : renderedPreviewUrl;
+      const args = [selectedVariant, quantity, product, customizationValues, previewUrl, selectedAddons, product.isPersonalized ? customizationId : undefined, product.version || 1] as const;
+      if (mode === "buy") onBuyNow(...args);
+      else onAddToCart(...args);
+    } catch (error: any) {
+      setPurchaseError(error?.message || "Không thể lưu bản thiết kế. Vui lòng thử lại.");
+    } finally {
+      setIsPreparingPurchase(false);
+    }
   };
+
+  const handleAddToCartClick = () => { void executePurchase("cart"); };
+  const handleBuyNowClick = () => { void executePurchase("buy"); };
 
   const totalPriceCalculated = (currentPrice + addonsTotal) * quantity;
 
@@ -232,7 +324,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             {/* Active Display Window */}
             <div className="relative aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-200/90 shadow-inner group">
               {mediaView === "mockup" && hasMockup ? (
-                <VariantMockupPreview product={product} variant={variantPreviewActive ? selectedVariant : undefined} className="h-full rounded-none" />
+                renderedPreviewUrl
+                  ? <img src={renderedPreviewUrl} alt={`Bản xem trước ${product.titleVI}`} className="h-full w-full object-contain bg-slate-100" />
+                  : <VariantMockupPreview product={product} variant={variantPreviewActive ? selectedVariant : undefined} className="h-full rounded-none" />
               ) : activeMedia.type === "video" ? (
                 <video
                   src={activeMedia.url}
@@ -479,8 +573,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 <div className="mt-4 pt-4 border-t border-stone-100">
                   <LiveCustomizerEngine
                     product={product}
+                    variant={selectedVariant}
                     values={customizationValues}
                     onChange={handleCustomizerChange}
+                    showValidation={showCustomizationValidation}
                   />
                 </div>
               )}
@@ -563,33 +659,34 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
             {/* Desktop Action CTA Buttons */}
             <div className="hidden sm:block pt-4 border-t border-stone-100 space-y-2.5">
+              {purchaseError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{purchaseError}</div>}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  disabled={isOutOfStock}
+                  disabled={isOutOfStock || isPreparingPurchase}
                   onClick={handleAddToCartClick}
                   className={`py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
-                    isOutOfStock
+                    isOutOfStock || isPreparingPurchase
                       ? "bg-stone-100 text-stone-400 cursor-not-allowed"
                       : "bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 shadow-xs"
                   }`}
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Thêm Vào Giỏ</span>
+                  <span>{isPreparingPurchase ? "Đang lưu…" : "Thêm Vào Giỏ"}</span>
                 </button>
 
                 <button
                   type="button"
-                  disabled={isOutOfStock}
+                  disabled={isOutOfStock || isPreparingPurchase}
                   onClick={handleBuyNowClick}
                   className={`py-3.5 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
-                    isOutOfStock
+                    isOutOfStock || isPreparingPurchase
                       ? "bg-stone-300 cursor-not-allowed"
                       : "bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 shadow-orange-600/30"
                   }`}
                 >
                   <Zap className="w-4 h-4 fill-current" />
-                  <span>Mua Ngay (Thanh Toán)</span>
+                  <span>{isPreparingPurchase ? "Đang lưu thiết kế…" : "Mua Ngay (Thanh Toán)"}</span>
                 </button>
               </div>
             </div>
@@ -682,6 +779,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
         {/* Sticky Mobile Bottom Bar (Always available when scrolling on mobile) */}
         <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200/90 p-3 flex items-center justify-between gap-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+          {purchaseError && <div role="alert" className="absolute inset-x-3 bottom-full mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-semibold text-rose-700 shadow-lg">{purchaseError}</div>}
           <div className="min-w-0 flex-1">
             <div className="text-[10px] text-stone-500 truncate">{getVariantDisplayName(selectedVariant)}</div>
             <div className="text-base font-black text-orange-600 leading-tight">
@@ -691,7 +789,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              disabled={isOutOfStock}
+              disabled={isOutOfStock || isPreparingPurchase}
               onClick={handleAddToCartClick}
               className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-orange-50 text-orange-600 border border-orange-200 flex items-center gap-1 active:scale-95 cursor-pointer"
             >
@@ -700,7 +798,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             </button>
             <button
               type="button"
-              disabled={isOutOfStock}
+              disabled={isOutOfStock || isPreparingPurchase}
               onClick={handleBuyNowClick}
               className="px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-orange-600 to-amber-600 shadow-md shadow-orange-500/25 flex items-center gap-1 active:scale-95 cursor-pointer"
             >

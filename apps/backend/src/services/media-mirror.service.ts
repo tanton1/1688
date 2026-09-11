@@ -66,14 +66,14 @@ export class MediaMirrorService {
   /**
    * Lưu trữ ảnh: Ưu tiên Supabase Storage, fallback về Local Static Directory
    */
-  public async uploadToStorage(buffer: Buffer, contentType: string, filename: string): Promise<string | null> {
+  public async uploadToStorage(buffer: Buffer, contentType: string, filename: string, rootFolder = "mirrored"): Promise<string | null> {
     // 1. Nếu Supabase Storage được cấu hình và có client
     if (supabaseService.isConfigured()) {
       try {
         const client = (supabaseService as any).client;
         if (client) {
           const bucket = ENV.SUPABASE_STORAGE_BUCKET || "product-media";
-          const storagePath = `mirrored/${filename}`;
+          const storagePath = `${rootFolder}/${filename}`;
 
           const { data, error } = await client.storage
             .from(bucket)

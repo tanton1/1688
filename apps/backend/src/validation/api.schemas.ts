@@ -5,6 +5,10 @@ const optionalText = (max: number) => z.string().trim().max(max).optional();
 const id = text(128);
 const httpUrl = z.string().url().max(2_048).refine(value => /^https?:\/\//i.test(value), "URL phải dùng HTTP hoặc HTTPS");
 const imageRef = z.string().max(2_000_000);
+const persistedImageRef = z.string().max(2_048).refine(
+  value => /^https?:\/\//i.test(value) || value.startsWith("/uploads/products/"),
+  "Ảnh phải được tải lên kho lưu trữ trước"
+);
 const money = z.number().finite().nonnegative().max(10_000_000_000);
 const positiveMoney = z.number().finite().positive().max(10_000_000_000);
 const sourcePlatform = z.enum(["1688", "TAOBAO", "TMALL", "SHOPEE", "TIKTOK_SHOP", "ALIEXPRESS", "GENERIC_WEB"]);
@@ -158,12 +162,22 @@ export const checkoutSchema = z.object({
     sellingPriceVND: money,
     image: imageRef.optional(),
     customizationData: z.record(z.string(), z.unknown()).optional(),
-    customizedPreviewUrl: imageRef.optional(),
+    customizedPreviewUrl: persistedImageRef.optional(),
+    customizationId: z.string().uuid().optional(),
+    customizationSchemaVersion: z.number().int().positive().max(10_000).optional(),
     giftAddonsSelected: z.array(id).max(50).optional()
   }).strict()).min(1).max(100),
   giftAddonsSelected: z.array(id).max(50).optional(),
   discountCode: optionalText(40),
   discountAmountVND: money.optional()
+}).strict();
+
+export const storefrontCustomizationUploadSchema = z.object({
+  dataUrl: z.string().max(4_000_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/),
+  fileName: z.string().trim().min(1).max(180),
+  guestSessionId: z.string().uuid(),
+  width: z.number().int().positive().max(20_000),
+  height: z.number().int().positive().max(20_000)
 }).strict();
 
 export const trackOrderSchema = z.object({

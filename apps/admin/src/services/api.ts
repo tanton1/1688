@@ -14,7 +14,8 @@ import {
   ProductTemplate,
   StorefrontConfig,
   StorefrontCheckoutRequest,
-  CustomerOrder
+  CustomerOrder,
+  PersonalizationImageValue
 } from "@hub1688/shared-types";
 
 export interface AISEOContentDraft {
@@ -497,6 +498,19 @@ export const AdminApi = {
     message: string;
   }> {
     return request("/api/v1/store/orders", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+  },
+
+  async uploadCustomizationImage(data: {
+    dataUrl: string;
+    fileName: string;
+    guestSessionId: string;
+    width: number;
+    height: number;
+  }): Promise<{ success: boolean; image: PersonalizationImageValue }> {
+    return request("/api/v1/store/customizations/upload", {
       method: "POST",
       body: JSON.stringify(data)
     });

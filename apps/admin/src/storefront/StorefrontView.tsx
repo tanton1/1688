@@ -13,6 +13,7 @@ import { StoreOccasionsNav } from "./StoreOccasionsNav";
 import { StoreMobileBottomNav } from "./StoreMobileBottomNav";
 import { StoreSocialProofPopup } from "./StoreSocialProofPopup";
 import { DEMO_MACORNER_PRODUCTS } from "./demoMacornerCatalog";
+import { createCustomizationId } from "./personalizationImage";
 import {
   Filter,
   ArrowUpDown,
@@ -72,7 +73,18 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       const saved = localStorage.getItem("hub1688_storefront_cart");
       const parsed = saved ? JSON.parse(saved) : [];
       return Array.isArray(parsed)
-        ? parsed.map(item => ({ ...item, maxQuantity: Number.isFinite(item.maxQuantity) ? item.maxQuantity : Number.MAX_SAFE_INTEGER }))
+        ? parsed.map(item => {
+          const legacyDataPreview = typeof item.customizedPreviewUrl === "string" && item.customizedPreviewUrl.startsWith("data:");
+          const hasCustomization = item.customizationData && Object.keys(item.customizationData).length > 0;
+          return {
+            ...item,
+            image: legacyDataPreview && item.image === item.customizedPreviewUrl ? undefined : item.image,
+            customizedPreviewUrl: legacyDataPreview ? undefined : item.customizedPreviewUrl,
+            customizationId: hasCustomization ? item.customizationId || createCustomizationId() : item.customizationId,
+            customizationSchemaVersion: hasCustomization ? item.customizationSchemaVersion || 1 : item.customizationSchemaVersion,
+            maxQuantity: Number.isFinite(item.maxQuantity) ? item.maxQuantity : Number.MAX_SAFE_INTEGER
+          };
+        })
         : [];
     } catch {
       return [];
@@ -153,7 +165,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       setCart(current => current.map(item => {
         const product = finalCatalog.find(candidate => candidate.id === item.productId);
         const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
-        return variant ? { ...item, maxQuantity: Math.max(0, variant.stockQuantity ?? 0) } : item;
+        return variant ? { ...item, image: item.image || variant.imageUrl || product?.primaryImage, maxQuantity: Math.max(0, variant.stockQuantity ?? 0) } : item;
       }));
       const catSet = new Set(finalCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
@@ -200,11 +212,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     product: WebProduct,
     customizationData?: Record<string, any>,
     customizedPreviewUrl?: string,
-    giftAddonsSelected?: string[]
+    giftAddonsSelected?: string[],
+    customizationId?: string,
+    customizationSchemaVersion?: number
   ) => {
-    const hasCustom = customizationData && Object.keys(customizationData).length > 0;
+    const hasCustom = Boolean(customizationId) || Boolean(customizationData && Object.keys(customizationData).length > 0);
     const baseSku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
-    const sku = hasCustom ? `${baseSku}-CUST-${Date.now().toString(36)}` : baseSku;
+    const sku = hasCustom ? `${baseSku.slice(0, 80)}-CUST-${customizationId || "draft"}` : baseSku;
     const vName = [variant.colorName, variant.sizeName].filter(Boolean).join(" - ") || variant.sourceSkuId || "Mặc định";
     const price = calculateUnitPrice(product, variant, quantity, giftAddonsSelected);
 
@@ -233,6 +247,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           maxQuantity: variant.stockQuantity,
           customizationData,
           customizedPreviewUrl,
+          customizationId,
+          customizationSchemaVersion,
           giftAddonsSelected
         };
         return [...prev, newItem];
@@ -250,9 +266,11 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     product: WebProduct,
     customizationData?: Record<string, any>,
     customizedPreviewUrl?: string,
-    giftAddonsSelected?: string[]
+    giftAddonsSelected?: string[],
+    customizationId?: string,
+    customizationSchemaVersion?: number
   ) => {
-    handleAddToCart(variant, quantity, product, customizationData, customizedPreviewUrl, giftAddonsSelected);
+    handleAddToCart(variant, quantity, product, customizationData, customizedPreviewUrl, giftAddonsSelected, customizationId, customizationSchemaVersion);
     setDetailProduct(null);
     setIsCartOpen(false);
     setIsCheckoutOpen(true);

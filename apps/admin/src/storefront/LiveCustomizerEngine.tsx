@@ -1,613 +1,325 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { WebProduct, PersonalizationField } from "@hub1688/shared-types";
-import { Sparkles, Eye, Maximize2, X, RefreshCw, CheckCircle2 } from "lucide-react";
-import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  PersonalizationField,
+  PersonalizationImageValue,
+  WebProduct,
+  WebProductVariant
+} from "@hub1688/shared-types";
+import {
+  getPersonalizationImageUrl,
+  isPersonalizationFieldVisible,
+  PersonalizationValidationResult,
+  validatePersonalizationValues
+} from "@hub1688/shared-utils";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ImagePlus,
+  Loader2,
+  Plus,
+  Sparkles,
+  Trash2
+} from "lucide-react";
+import { AdminApi } from "../services/api";
+import { getVariantVisual } from "./VariantMockupPreview";
+import { getCustomizationGuestSessionId, preparePersonalizationImage } from "./personalizationImage";
 
 interface LiveCustomizerEngineProps {
   product: WebProduct;
+  variant?: WebProductVariant;
   values: Record<string, any>;
   onChange: (newValues: Record<string, any>, renderedPreviewUrl?: string) => void;
+  onValidationChange?: (result: PersonalizationValidationResult) => void;
+  showValidation?: boolean;
   className?: string;
 }
 
+const loadCanvasImage = (url: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error("IMAGE_LOAD_FAILED"));
+  image.src = url;
+});
+
+const drawContainedImage = (
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  shape?: "RECT" | "CIRCLE"
+) => {
+  const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const renderedWidth = image.naturalWidth * ratio;
+  const renderedHeight = image.naturalHeight * ratio;
+  context.save();
+  if (shape === "CIRCLE") {
+    context.beginPath();
+    context.arc(x + width / 2, y + height / 2, Math.min(width, height) / 2, 0, Math.PI * 2);
+    context.clip();
+  }
+  context.drawImage(image, x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight);
+  context.restore();
+};
+
+const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number) => {
+  const preview = field.preview || {};
+  const defaultY = 32 + Math.min(index, 5) * 9;
+  return {
+    x: (preview.xPercent ?? 22) / 100 * width,
+    y: (preview.yPercent ?? defaultY) / 100 * height,
+    width: (preview.widthPercent ?? 56) / 100 * width,
+    height: (preview.heightPercent ?? (field.type === "IMAGE_UPLOAD" ? 38 : 10)) / 100 * height,
+    rotation: (preview.rotationDeg || 0) * Math.PI / 180
+  };
+};
+
 export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   product,
+  variant,
   values,
   onChange,
+  onValidationChange,
+  showValidation = false,
   className = ""
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [showFullPreview, setShowFullPreview] = useState(false);
-  const [activeTab, setActiveTab] = useState<"fields" | "preview">("fields");
-  const [previewDataUrl, setPreviewDataUrl] = useState<string>("");
-  const previewDialogRef = useAccessibleDialog<HTMLDivElement>(showFullPreview, () => setShowFullPreview(false));
+  const onChangeRef = useRef(onChange);
+  const validationChangeRef = useRef(onValidationChange);
+  const valuesRef = useRef(values);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [uploadingFieldId, setUploadingFieldId] = useState<string | null>(null);
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
+  const [previewExportable, setPreviewExportable] = useState(true);
 
-  const fields = useMemo(() => product.personalizationFields || [], [product]);
+  const fields = useMemo(() => product.personalizationFields || [], [product.personalizationFields]);
+  const visibleFields = useMemo(
+    () => fields.filter(field => isPersonalizationFieldVisible(field, values)),
+    [fields, values]
+  );
+  const validation = useMemo(() => validatePersonalizationValues(fields, values), [fields, values]);
 
-  // Handle individual field change
-  const handleFieldChange = (fieldId: string, value: any) => {
-    const updated = { ...values, [fieldId]: value };
-    onChange(updated, previewDataUrl);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { validationChangeRef.current = onValidationChange; }, [onValidationChange]);
+  useEffect(() => { valuesRef.current = values; }, [values]);
+  useEffect(() => { validationChangeRef.current?.(validation); }, [validation]);
+
+  const handleFieldChange = (fieldId: string, value: unknown) => {
+    setUploadErrors(current => ({ ...current, [fieldId]: "" }));
+    onChangeRef.current({ ...valuesRef.current, [fieldId]: value });
   };
 
-  // Render the canvas artwork in real-time
+  const handleImageUpload = async (field: PersonalizationField, file?: File) => {
+    if (!file) return;
+    setTouched(current => ({ ...current, [field.id]: true }));
+    setUploadingFieldId(field.id);
+    setUploadErrors(current => ({ ...current, [field.id]: "" }));
+    try {
+      const prepared = await preparePersonalizationImage(file, field);
+      const response = await AdminApi.uploadCustomizationImage({
+        ...prepared,
+        guestSessionId: getCustomizationGuestSessionId()
+      });
+      handleFieldChange(field.id, response.image);
+    } catch (error: any) {
+      setUploadErrors(current => ({
+        ...current,
+        [field.id]: error?.message || "Không thể tải ảnh lên, vui lòng thử lại"
+      }));
+    } finally {
+      setUploadingFieldId(null);
+    }
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    let cancelled = false;
 
-    const width = 600;
-    const height = 600;
-    canvas.width = width;
-    canvas.height = height;
+    const render = async () => {
+      const width = 1000;
+      const height = 1000;
+      canvas.width = width;
+      canvas.height = height;
+      const background = context.createRadialGradient(width * 0.35, height * 0.2, 40, width / 2, height / 2, width * 0.72);
+      background.addColorStop(0, "#ffffff");
+      background.addColorStop(0.55, "#f8fafc");
+      background.addColorStop(1, "#e2e8f0");
+      context.fillStyle = background;
+      context.fillRect(0, 0, width, height);
 
-    // Background base
-    const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-    bgGradient.addColorStop(0, "#0f172a");
-    bgGradient.addColorStop(1, "#1e293b");
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, width, height);
-
-    // Subtle grid/wood reflection
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < width; i += 40) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, height);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(width, i);
-      ctx.stroke();
-    }
-
-    // Product Type Specific Mockup Rendering
-    if (product.id?.includes("plaque") || product.categoryName.includes("Mica")) {
-      renderAcrylicPlaque(ctx, width, height, values);
-    } else if (product.id?.includes("tumbler") || product.categoryName.includes("Ly Giữ Nhiệt")) {
-      renderTumbler(ctx, width, height, values);
-    } else if (product.id?.includes("guitar") || product.id?.includes("ornament") || product.categoryName.includes("Treo")) {
-      renderGuitarOrnament(ctx, width, height, values);
-    } else if (product.id?.includes("pet") || product.categoryName.includes("Tưởng Nhớ")) {
-      renderPetMemorial(ctx, width, height, values);
-    } else {
-      renderGenericCustomProduct(ctx, width, height, values, product);
-    }
-
-    // Watermark & Brand Badge
-    ctx.font = "bold 11px sans-serif";
-    ctx.fillStyle = "rgba(240, 103, 36, 0.85)";
-    ctx.fillText("✨ MACORNER LIVE CUSTOMIZER", 20, 30);
-
-    ctx.font = "9px sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.fillText("Bản xem trước theo nội dung tùy chỉnh • Kiểm tra kỹ trước khi đặt hàng", 20, 46);
-
-    try {
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      setPreviewDataUrl(dataUrl);
-      onChange(values, dataUrl);
-    } catch {
-      // ignore security restrictions on canvas export
-    }
-  }, [product, values]);
-
-  // Helper renderers for distinct POD products
-  function renderAcrylicPlaque(ctx: CanvasRenderingContext2D, w: number, h: number, v: Record<string, any>) {
-    // Glow effect from bottom base
-    const lightGlow = ctx.createRadialGradient(w / 2, 490, 20, w / 2, 490, 250);
-    lightGlow.addColorStop(0, "rgba(251, 191, 36, 0.5)");
-    lightGlow.addColorStop(0.5, "rgba(245, 158, 11, 0.15)");
-    lightGlow.addColorStop(1, "rgba(245, 158, 11, 0)");
-    ctx.fillStyle = lightGlow;
-    ctx.fillRect(0, 0, w, h);
-
-    // Acrylic Plaque Shape (Glass effect)
-    const px = 140;
-    const py = 90;
-    const pw = 320;
-    const ph = 390;
-    const rad = 24;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(px, py, pw, ph, rad);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-    ctx.stroke();
-
-    // Inner bevel border
-    ctx.beginPath();
-    ctx.roundRect(px + 12, py + 12, pw - 24, ph - 24, rad - 8);
-    ctx.strokeStyle = "rgba(251, 191, 36, 0.35)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Heart Icon at top
-    ctx.font = "28px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#f59e0b";
-    ctx.fillText("💖", w / 2, py + 55);
-
-    // Title text
-    const title = v["plaque_title"] || "Together Forever";
-    ctx.font = "bold 22px serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(title, w / 2, py + 95);
-
-    // Names
-    const p1 = v["person_1"] || "Hoàng Nam";
-    const p2 = v["person_2"] || "Khánh Linh";
-    ctx.font = "italic bold 20px serif";
-    ctx.fillStyle = "#fbbf24";
-    ctx.fillText(`${p1}  &  ${p2}`, w / 2, py + 155);
-
-    // Est Year
-    const est = v["established_year"] || "Since 2019";
-    ctx.font = "14px sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.fillText(`— ${est} —`, w / 2, py + 190);
-
-    // Quote text wrapping
-    const quote = v["dedication_quote"] || "Every love story is beautiful, but ours is my favorite.";
-    ctx.font = "italic 13px serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    wrapText(ctx, `"${quote}"`, w / 2, py + 240, pw - 40, 20);
-
-    // Glowing bottom line
-    ctx.beginPath();
-    ctx.moveTo(px + 40, py + ph - 30);
-    ctx.lineTo(px + pw - 40, py + ph - 30);
-    ctx.strokeStyle = "rgba(251, 191, 36, 0.6)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.restore();
-
-    // Wooden Base at bottom
-    const bx = 110;
-    const by = 475;
-    const bw = 380;
-    const bh = 55;
-    const woodGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
-    woodGrad.addColorStop(0, "#b45309");
-    woodGrad.addColorStop(0.5, "#d97706");
-    woodGrad.addColorStop(1, "#92400e");
-    ctx.fillStyle = woodGrad;
-    ctx.beginPath();
-    ctx.roundRect(bx, by, bw, bh, 8);
-    ctx.fill();
-    ctx.strokeStyle = "#78350f";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // LED slot glow on the wood
-    ctx.fillStyle = "#fef3c7";
-    ctx.beginPath();
-    ctx.roundRect(px + 20, by + 4, pw - 40, 8, 4);
-    ctx.fill();
-  }
-
-  function renderTumbler(ctx: CanvasRenderingContext2D, w: number, h: number, v: Record<string, any>) {
-    // Tumbler cylinder
-    const tx = 180;
-    const ty = 90;
-    const tw = 240;
-    const th = 440;
-
-    // Body metal gradient
-    const metalGrad = ctx.createLinearGradient(tx, 0, tx + tw, 0);
-    metalGrad.addColorStop(0, "#e2e8f0");
-    metalGrad.addColorStop(0.3, "#ffffff");
-    metalGrad.addColorStop(0.7, "#cbd5e1");
-    metalGrad.addColorStop(1, "#94a3b8");
-
-    ctx.fillStyle = metalGrad;
-    ctx.beginPath();
-    ctx.moveTo(tx + 20, ty);
-    ctx.lineTo(tx + tw - 20, ty);
-    ctx.lineTo(tx + tw, ty + th);
-    ctx.lineTo(tx, ty + th);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#64748b";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Clear Lid
-    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-    ctx.beginPath();
-    ctx.roundRect(tx + 10, ty - 25, tw - 20, 25, [8, 8, 0, 0]);
-    ctx.fill();
-    ctx.stroke();
-
-    // Artwork print area on tumbler
-    const g1Name = v["girl1_name"] || "Mai Anh";
-    const g2Name = v["girl2_name"] || "Phương Thảo";
-    const g1Hair = v["girl1_hair"] || "Tóc Nâu Xoăn";
-    const g2Hair = v["girl2_hair"] || "Tóc Vàng Đuôi Ngựa";
-    const g1Drink = v["girl1_drink"] || "Ly Cà Phê";
-    const quote = v["friendship_quote"] || "Side by side or miles apart, sisters will always be connected by heart";
-
-    // Besties Illustration / Avatar Mockup
-    ctx.textAlign = "center";
-    ctx.font = "bold 18px serif";
-    ctx.fillStyle = "#ea580c";
-    ctx.fillText("💕 SOUL SISTERS 💕", w / 2, ty + 70);
-
-    // Chibi avatars representation
-    ctx.font = "40px sans-serif";
-    ctx.fillText("👭", w / 2, ty + 130);
-
-    ctx.font = "bold 15px sans-serif";
-    ctx.fillStyle = "#0f172a";
-    ctx.fillText(`${g1Name}  &  ${g2Name}`, w / 2, ty + 175);
-
-    ctx.font = "11px sans-serif";
-    ctx.fillStyle = "#475569";
-    ctx.fillText(`(1) ${g1Hair} • ${g1Drink}`, w / 2, ty + 205);
-    ctx.fillText(`(2) ${g2Hair}`, w / 2, ty + 225);
-
-    // Divider
-    ctx.beginPath();
-    ctx.moveTo(tx + 40, ty + 245);
-    ctx.lineTo(tx + tw - 40, ty + 245);
-    ctx.strokeStyle = "#cbd5e1";
-    ctx.stroke();
-
-    // Quote
-    ctx.font = "italic 11px serif";
-    ctx.fillStyle = "#1e293b";
-    wrapText(ctx, `"${quote}"`, w / 2, ty + 270, tw - 50, 16);
-  }
-
-  function renderGuitarOrnament(ctx: CanvasRenderingContext2D, w: number, h: number, v: Record<string, any>) {
-    // Acrylic circle hanging
-    const cx = w / 2;
-    const cy = h / 2 + 10;
-    const radius = 175;
-
-    // Hanging string (gold)
-    ctx.strokeStyle = "#f59e0b";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(cx, 40);
-    ctx.lineTo(cx, cy - radius);
-    ctx.stroke();
-
-    // Hanging ring
-    ctx.fillStyle = "#fbbf24";
-    ctx.beginPath();
-    ctx.arc(cx, cy - radius, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Clear acrylic disk
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // Guitar illustration
-    ctx.font = "68px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("🎸", cx, cy - 20);
-
-    const gName = v["guitarist_name"] || "Minh Tuấn";
-    const gType = v["guitar_type"] || "Acoustic Sunburst Cổ Điển";
-    const gYear = v["ornament_year"] || "2026";
-
-    ctx.font = "bold 20px serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(gName.toUpperCase(), cx, cy + 50);
-
-    ctx.font = "13px sans-serif";
-    ctx.fillStyle = "#fbbf24";
-    ctx.fillText(gType, cx, cy + 75);
-
-    ctx.font = "bold 16px sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.fillText(`★ ${gYear} ★`, cx, cy + 105);
-  }
-
-  function renderPetMemorial(ctx: CanvasRenderingContext2D, w: number, h: number, v: Record<string, any>) {
-    const cx = w / 2;
-    const cy = h / 2 - 20;
-
-    // Soft warm memorial glow
-    const memorialGlow = ctx.createRadialGradient(cx, cy, 30, cx, cy, 220);
-    memorialGlow.addColorStop(0, "rgba(254, 243, 199, 0.35)");
-    memorialGlow.addColorStop(1, "rgba(254, 243, 199, 0)");
-    ctx.fillStyle = memorialGlow;
-    ctx.fillRect(0, 0, w, h);
-
-    // Memorial Plaque outline
-    ctx.beginPath();
-    ctx.roundRect(140, 100, 320, 380, 24);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(251, 191, 36, 0.5)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Halo & Wings
-    ctx.textAlign = "center";
-    ctx.font = "42px sans-serif";
-    const hasWings = (v["angel_wings"] || "").includes("Có Cánh");
-    if (hasWings) {
-      ctx.fillText("🪽 😇 🪽", cx, 165);
-    } else {
-      ctx.fillText("🐾 ❤️ 🐾", cx, 165);
-    }
-
-    // Pet Silhouette
-    ctx.font = "48px sans-serif";
-    const isDog = (v["pet_breed"] || "").includes("Chó") || !(v["pet_breed"] || "").includes("Mèo");
-    ctx.fillText(isDog ? "🐕" : "🐈", cx, 235);
-
-    // Pet Name
-    const pName = v["pet_name"] || "Milo";
-    ctx.font = "bold 26px serif";
-    ctx.fillStyle = "#fbbf24";
-    ctx.fillText(pName, cx, 280);
-
-    // Breed & Years
-    const pBreed = v["pet_breed"] || "Corgi Mông Tròn";
-    const pYears = v["pet_years"] || "2016 - 2025";
-    ctx.font = "14px sans-serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(pBreed, cx, 310);
-
-    ctx.font = "13px sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
-    ctx.fillText(`— ${pYears} —`, cx, 335);
-
-    // Quote
-    const pQuote = v["pet_quote"] || "You were my favorite hello and my hardest goodbye";
-    ctx.font = "italic 12px serif";
-    ctx.fillStyle = "#fef3c7";
-    wrapText(ctx, `"${pQuote}"`, cx, 375, 270, 18);
-  }
-
-  function renderGenericCustomProduct(ctx: CanvasRenderingContext2D, w: number, h: number, v: Record<string, any>, p: WebProduct) {
-    ctx.textAlign = "center";
-    ctx.font = "bold 20px serif";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(p.titleVI.substring(0, 35) + "...", w / 2, 100);
-
-    ctx.font = "14px sans-serif";
-    ctx.fillStyle = "#fbbf24";
-    ctx.fillText("TÙY CHỈNH THEO YÊU CẦU", w / 2, 140);
-
-    let y = 190;
-    Object.entries(v).forEach(([k, val]) => {
-      if (typeof val === "string" && val.trim()) {
-        ctx.font = "bold 13px sans-serif";
-        ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.fillText(k.toUpperCase(), w / 2, y);
-        ctx.font = "16px serif";
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(val, w / 2, y + 22);
-        y += 50;
+      const visual = getVariantVisual(product, variant);
+      const baseUrl = product.customizerMockupTemplateUrl || (visual.type === "PLAIN" ? variant?.imageUrl : undefined) || product.primaryImage;
+      let baseDrawn = false;
+      if (baseUrl) {
+        try {
+          const base = await loadCanvasImage(baseUrl);
+          if (cancelled) return;
+          drawContainedImage(context, base, 25, 25, width - 50, height - 50);
+          baseDrawn = true;
+        } catch {
+          // A remote supplier may block CORS. Keep an exportable neutral mockup.
+        }
       }
-    });
-  }
 
-  // Wrap text utility for canvas
-  function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
-    const words = text.split(" ");
-    let line = "";
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + " ";
-      const metrics = ctx.measureText(testLine);
-      const testWidth = metrics.width;
-      if (testWidth > maxWidth && n > 0) {
-        ctx.fillText(line, x, y);
-        line = words[n] + " ";
-        y += lineHeight;
-      } else {
-        line = testLine;
+      const printArea = { x: width * 0.18, y: height * 0.2, width: width * 0.64, height: height * 0.62 };
+      if (!baseDrawn) {
+        context.fillStyle = "#ffffff";
+        context.strokeStyle = "#cbd5e1";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.roundRect(printArea.x, printArea.y, printArea.width, printArea.height, 48);
+        context.fill();
+        context.stroke();
       }
+
+      if (visual.type === "COLOR" && visual.colorHex) {
+        context.save();
+        context.globalAlpha = 0.52;
+        context.globalCompositeOperation = "multiply";
+        context.fillStyle = visual.colorHex;
+        context.beginPath();
+        context.roundRect(printArea.x, printArea.y, printArea.width, printArea.height, 36);
+        context.fill();
+        context.restore();
+      }
+      if (visual.type === "DESIGN" && visual.imageUrl) {
+        try {
+          const design = await loadCanvasImage(visual.imageUrl);
+          if (cancelled) return;
+          context.save();
+          context.globalAlpha = 0.92;
+          context.globalCompositeOperation = "multiply";
+          drawContainedImage(context, design, printArea.x, printArea.y, printArea.width, printArea.height);
+          context.restore();
+        } catch {
+          // Variant image remains available in the gallery even if supplier CORS blocks compositing.
+        }
+      }
+
+      for (let index = 0; index < visibleFields.length; index += 1) {
+        const field = visibleFields[index];
+        const value = values[field.id];
+        if (value === undefined || value === null || value === "" || value === false) continue;
+        const placement = canvasPlacement(field, index, width, height);
+        context.save();
+        context.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
+        context.rotate(placement.rotation);
+        context.translate(-placement.width / 2, -placement.height / 2);
+
+        const option = field.options?.find(candidate => candidate.value === value);
+        const assetUrl = field.type === "IMAGE_UPLOAD"
+          ? getPersonalizationImageUrl(value)
+          : (["ASSET_PICKER", "AVATAR_BUILDER", "PET_BUILDER"].includes(field.type) ? option?.previewAssetUrl || option?.thumbnail : undefined);
+        if (assetUrl) {
+          try {
+            const asset = await loadCanvasImage(assetUrl);
+            if (cancelled) return;
+            drawContainedImage(context, asset, 0, 0, placement.width, placement.height, field.preview?.shape);
+          } catch {
+            // Do not prevent text and other layers from rendering.
+          }
+        } else if (field.type !== "CHECKBOX" && field.type !== "REPEAT_GROUP") {
+          const text = option?.label || String(value);
+          const fontSize = Math.max(18, (field.preview?.fontSizePercent || 3.2) / 100 * width);
+          context.fillStyle = field.preview?.color || "#172033";
+          context.font = `${field.preview?.fontWeight || "bold"} ${fontSize}px ${field.preview?.fontFamily || "Arial, sans-serif"}`;
+          context.textAlign = field.preview?.textAlign || "center";
+          context.textBaseline = "middle";
+          const x = context.textAlign === "left" ? 0 : context.textAlign === "right" ? placement.width : placement.width / 2;
+          context.fillText(text.slice(0, 160), x, placement.height / 2, placement.width);
+        }
+        context.restore();
+      }
+
+      context.fillStyle = "rgba(15, 23, 42, 0.72)";
+      context.font = "600 20px Arial, sans-serif";
+      context.textAlign = "center";
+      context.fillText(visual.label, width / 2, height - 35, width - 80);
+
+      try {
+        const preview = canvas.toDataURL("image/jpeg", 0.9);
+        if (!cancelled) {
+          setPreviewExportable(true);
+          onChangeRef.current(values, preview);
+        }
+      } catch {
+        if (!cancelled) setPreviewExportable(false);
+      }
+    };
+
+    void render();
+    return () => { cancelled = true; };
+  }, [product, variant, values, visibleFields]);
+
+  const renderField = (field: PersonalizationField) => {
+    const value = values[field.id];
+    const error = uploadErrors[field.id] || validation.errors[field.id];
+    const showError = Boolean(error && (showValidation || touched[field.id]));
+    const commonInput = "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20";
+
+    const label = (
+      <div className="mb-1.5 flex items-start justify-between gap-3">
+        <label htmlFor={`personalization-${field.id}`} className="text-xs font-bold text-slate-800">
+          {field.label} {field.required && <span className="text-rose-600">*</span>}
+        </label>
+        {field.maxLength && typeof value === "string" && (
+          <span className="shrink-0 text-[10px] font-semibold text-slate-400">{value.length}/{field.maxLength}</span>
+        )}
+      </div>
+    );
+
+    let control: React.ReactNode;
+    if (field.type === "TEXTAREA") {
+      control = <textarea id={`personalization-${field.id}`} value={String(value || "")} maxLength={field.maxLength} rows={3} placeholder={field.placeholder} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={`${commonInput} resize-y py-2.5`} />;
+    } else if (field.type === "SELECT") {
+      control = <select id={`personalization-${field.id}`} value={String(value ?? "")} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={commonInput}><option value="">{field.placeholder || "Chọn một tùy chọn"}</option>{(field.options || []).map(option => <option key={option.id} value={option.value}>{option.label}</option>)}</select>;
+    } else if (field.type === "NUMBER") {
+      control = <input id={`personalization-${field.id}`} type="number" min={field.min} max={field.max} value={value ?? ""} placeholder={field.placeholder} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value === "" ? "" : Number(event.target.value))} className={commonInput} />;
+    } else if (field.type === "CHECKBOX") {
+      control = <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700"><input id={`personalization-${field.id}`} type="checkbox" checked={Boolean(value)} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>{field.placeholder || "Tôi xác nhận lựa chọn này"}</span></label>;
+    } else if (field.type === "COLOR_SWATCH") {
+      control = <div className="flex flex-wrap gap-2">{(field.options || []).map(option => { const selected = value === option.value; return <button key={option.id} type="button" title={option.label} aria-label={option.label} aria-pressed={selected} onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, option.value); }} className={`relative h-11 w-11 rounded-full border-2 p-1 transition ${selected ? "border-orange-600 ring-2 ring-orange-500/20" : "border-slate-200"}`}><span className="block h-full w-full rounded-full border border-black/10" style={{ backgroundColor: option.value }} />{selected && <Check className="absolute inset-0 m-auto h-4 w-4 text-white drop-shadow" />}</button>; })}</div>;
+    } else if (["ASSET_PICKER", "AVATAR_BUILDER", "PET_BUILDER"].includes(field.type)) {
+      control = <div className="grid grid-cols-3 gap-2">{(field.options || []).map(option => { const selected = value === option.value; return <button key={option.id} type="button" onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, option.value); }} className={`overflow-hidden rounded-xl border bg-white text-left transition ${selected ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-200 hover:border-slate-400"}`}>{option.thumbnail || option.previewAssetUrl ? <img src={option.thumbnail || option.previewAssetUrl} alt="" className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-slate-50 text-xl">◇</div>}<span className="block truncate px-2 py-1.5 text-[10px] font-bold text-slate-700">{option.label}</span></button>; })}</div>;
+    } else if (field.type === "IMAGE_UPLOAD") {
+      const image = value as PersonalizationImageValue | undefined;
+      control = <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3"><div className="flex items-center gap-3">{image?.url ? <img src={image.url} alt="Ảnh đã tải" className="h-16 w-16 rounded-lg border border-slate-200 bg-white object-cover" /> : <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200"><ImagePlus className="h-6 w-6" /></div>}<div className="min-w-0 flex-1"><label htmlFor={`personalization-${field.id}`} className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold ${uploadingFieldId === field.id ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:bg-slate-800"}`}>{uploadingFieldId === field.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}{uploadingFieldId === field.id ? "Đang tải ảnh…" : image?.url ? "Đổi ảnh" : "Chọn ảnh từ máy"}</label><input id={`personalization-${field.id}`} type="file" accept={(field.accept || ["image/jpeg", "image/png", "image/webp"]).join(",")} disabled={uploadingFieldId === field.id} onChange={event => void handleImageUpload(field, event.target.files?.[0])} className="sr-only" />{image?.url && <button type="button" onClick={() => handleFieldChange(field.id, undefined)} className="ml-1 min-h-11 px-2 text-[11px] font-bold text-rose-600">Xóa</button>}</div></div><p className="mt-2 text-[10px] leading-4 text-slate-500">JPG/PNG/WebP · tối đa {field.maxFileSizeMB || 12}MB{field.minImageWidth ? ` · từ ${field.minImageWidth}px` : ""}. Ảnh được nén và lưu an toàn.</p></div>;
+    } else if (field.type === "REPEAT_GROUP" && field.repeat) {
+      const items = Array.isArray(value) ? value as Record<string, any>[] : [];
+      control = <div className="space-y-2">{items.map((item, itemIndex) => <div key={itemIndex} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-black text-slate-700">{field.repeat?.itemLabel || "Mục"} {itemIndex + 1}</span><button type="button" aria-label="Xóa mục" onClick={() => handleFieldChange(field.id, items.filter((_, index) => index !== itemIndex))} className="grid h-8 w-8 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button></div><div className="space-y-2">{field.repeat?.fields.filter(child => isPersonalizationFieldVisible(child, item)).map(child => <label key={child.id} className="block text-[11px] font-semibold text-slate-600">{child.label}{child.required && " *"}{child.type === "SELECT" ? <select value={item[child.id] ?? ""} onChange={event => { const next = [...items]; next[itemIndex] = { ...item, [child.id]: event.target.value }; handleFieldChange(field.id, next); }} className={`${commonInput} mt-1`}><option value="">Chọn</option>{(child.options || []).map(option => <option key={option.id} value={option.value}>{option.label}</option>)}</select> : <input type={child.type === "NUMBER" ? "number" : "text"} value={item[child.id] ?? ""} maxLength={child.maxLength} onChange={event => { const next = [...items]; next[itemIndex] = { ...item, [child.id]: child.type === "NUMBER" ? Number(event.target.value) : event.target.value }; handleFieldChange(field.id, next); }} className={`${commonInput} mt-1`} />}</label>)}</div></div>)}<button type="button" disabled={items.length >= field.repeat.maxItems} onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, [...items, {}]); }} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:border-orange-400 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" /> Thêm {field.repeat.itemLabel?.toLowerCase() || "mục"} ({items.length}/{field.repeat.maxItems})</button></div>;
+    } else {
+      control = <input id={`personalization-${field.id}`} type="text" value={String(value || "")} maxLength={field.maxLength} placeholder={field.placeholder} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={commonInput} />;
     }
-    ctx.fillText(line, x, y);
-  }
+
+    return <div key={field.id} data-personalization-field={field.id}>{label}{control}{field.helpText && <p className="mt-1 text-[10px] leading-4 text-slate-500">{field.helpText}</p>}{showError && <p role="alert" className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}</p>}</div>;
+  };
 
   return (
-    <div className={`bg-slate-900 rounded-2xl border border-slate-700/80 overflow-hidden shadow-xl ${className}`}>
-      {/* Engine Header Bar */}
-      <div className="bg-slate-800/90 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-md">
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
-              Live Personalization Customizer
-              <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                Macorner Engine
-              </span>
-            </h4>
-            <p className="text-[11px] text-slate-400">
-              Nhập thông tin & xem trước thành phẩm in thời gian thực (Live Preview)
-            </p>
-          </div>
+    <section id="product-personalizer" className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
+      <div className="border-b border-slate-200 bg-slate-950 px-4 py-3 text-white">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5"><span className="grid h-8 w-8 place-items-center rounded-lg bg-orange-500"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-black">Cá nhân hoá sản phẩm</h3><p className="text-[10px] text-slate-300">Xem trước trực tiếp · không cần đăng nhập</p></div></div>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${validation.valid ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-200"}`}>{validation.completedRequired}/{validation.totalRequired} bắt buộc</span>
         </div>
-
-        {/* Tab switch on mobile */}
-        <div className="flex sm:hidden items-center bg-slate-950 p-1 rounded-lg border border-slate-700">
-          <button
-            type="button"
-            onClick={() => setActiveTab("fields")}
-            className={`px-3 py-1 rounded text-xs font-semibold ${activeTab === "fields" ? "bg-orange-500 text-white" : "text-slate-400"}`}
-          >
-            Tùy Biến
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("preview")}
-            className={`px-3 py-1 rounded text-xs font-semibold ${activeTab === "preview" ? "bg-orange-500 text-white" : "text-slate-400"}`}
-          >
-            Bản Vẽ
-          </button>
-        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all" style={{ width: `${validation.totalRequired ? validation.completedRequired / validation.totalRequired * 100 : 100}%` }} /></div>
       </div>
 
-      {/* Main Grid: Left Fields - Right Canvas */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-0">
-        {/* Input Controls Column */}
-        <div className={`p-4 sm:p-5 sm:col-span-7 space-y-4 max-h-[480px] overflow-y-auto ${activeTab === "preview" ? "hidden sm:block" : ""}`}>
-          <div className="bg-orange-950/30 border border-orange-500/20 rounded-xl p-3 flex items-center justify-between text-xs text-orange-300">
-            <span className="flex items-center gap-1.5 font-medium">
-              <CheckCircle2 size={15} className="text-orange-400 shrink-0" />
-              Thay đổi sẽ hiển thị ngay tức thì trên hình minh họa
-            </span>
-            <span className="text-[10px] bg-orange-500/30 px-1.5 py-0.5 rounded">Tùy chỉnh trực tiếp</span>
-          </div>
-
-          {fields.map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-200 flex items-center justify-between">
-                <span>{field.label} {field.required && <span className="text-orange-400">*</span>}</span>
-                {field.maxLength && (
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {String(values[field.id] || "").length}/{field.maxLength}
-                  </span>
-                )}
-              </label>
-
-              {field.type === "SELECT" && field.options && (
-                <div className="grid grid-cols-1 gap-1.5">
-                  {field.options.map((opt) => {
-                    const isSelected = (values[field.id] || field.defaultValue) === opt.value;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleFieldChange(field.id, opt.value)}
-                        className={`text-left px-3 py-2 rounded-xl text-xs border transition-all flex items-center justify-between ${
-                          isSelected
-                            ? "bg-orange-500/20 border-orange-500 text-white font-medium shadow-sm ring-1 ring-orange-500/30"
-                            : "bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800 hover:border-slate-600"
-                        }`}
-                      >
-                        <span>{opt.label}</span>
-                        {isSelected && <CheckCircle2 size={14} className="text-orange-400 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {field.type === "TEXT" && (
-                <input
-                  type="text"
-                  value={values[field.id] ?? field.defaultValue ?? ""}
-                  maxLength={field.maxLength || 50}
-                  placeholder={field.placeholder}
-                  onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium"
-                />
-              )}
-
-              {field.type === "TEXTAREA" && (
-                <textarea
-                  rows={2}
-                  value={values[field.id] ?? field.defaultValue ?? ""}
-                  maxLength={field.maxLength || 150}
-                  placeholder={field.placeholder}
-                  onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
-                />
-              )}
-            </div>
-          ))}
+      <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_210px]">
+        <div className="max-h-[560px] space-y-4 overflow-y-auto p-4 sm:p-5">
+          {visibleFields.length > 0 ? visibleFields.map(renderField) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Sản phẩm chưa có trường cá nhân hoá. Hãy cấu hình trong trang quản trị.</p>}
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-800"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Bản nháp được tự động lưu trên thiết bị. Ảnh sau khi chọn được tải lên kho riêng của cửa hàng.</span></div>
         </div>
-
-        {/* Live Canvas Mockup Column */}
-        <div className={`p-4 sm:p-5 sm:col-span-5 bg-slate-950/60 border-t sm:border-t-0 sm:border-l border-slate-800 flex flex-col items-center justify-center relative ${activeTab === "fields" ? "hidden sm:flex" : ""}`}>
-          <div className="w-full max-w-[260px] aspect-square rounded-2xl overflow-hidden border border-slate-700 shadow-2xl relative group">
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full object-contain bg-slate-900"
-            />
-            {/* Overlay Action */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowFullPreview(true)}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-lg"
-              >
-                <Maximize2 size={13} /> Phóng To
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowFullPreview(true)}
-              className="text-xs text-orange-400 hover:text-orange-300 font-medium flex items-center gap-1"
-            >
-              <Eye size={13} /> Nhấn để xem ảnh phóng to
-            </button>
-          </div>
+        <div className="border-t border-slate-200 bg-slate-100 p-3 md:border-l md:border-t-0">
+          <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Bản xem trước</p>
+          <canvas ref={canvasRef} className="aspect-square w-full rounded-xl border border-slate-200 bg-white object-contain shadow-sm" />
+          <p className="mt-2 text-center text-[9px] leading-3 text-slate-500">Màu sắc thực tế có thể chênh lệch nhẹ khi in.{!previewExportable && " Nhà cung cấp ảnh đang chặn xuất preview, ảnh gốc vẫn được lưu."}</p>
         </div>
       </div>
-
-      {/* Full Resolution Preview Modal */}
-      {showFullPreview && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div ref={previewDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xem trước bản thiết kế" className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Sparkles className="text-orange-400" size={16} />
-                Bản Vẽ Thiết Kế Thành Phẩm (In Thực Tế)
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowFullPreview(false)}
-                aria-label="Đóng bản xem trước"
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-4 flex items-center justify-center bg-slate-950">
-              {previewDataUrl ? (
-                <img
-                  src={previewDataUrl}
-                  alt="Customized preview"
-                  className="max-h-[380px] w-auto rounded-xl shadow-2xl border border-slate-800"
-                />
-              ) : (
-                <div className="h-64 flex items-center justify-center text-slate-500 text-xs">
-                  <RefreshCw className="animate-spin mr-2" size={16} /> Đang dựng mô hình...
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-slate-900/90 border-t border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
-                Ảnh này sẽ được đính kèm vào đơn hàng chuyển xưởng sản xuất
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowFullPreview(false)}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-xl"
-              >
-                Hoàn Tất & Tiếp Tục
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </section>
   );
 };

@@ -96,6 +96,8 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           image: item.customizedPreviewUrl || item.image,
           customizationData: item.customizationData,
           customizedPreviewUrl: item.customizedPreviewUrl,
+          customizationId: item.customizationId,
+          customizationSchemaVersion: item.customizationSchemaVersion,
           giftAddonsSelected: item.giftAddonsSelected
         }))
       };

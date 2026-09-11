@@ -7,3 +7,4 @@ export * from "./ai-copywriter.js";
 export * from "./store-export-builder.js";
 export * from "./platform-detector.js";
 export * from "./storefront-pricing.js";
+export * from "./personalization.js";

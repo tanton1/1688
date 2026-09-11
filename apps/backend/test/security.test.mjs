@@ -339,6 +339,77 @@ test("VietQR checkout fails before stock reservation when bank details are missi
   inMemoryProducts.delete(id);
 });
 
+test("guest customization upload rejects bytes that do not match the declared image type", async () => {
+  const response = await request.post("/api/v1/store/customizations/upload").send({
+    dataUrl: `data:image/png;base64,${Buffer.from("not-a-real-png").toString("base64")}`,
+    fileName: "avatar.png",
+    guestSessionId: "11111111-1111-4111-8111-111111111111",
+    width: 1200,
+    height: 1200
+  }).expect(400);
+  assert.equal(response.body.error, "INVALID_IMAGE_SIGNATURE");
+
+  const pngHeader = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(pngHeader, 0);
+  pngHeader.writeUInt32BE(1, 16);
+  pngHeader.writeUInt32BE(1, 20);
+  const mismatch = await request.post("/api/v1/store/customizations/upload").send({
+    dataUrl: `data:image/png;base64,${pngHeader.toString("base64")}`,
+    fileName: "avatar.png",
+    guestSessionId: "11111111-1111-4111-8111-111111111111",
+    width: 1200,
+    height: 1200
+  }).expect(400);
+  assert.equal(mismatch.body.error, "IMAGE_DIMENSIONS_MISMATCH");
+});
+
+test("personalized checkout enforces fields and stores a stable configuration id", async () => {
+  const id = "checkout-personalized-product";
+  inMemoryProducts.set(id, {
+    id, version: 4, slug: id, skuCode: "CUSTOM-1", titleVI: "Quà cá nhân hóa", categoryName: "Test",
+    primaryImage: "https://example.com/image.jpg", galleryImages: [], status: "PUBLISHED", qualityScore: 100,
+    minPriceVND: 250000, maxPriceVND: 250000, isTitleLocked: false, isDescLocked: false, isImagesLocked: false,
+    isPriceAutoSync: true, isStockAutoSync: true, sourceProductId: "source-custom",
+    sourceUrl: "https://detail.1688.com/offer/source-custom.html", supplierName: "Test", isPersonalized: true,
+    personalizationFields: [
+      { id: "name", label: "Tên người nhận", type: "TEXT", required: true, maxLength: 20 },
+      { id: "photo", label: "Ảnh chân dung", type: "IMAGE_UPLOAD", required: true, minImageWidth: 800, minImageHeight: 800 }
+    ],
+    variants: [{ sourceSkuId: "CUSTOM-VAR-1", costPriceVND: 90000, sellingPriceVND: 250000, stockQuantity: 3, sourceAvailable: true, selectedForSale: true }]
+  });
+  const baseOrder = {
+    customerName: "Nguyen Van C", customerPhone: "0912345678", customerAddress: "123 Duong Test, Quan 1",
+    paymentMethod: "COD",
+    items: [{ productId: id, skuCode: "CUSTOM-VAR-1-CUST-11111111-1111-4111-8111-111111111111", sourceSkuId: "CUSTOM-VAR-1", variantName: "Mặc định", quantity: 1, sellingPriceVND: 1 }]
+  };
+
+  const incomplete = await request.post("/api/v1/store/orders").send(baseOrder).expect(422);
+  assert.equal(incomplete.body.error, "PERSONALIZATION_INCOMPLETE");
+  assert.ok(incomplete.body.fieldErrors.name);
+
+  const customizationData = {
+    name: "Gia Hân",
+    photo: { url: "https://cdn.example.com/custom-photo.jpg", mimeType: "image/jpeg", width: 1200, height: 1200, sizeBytes: 120000 }
+  };
+  const missingId = await request.post("/api/v1/store/orders").send({
+    ...baseOrder,
+    items: [{ ...baseOrder.items[0], customizationData }]
+  }).expect(422);
+  assert.equal(missingId.body.error, "PERSONALIZATION_ID_REQUIRED");
+
+  const customizationId = "11111111-1111-4111-8111-111111111111";
+  const created = await request.post("/api/v1/store/orders").send({
+    ...baseOrder,
+    items: [{ ...baseOrder.items[0], customizationData, customizationId, customizationSchemaVersion: 4, customizedPreviewUrl: "https://cdn.example.com/preview.jpg" }]
+  }).expect(201);
+  assert.equal(created.body.order.items[0].customizationId, customizationId);
+  assert.equal(created.body.order.items[0].customizationSchemaVersion, 4);
+  assert.equal(created.body.order.items[0].customizedPreviewUrl, "https://cdn.example.com/preview.jpg");
+  assert.equal(inMemoryProducts.get(id).variants[0].stockQuantity, 2);
+  inMemoryProducts.delete(id);
+  inMemoryOrders.clear();
+});
+
 test("visual sourcing requires a product id or an image with a positive selling price", async () => {
   const missing = await request.post("/api/v1/clone/visual-sourcing")
     .set("Authorization", "Bearer test-extension-token")

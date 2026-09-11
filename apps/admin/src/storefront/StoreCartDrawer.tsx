@@ -13,6 +13,13 @@ import { StorefrontConfig } from "@hub1688/shared-types";
 import { calculateStorefrontPricing } from "@hub1688/shared-utils";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
+const formatCustomizationValue = (value: unknown): string => {
+  if (typeof value === "boolean") return value ? "Có" : "Không";
+  if (Array.isArray(value)) return `${value.length} mục`;
+  if (value && typeof value === "object" && typeof (value as { url?: unknown }).url === "string") return "Ảnh đã tải";
+  return String(value ?? "");
+};
+
 export interface CartItem {
   productId: string;
   skuCode: string;
@@ -25,6 +32,8 @@ export interface CartItem {
   maxQuantity: number;
   customizationData?: Record<string, any>;
   customizedPreviewUrl?: string;
+  customizationId?: string;
+  customizationSchemaVersion?: number;
   giftAddonsSelected?: string[];
 }
 
@@ -226,7 +235,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                               <span className="font-bold text-orange-800 shrink-0">
                                 {k.replace(/_/g, " ").toUpperCase()}:
                               </span>
-                              <span className="truncate">{String(val)}</span>
+                              <span className="truncate">{formatCustomizationValue(val)}</span>
                             </div>
                           ))}
                         </div>
