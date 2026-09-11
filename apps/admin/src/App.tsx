@@ -21,6 +21,11 @@ const TemplatesView = React.lazy(() => import("./components/TemplatesView").then
 const StorefrontView = React.lazy(() => import("./storefront/StorefrontView").then(module => ({ default: module.StorefrontView })));
 const StoreSettingsModal = React.lazy(() => import("./storefront/StoreSettingsModal").then(module => ({ default: module.StoreSettingsModal })));
 const LoadingPanel = () => <div role="status" className="grid min-h-40 place-items-center text-sm font-semibold text-slate-500">Đang tải phân hệ…</div>;
+const hasPasswordRecoveryLink = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return params.get("type") === "recovery" && Boolean(params.get("access_token"));
+};
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AdminTab>("DASHBOARD");
@@ -79,6 +84,7 @@ export const App: React.FC = () => {
 
   // Authentication & Role State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    if (hasPasswordRecoveryLink()) return null;
     const saved = sessionStorage.getItem("hub1688_user");
     if (saved) {
       try {
@@ -87,7 +93,7 @@ export const App: React.FC = () => {
     }
     return null;
   });
-  const [showAuthModal, setShowAuthModal] = useState(() => !getAccessToken());
+  const [showAuthModal, setShowAuthModal] = useState(() => hasPasswordRecoveryLink() || !getAccessToken());
 
   // Omnichannel Store Connectors State
   const [showConnectorsModal, setShowConnectorsModal] = useState(false);

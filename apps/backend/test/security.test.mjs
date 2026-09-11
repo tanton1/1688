@@ -72,6 +72,16 @@ test("oversized JSON payloads return 413", async () => {
   assert.equal(response.body.error, "PAYLOAD_TOO_LARGE");
 });
 
+test("password recovery endpoints validate input and require a recovery token", async () => {
+  const invalidEmail = await request.post("/api/v1/auth/password-reset/request")
+    .send({ email: "not-an-email" }).expect(400);
+  assert.equal(invalidEmail.body.error, "VALIDATION_ERROR");
+
+  const missingToken = await request.post("/api/v1/auth/password-reset/confirm")
+    .send({ password: "new-secure-password" }).expect(401);
+  assert.equal(missingToken.body.error, "RECOVERY_TOKEN_REQUIRED");
+});
+
 test("SOURCING token cannot mutate admin pricing configuration", async () => {
   const response = await request.post("/api/v1/pricing/rules")
     .set("Authorization", "Bearer test-extension-token")

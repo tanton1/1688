@@ -70,7 +70,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
         clearAccessToken();
         window.dispatchEvent(new Event("hub1688:auth-expired"));
       }
-      throw new Error(errBody.error || errBody.message || `Lỗi HTTP ${res.status}: ${res.statusText}`);
+      throw new Error(errBody.message || errBody.error || `Lỗi HTTP ${res.status}: ${res.statusText}`);
     }
 
     return await res.json();
@@ -83,6 +83,21 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 export const AdminApi = {
   async login(email: string, password: string): Promise<{ accessToken: string; expiresAt?: number; user: { id: string; email: string; name: string; role: "ADMIN" | "SOURCING" } }> {
     return request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+  },
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    return request("/api/v1/auth/password-reset/request", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+  },
+
+  async confirmPasswordReset(recoveryToken: string, password: string): Promise<{ success: boolean; message: string }> {
+    return request("/api/v1/auth/password-reset/confirm", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${recoveryToken}` },
+      body: JSON.stringify({ password })
+    });
   },
   // 1. Thống kê Dashboard
   async getDashboardStats(): Promise<{

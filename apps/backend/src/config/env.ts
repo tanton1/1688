@@ -30,6 +30,8 @@ export const ENV = {
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   SUPABASE_STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET || "product-media",
+  PUBLIC_APP_URL: process.env.PUBLIC_APP_URL || "",
+  VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL || "",
 
   // AI & Pricing Defaults
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",

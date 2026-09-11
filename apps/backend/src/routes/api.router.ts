@@ -63,11 +63,14 @@ const trackingLimiter = rateLimit({
   message: { error: "TRACKING_RATE_LIMITED", message: "Quá nhiều lượt tra cứu; vui lòng thử lại sau" }
 });
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "LOGIN_RATE_LIMITED" } });
+const passwordResetLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "PASSWORD_RESET_RATE_LIMITED", message: "Đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau." } });
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "CHECKOUT_RATE_LIMITED" } });
 const aiLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "AI_RATE_LIMITED" } });
 
 // Public endpoints: login and platform metadata only.
 apiRouter.post("/auth/login", loginLimiter, (req, res) => authCtrl.login(req, res));
+apiRouter.post("/auth/password-reset/request", passwordResetLimiter, (req, res) => authCtrl.requestPasswordReset(req, res));
+apiRouter.post("/auth/password-reset/confirm", passwordResetLimiter, (req, res) => authCtrl.confirmPasswordReset(req, res));
 apiRouter.get("/clone/supported-platforms", (req, res) => cloneController.getSupportedPlatforms(req, res));
 apiRouter.get("/sync/cron", requireCronSecret, (req, res) => syncCtrl.runCronSync(req, res));
 apiRouter.post("/sync/cron", requireCronSecret, (req, res) => syncCtrl.runCronSync(req, res));
