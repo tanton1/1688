@@ -20,7 +20,8 @@ import {
   List,
   Video,
   Globe,
-  Store
+  Store,
+  ImageOff
 } from "lucide-react";
 
 interface ProductsListViewProps {
@@ -366,14 +367,25 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                       <td className="p-3.5">
                         <div className="flex items-start gap-3">
                           <div className="relative shrink-0">
-                            <img
-                              loading="lazy"
-                              decoding="async"
-                              src={product.primaryImage || "https://placehold.co/80x80?text=No+Image"}
-                              alt={product.titleVI}
-                              className="w-14 h-14 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-90"
-                              onClick={() => onSelectProduct(product)}
-                            />
+                            {product.primaryImage ? (
+                              <img
+                                loading="lazy"
+                                decoding="async"
+                                src={product.primaryImage}
+                                alt={product.titleVI}
+                                className="w-14 h-14 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-90"
+                                onClick={() => onSelectProduct(product)}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`Mở ${product.titleVI || "sản phẩm chưa có ảnh"}`}
+                                onClick={() => onSelectProduct(product)}
+                                className="w-14 h-14 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 flex items-center justify-center hover:border-orange-400 hover:text-orange-500"
+                              >
+                                <ImageOff className="w-5 h-5" />
+                              </button>
+                            )}
                             {product.galleryImages.length > 0 && (
                               <span className="absolute -bottom-1 -right-1 bg-slate-900/80 text-white text-[9px] font-bold px-1 rounded">
                                 +{product.galleryImages.length}

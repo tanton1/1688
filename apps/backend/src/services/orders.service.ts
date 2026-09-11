@@ -91,9 +91,19 @@ export class OrdersService {
     return inMemoryOrders.get(id) || null;
   }
 
-  public async createOrder(payload: Partial<CustomerOrder>): Promise<CustomerOrder> {
+  public async findForTracking(orderNumber: string, customerPhone: string): Promise<CustomerOrder | null> {
+    if (supabaseService.isConfigured()) {
+      return supabaseService.getOrderForTracking(orderNumber, customerPhone);
+    }
+    return Array.from(inMemoryOrders.values()).find(order =>
+      order.orderNumber.toLowerCase() === orderNumber.toLowerCase() &&
+      (order.customerPhone || "").replace(/\D/g, "") === customerPhone
+    ) || null;
+  }
+
+  public async createOrder(payload: Partial<CustomerOrder>, reservations?: Array<{ productId: string; sourceSkuId: string; quantity: number; expectedBasePriceVND: number }>): Promise<CustomerOrder> {
     const id = crypto.randomUUID();
-    const orderNumber = payload.orderNumber || `ORD-#${Date.now().toString().slice(-6)}`;
+    const orderNumber = payload.orderNumber || `ORD-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 
     // Tự động tìm nguồn 1688 từ kho sản phẩm
     const products = Array.from(inMemoryProducts.values());
@@ -112,63 +122,86 @@ export class OrdersService {
         }
       }
 
-      const costVND = item.costVND || (matchedVariant ? Math.round(matchedVariant.sellingPriceVND * 0.45) : Math.round(item.sellingPriceVND * 0.45));
+      const costVND = item.costVND ?? matchedVariant?.costPriceVND ?? 0;
 
       return {
         ...item,
         costVND,
-        source1688Url: item.source1688Url || (matchedProd ? matchedProd.sourceUrl : "https://1688.com"),
+        source1688Url: item.source1688Url || matchedProd?.sourceUrl,
         sourceProductId: item.sourceProductId || (matchedProd ? matchedProd.sourceProductId : undefined),
         image: item.image || (matchedProd ? matchedProd.primaryImage : undefined)
       };
     });
 
-    const totalAmountVND = enrichedItems.reduce((sum, item) => sum + item.sellingPriceVND * item.quantity, 0);
-    const totalCostVND = enrichedItems.reduce((sum, item) => sum + (item.costVND || 0) * item.quantity, 0);
-    const estimatedProfitVND = totalAmountVND - totalCostVND;
+    const itemAmountVND = enrichedItems.reduce((sum, item) => sum + item.sellingPriceVND * item.quantity, 0);
+    const itemCostVND = enrichedItems.reduce((sum, item) => sum + (item.costVND || 0) * item.quantity, 0);
+    const totalAmountVND = Number.isFinite(payload.totalAmountVND) ? payload.totalAmountVND! : itemAmountVND;
+    const totalCostVND = Number.isFinite(payload.totalCostVND) ? payload.totalCostVND! : itemCostVND;
+    const estimatedProfitVND = Number.isFinite(payload.estimatedProfitVND) ? payload.estimatedProfitVND! : totalAmountVND - totalCostVND;
 
     const newOrder: CustomerOrder = {
       id,
       orderNumber,
       platform: payload.platform || "MANUAL",
-      customerName: payload.customerName || "Khách Hàng Mới",
-      customerPhone: payload.customerPhone,
+      customerName: payload.customerName || "",
+      customerPhone: payload.customerPhone?.replace(/\D/g, ""),
       customerAddress: payload.customerAddress,
       items: enrichedItems,
       totalAmountVND,
       totalCostVND,
       estimatedProfitVND,
       status: payload.status || "PENDING_SOURCING",
+      paymentMethod: payload.paymentMethod,
+      paymentStatus: payload.paymentStatus,
       note: payload.note,
+      giftAddonsSelected: payload.giftAddonsSelected,
+      discountCode: payload.discountCode,
+      discountAmountVND: payload.discountAmountVND,
+      shippingFeeVND: payload.shippingFeeVND,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    inMemoryOrders.set(id, newOrder);
-    if (supabaseService.isConfigured() && !(await supabaseService.saveOrder(newOrder))) {
-      inMemoryOrders.delete(id);
-      throw new Error("PERSISTENCE_FAILED");
+    if (supabaseService.isConfigured()) {
+      const persisted = reservations
+        ? await supabaseService.createStorefrontOrderAtomic(newOrder, reservations)
+        : await supabaseService.saveOrder(newOrder);
+      if (!persisted) throw new Error("PERSISTENCE_FAILED");
+    } else if (reservations) {
+      for (const reservation of reservations) {
+        const product = inMemoryProducts.get(reservation.productId);
+        const variant = product?.variants.find(item => item.sourceSkuId === reservation.sourceSkuId);
+        if (!product || !variant || variant.sellingPriceVND !== reservation.expectedBasePriceVND || variant.stockQuantity < reservation.quantity) {
+          throw new Error("STOCK_OR_PRICE_CHANGED");
+        }
+      }
+      for (const reservation of reservations) {
+        const product = inMemoryProducts.get(reservation.productId)!;
+        const variant = product.variants.find(item => item.sourceSkuId === reservation.sourceSkuId)!;
+        variant.stockQuantity -= reservation.quantity;
+        variant.sourceAvailable = variant.stockQuantity > 0;
+      }
     }
+    inMemoryOrders.set(id, newOrder);
     return newOrder;
   }
 
   public async updateOrderStatus(id: string, status: OrderSourcingStatus, note?: string): Promise<CustomerOrder | null> {
     const order = await this.getOrderById(id);
     if (!order) return null;
-
-    order.status = status;
-    if (note !== undefined) order.note = note;
-    order.updatedAt = new Date().toISOString();
-
-    inMemoryOrders.set(id, order);
-    if (supabaseService.isConfigured() && !(await supabaseService.saveOrder(order))) throw new Error("PERSISTENCE_FAILED");
-    return order;
+    const updated = { ...order, status, note: note !== undefined ? note : order.note, updatedAt: new Date().toISOString() };
+    if (supabaseService.isConfigured() && !(await supabaseService.saveOrder(updated))) throw new Error("PERSISTENCE_FAILED");
+    inMemoryOrders.set(id, updated);
+    return updated;
   }
 
   public async deleteOrder(id: string): Promise<boolean> {
-    const memoryDeleted = inMemoryOrders.delete(id);
-    if (supabaseService.isConfigured()) return (await supabaseService.deleteOrder(id)) || memoryDeleted;
-    return memoryDeleted;
+    if (supabaseService.isConfigured()) {
+      const deleted = await supabaseService.deleteOrder(id);
+      if (deleted) inMemoryOrders.delete(id);
+      return deleted;
+    }
+    return inMemoryOrders.delete(id);
   }
 }
 

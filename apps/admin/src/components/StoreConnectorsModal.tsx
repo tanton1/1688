@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { WebProduct, WooCommerceConfig, ShopifyConfig, TelegramAlertConfig } from "@hub1688/shared-types";
+import { WebProduct } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
@@ -39,21 +39,6 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
     selectedProduct?.id || (products.length > 0 ? products[0].id || "" : "")
   );
 
-  // WooCommerce State
-  const [wcConfig, setWcConfig] = useState<WooCommerceConfig>(() => {
-    return { storeUrl: "", consumerKey: "", consumerSecret: "" };
-  });
-
-  // Shopify State
-  const [shopifyConfig, setShopifyConfig] = useState<ShopifyConfig>(() => {
-    return { shopDomain: "", accessToken: "" };
-  });
-
-  // Telegram State
-  const [telegramConfig, setTelegramConfig] = useState<TelegramAlertConfig>(() => {
-    return { botToken: "", chatId: "", enabled: true, alertOnPriceRise: true, alertOnOutOfStock: true };
-  });
-
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastResult, setLastResult] = useState<any>(null);
   const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
@@ -82,10 +67,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
     setIsProcessing(true);
     setLastResult(null);
     try {
-      const res = await AdminApi.syncWooCommerce(currentProduct.id, {
-        ...wcConfig,
-        siteUrl: wcConfig.storeUrl
-      });
+      const res = await AdminApi.syncWooCommerce(currentProduct.id);
       setLastResult(res.result);
       if (res.success) {
         onShowToast("Đã đồng bộ sản phẩm lên WooCommerce thành công!");
@@ -113,7 +95,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
     setIsProcessing(true);
     setLastResult(null);
     try {
-      const res = await AdminApi.syncShopify(currentProduct.id, shopifyConfig);
+      const res = await AdminApi.syncShopify(currentProduct.id);
       setLastResult(res.result);
       if (res.success) {
         onShowToast("Đã đẩy sản phẩm lên Shopify Store thành công!");
@@ -158,7 +140,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
   const handleTestTelegram = async () => {
     setIsProcessing(true);
     try {
-      const res = await AdminApi.testTelegram(telegramConfig.botToken, telegramConfig.chatId);
+      const res = await AdminApi.testTelegram();
       if (res.success) {
         onShowToast(`Kết nối Bot @${res.botUsername || res.botName} thành công!`);
       } else {
@@ -176,21 +158,13 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
     setIsProcessing(true);
     try {
       const res = await AdminApi.sendTelegramAlert(
-        telegramConfig.botToken,
-        telegramConfig.chatId,
-        "PRICE_CHANGE",
+        "CUSTOM",
         {
-          productTitle: currentProduct ? currentProduct.titleVI : "Váy Đầm Nữ Thiết Kế 1688",
-          skuCode: currentProduct ? currentProduct.skuCode : "SP-1688-DEMO",
-          oldPriceCNY: 28,
-          newPriceCNY: 34.5,
-          oldPriceVND: 110000,
-          newPriceVND: 135000,
-          sourceUrl: currentProduct?.sourceUrl
+          message: "[TIN NHẮN KIỂM TRA] Kết nối Telegram của 1688 Listing Sync Hub đang hoạt động. Tin này không phải cảnh báo giá hoặc tồn kho thực tế."
         }
       );
       if (res.success) {
-        onShowToast("Đã gửi thông báo biến động giá mẫu tới Telegram!");
+        onShowToast("Đã gửi tin nhắn kiểm tra tới Telegram!");
       } else {
         onShowToast(`Gửi thông báo thất bại: ${res.error}`, "error");
       }
@@ -318,8 +292,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 <input
                   type="text"
                   disabled
-                  value={wcConfig.storeUrl}
-                  onChange={(e) => setWcConfig({ ...wcConfig, storeUrl: e.target.value })}
+                  value=""
                   placeholder="WOOCOMMERCE_STORE_URL"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                 />
@@ -333,8 +306,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   <input
                     type="password"
                     disabled
-                    value={wcConfig.consumerKey}
-                    onChange={(e) => setWcConfig({ ...wcConfig, consumerKey: e.target.value })}
+                    value=""
                     placeholder="WOOCOMMERCE_CONSUMER_KEY"
                     className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   />
@@ -346,8 +318,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                   <input
                     type="password"
                     disabled
-                    value={wcConfig.consumerSecret}
-                    onChange={(e) => setWcConfig({ ...wcConfig, consumerSecret: e.target.value })}
+                    value=""
                     placeholder="WOOCOMMERCE_CONSUMER_SECRET"
                     className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                   />
@@ -392,8 +363,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 <input
                   type="text"
                   disabled
-                  value={shopifyConfig.shopDomain}
-                  onChange={(e) => setShopifyConfig({ ...shopifyConfig, shopDomain: e.target.value })}
+                  value=""
                   placeholder="SHOPIFY_SHOP_DOMAIN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                 />
@@ -406,8 +376,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 <input
                   type="password"
                   disabled
-                  value={shopifyConfig.accessToken}
-                  onChange={(e) => setShopifyConfig({ ...shopifyConfig, accessToken: e.target.value })}
+                  value=""
                   placeholder="SHOPIFY_ACCESS_TOKEN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                 />
@@ -415,8 +384,8 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
 
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-900 space-y-1">
                 <p className="font-bold">✨ Cơ chế đồng bộ Shopify:</p>
-                <p>• Đẩy thông tin mô tả tiếng Anh hoặc tiếng Việt chuẩn Rich-HTML.</p>
-                <p>• Quy đổi giá VNĐ sang USD tự động cho thị trường Dropshipping quốc tế.</p>
+                <p>• Đẩy mô tả tiếng Anh hoặc tiếng Việt dưới dạng HTML.</p>
+                <p>• Chỉ quy đổi VNĐ sang USD khi máy chủ có tỷ giá được cấu hình.</p>
                 <p>• Đồng bộ biến thể Color, Size, SKU và tồn kho.</p>
               </div>
 
@@ -445,7 +414,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
           {activeTab === "MARKETPLACE" && (
             <div className="space-y-4">
               <p className="text-xs text-slate-600">
-                Xuất trọn gói toàn bộ danh sách sản phẩm ({products.length} sản phẩm) thành file CSV định dạng chuẩn, sẵn sàng tải lên mục Đăng Hàng Loạt (Mass Upload) trên Kênh Người Bán.
+                Xuất các sản phẩm đã duyệt thành CSV theo cấu trúc hiện tại của từng kênh. Hãy kiểm tra lại cột bắt buộc trên Kênh Người Bán trước khi tải lên.
               </p>
 
               <div className="grid grid-cols-2 gap-4">
@@ -457,7 +426,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                     </div>
                     <h4 className="font-bold text-sm text-slate-900">Shopee Seller Center</h4>
                     <p className="text-xs text-slate-500 mt-1">
-                      File CSV mã hóa UTF-8 BOM, chứa đầy đủ Phân loại 1 (Màu), Phân loại 2 (Size), Giá bán lẻ, Kho và URL ảnh.
+                      File CSV mã hóa UTF-8 BOM, chỉ điền màu, size, giá, kho và ảnh khi sản phẩm có dữ liệu.
                     </p>
                   </div>
                   <button
@@ -479,7 +448,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                     </div>
                     <h4 className="font-bold text-sm text-white">TikTok Shop Seller Center</h4>
                     <p className="text-xs text-slate-400 mt-1">
-                      File mẫu đăng sản phẩm hàng loạt TikTok Shop, chuẩn hóa tên tiếng Việt/Anh và ảnh thumbnail.
+                      File đăng sản phẩm hàng loạt với tên, biến thể và ảnh hiện có trong catalog.
                     </p>
                   </div>
                   <button
@@ -506,8 +475,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 <input
                   type="password"
                   disabled
-                  value={telegramConfig.botToken}
-                  onChange={(e) => setTelegramConfig({ ...telegramConfig, botToken: e.target.value })}
+                  value=""
                   placeholder="TELEGRAM_BOT_TOKEN"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
@@ -523,8 +491,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 <input
                   type="text"
                   disabled
-                  value={telegramConfig.chatId}
-                  onChange={(e) => setTelegramConfig({ ...telegramConfig, chatId: e.target.value })}
+                  value=""
                   placeholder="TELEGRAM_CHAT_ID"
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />

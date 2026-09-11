@@ -97,11 +97,13 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
   const [showSourcingModal, setShowSourcingModal] = useState<boolean>(false);
   const [loadingSourcing, setLoadingSourcing] = useState<boolean>(false);
   const [sourcingMatches, setSourcingMatches] = useState<VisualSourcingMatch[]>([]);
+  const [sourcingError, setSourcingError] = useState<string>("");
 
   // AI Image OCR & Translation State
   const [showOcrModal, setShowOcrModal] = useState<boolean>(false);
   const [loadingOcr, setLoadingOcr] = useState<boolean>(false);
   const [ocrResult, setOcrResult] = useState<any>(null);
+  const [ocrError, setOcrError] = useState<string>("");
 
   // Product Templates State
   const [templates, setTemplates] = useState<ProductTemplate[]>([]);
@@ -197,8 +199,11 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
   const handleFind1688Suppliers = async () => {
     setLoadingSourcing(true);
     setShowSourcingModal(true);
+    setSourcingMatches([]);
+    setSourcingError("");
     try {
       const currentImg = activeImage || product?.images?.[0] || "";
+      if (!/^https?:\/\//i.test(currentImg)) throw new Error("Ảnh sản phẩm không có URL công khai hợp lệ");
       const res = await apiFetch("/api/v1/clone/visual-sourcing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,63 +214,15 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
         })
       });
       const data = await res.json() as any;
+      if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
       if (data?.matches && data.matches.length > 0) {
         setSourcingMatches(data.matches);
       } else {
         throw new Error("Không tìm thấy xưởng phù hợp");
       }
-    } catch (err) {
-      // Dữ liệu fallback thông minh
-      setSourcingMatches([
-        {
-          offerId: "684920194821",
-          sourceUrl: "https://detail.1688.com/offer/684920194821.html",
-          titleCN: "源头实力工厂直供 爆款高品质同款",
-          titleVI: `[Xưởng Nguồn 1688] ${product?.title || "Sản phẩm"} - Chuẩn Xuất Khẩu`,
-          shopName: "Quảng Châu Kim Lực May Mặc Co., Ltd",
-          location: "Quảng Châu, Quảng Đông",
-          moq: 2,
-          factoryPriceCNY: 16.5,
-          factoryPriceVND: 62700,
-          currentProductSellingPriceVND: pricingBreakdown?.finalSellingPriceVND || 250000,
-          estimatedMarginWith1688: 58,
-          similarityScore: 98,
-          primaryImage: activeImage || product?.images?.[0] || "",
-          repurchaseRate: 43.5
-        },
-        {
-          offerId: "719384918204",
-          sourceUrl: "https://detail.1688.com/offer/719384918204.html",
-          titleCN: "义乌超级源头产业带工厂 一件代发",
-          titleVI: `[Siêu Xưởng Nghĩa Ô] ${product?.title || "Sản phẩm"} - Hỗ Trợ Giao Hàng 1 Chiếc`,
-          shopName: "Nghĩa Ô Thịnh Vượng E-Commerce Factory",
-          location: "Nghĩa Ô, Chiết Giang",
-          moq: 1,
-          factoryPriceCNY: 14.8,
-          factoryPriceVND: 56240,
-          currentProductSellingPriceVND: pricingBreakdown?.finalSellingPriceVND || 250000,
-          estimatedMarginWith1688: 62,
-          similarityScore: 94,
-          primaryImage: activeImage || product?.images?.[0] || "",
-          repurchaseRate: 38.2
-        },
-        {
-          offerId: "659283748192",
-          sourceUrl: "https://detail.1688.com/offer/659283748192.html",
-          titleCN: "专柜品质定制 OEM/ODM 深度验厂",
-          titleVI: `[Xưởng OEM Chuyên Nghiệp] ${product?.title || "Sản phẩm"} - Nhận Đóng Logo Riêng`,
-          shopName: "Hàng Châu Tơ Lụa & Dệt May Co.",
-          location: "Hàng Châu, Chiết Giang",
-          moq: 5,
-          factoryPriceCNY: 19.0,
-          factoryPriceVND: 72200,
-          currentProductSellingPriceVND: pricingBreakdown?.finalSellingPriceVND || 250000,
-          estimatedMarginWith1688: 52,
-          similarityScore: 91,
-          primaryImage: activeImage || product?.images?.[0] || "",
-          repurchaseRate: 46.8
-        }
-      ]);
+    } catch (err: any) {
+      setSourcingMatches([]);
+      setSourcingError(err?.message || "Không thể tìm xưởng từ dữ liệu hiện tại");
     } finally {
       setLoadingSourcing(false);
     }
@@ -277,26 +234,22 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
   const handleTranslateImageText = async () => {
     setLoadingOcr(true);
     setShowOcrModal(true);
+    setOcrResult(null);
+    setOcrError("");
     try {
       const currentImg = activeImage || product?.images?.[0] || "";
+      if (!/^https?:\/\//i.test(currentImg)) throw new Error("Ảnh sản phẩm không có URL công khai hợp lệ");
       const res = await apiFetch("/api/v1/ai/translate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl: currentImg })
       });
       const data = await res.json() as any;
+      if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
       setOcrResult(data);
-    } catch (err) {
-      setOcrResult({
-        success: true,
-        detectedCount: 3,
-        items: [
-          { textCN: "源头实力工厂直供", textVI: "Xưởng nguồn cung cấp trực tiếp", textEN: "Direct Supply from Source Factory" },
-          { textCN: "爆款热销 高品质", textVI: "Hàng bán chạy chất lượng cao", textEN: "Best Seller High Quality" },
-          { textCN: "支持一件代发/定制", textVI: "Hỗ trợ dropship 1 chiếc / gia công đóng logo", textEN: "Support 1pc Dropship / OEM" }
-        ],
-        summaryVI: "Ảnh có chứa các nhãn chứng nhận xưởng nguồn trực tiếp và hỗ trợ dropship 1 chiếc."
-      });
+    } catch (err: any) {
+      setOcrResult(null);
+      setOcrError(err?.message || "Không thể nhận diện chữ trên ảnh");
     } finally {
       setLoadingOcr(false);
     }
@@ -373,11 +326,15 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
           {/* Main image & gallery preview */}
           <div className="space-y-2">
             <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-gray-50 border border-gray-200 flex items-center justify-center">
-              <img
-                src={activeImage || product?.images?.[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800"}
-                alt={product?.title || "Product Preview"}
-                className="w-full h-full object-contain"
-              />
+              {(activeImage || product?.images?.[0]) ? (
+                <img
+                  src={activeImage || product?.images?.[0]}
+                  alt={product?.title || "Product Preview"}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <span className="text-xs font-semibold text-gray-500">Chưa trích xuất được ảnh thật</span>
+              )}
               <span className="absolute top-2 left-2 bg-black/75 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
                 {product?.sourcePlatform || "E-Commerce"}
               </span>
@@ -490,18 +447,20 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
             <div>
               <span className="text-[10px] text-gray-500 font-medium block">Giá bán lẻ đề xuất trên Web</span>
               <span className="text-base font-black text-orange-600">
-                {(pricingBreakdown?.finalSellingPriceVND || 250000).toLocaleString("vi-VN")}đ
+                {pricingBreakdown?.finalSellingPriceVND > 0
+                  ? `${pricingBreakdown.finalSellingPriceVND.toLocaleString("vi-VN")}đ`
+                  : "Chưa tính giá"}
               </span>
             </div>
             <div className="text-right">
               <span className="text-[10px] text-gray-500 font-medium block">Giá gốc nguồn</span>
               <span className="text-xs font-bold text-gray-700">
                 {product?.originalCurrency === "USD"
-                  ? `$${product.originalPriceMin || 22.95}`
-                  : `¥${product?.prices?.minPriceCNY || 30}`}
+                  ? (product.originalPriceMin ? `$${product.originalPriceMin}` : "Chưa xác minh")
+                  : (product?.prices?.minPriceCNY ? `¥${product.prices.minPriceCNY}` : "Chưa xác minh")}
               </span>
               <div className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">
-                Lãi +{pricingBreakdown?.marginPercent || 48}%
+                Lãi {pricingBreakdown?.marginPercent >= 0 ? `${pricingBreakdown.marginPercent}%` : "chưa tính"}
               </div>
             </div>
           </div>
@@ -648,7 +607,7 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
               className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 text-gray-800 font-medium rounded flex items-center justify-between transition-colors"
             >
               <span>🏬 <strong>Haravan CSV</strong> (Việt Nam)</span>
-              <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Tiếng Việt 100%</span>
+              <span className="text-[10px] text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded">Bản dịch tiếng Việt</span>
             </button>
             <button
               type="button"
@@ -682,6 +641,7 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
               </div>
               <button
                 onClick={() => setShowSourcingModal(false)}
+                aria-label="Đóng kết quả tìm xưởng"
                 className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10"
               >
                 <X className="w-4 h-4" />
@@ -696,14 +656,20 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
                   <p className="font-semibold">Đang dùng AI quét kho xưởng 1688...</p>
                   <p className="text-[10px] text-gray-400">Phân tích hình ảnh, vật liệu và định giá sỉ xưởng gốc</p>
                 </div>
+              ) : sourcingError ? (
+                <div className="py-8 px-3 text-center text-rose-700 bg-rose-50 border border-rose-200 rounded-lg" role="alert">
+                  {sourcingError}
+                </div>
               ) : sourcingMatches.length === 0 ? (
                 <div className="py-8 text-center text-gray-500">
-                  Không tìm thấy xưởng phù hợp.
+                  Không có kết quả đã xác minh.
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  <div className="text-[11px] text-gray-600 bg-orange-50 p-2 rounded-lg border border-orange-200">
-                    💡 Đã tìm thấy <strong>{sourcingMatches.length} xưởng sản xuất gốc</strong> tại Trung Quốc với giá sỉ rẻ hơn đáng kể:
+                  <div className={`text-[11px] p-2 rounded-lg border ${sourcingMatches.some(match => match.isDemo) ? "text-amber-900 bg-amber-50 border-amber-300" : "text-gray-600 bg-orange-50 border-orange-200"}`} role="note">
+                    {sourcingMatches.some(match => match.isDemo)
+                      ? "Chế độ Demo — các xưởng, giá và độ tương đồng bên dưới là dữ liệu mô phỏng; không dùng để đặt hàng."
+                      : <>💡 Đã tìm thấy <strong>{sourcingMatches.length} xưởng sản xuất gốc</strong> đã xác minh:</>}
                   </div>
 
                   {sourcingMatches.map((m, idx) => (
@@ -713,7 +679,7 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
                           {m.titleVI}
                         </div>
                         <span className="text-[9.5px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded flex-shrink-0">
-                          {m.similarityScore}% khớp
+                          {m.isDemo ? "DEMO" : `${m.similarityScore}% khớp`}
                         </span>
                       </div>
 
@@ -779,6 +745,7 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
               </div>
               <button
                 onClick={() => setShowOcrModal(false)}
+                aria-label="Đóng kết quả OCR"
                 className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10"
               >
                 <X className="w-4 h-4" />
@@ -792,6 +759,10 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
                   <Loader2 className="w-6 h-6 animate-spin mx-auto text-purple-600" />
                   <p className="font-semibold">AI đang quét và dịch chữ tiếng Trung trên ảnh...</p>
                   <p className="text-[10px] text-gray-400">Tự động nhận diện chữ banner, nhãn mác, slogan xưởng</p>
+                </div>
+              ) : ocrError ? (
+                <div className="py-8 px-3 text-center text-rose-700 bg-rose-50 border border-rose-200 rounded-lg" role="alert">
+                  {ocrError}
                 </div>
               ) : !ocrResult?.items || ocrResult.items.length === 0 ? (
                 <div className="py-8 text-center text-gray-500">

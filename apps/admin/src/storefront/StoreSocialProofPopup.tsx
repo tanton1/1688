@@ -76,11 +76,17 @@ export const StoreSocialProofPopup: React.FC<StoreSocialProofPopupProps> = ({ pr
   if (!enabled || !visible || !currentNotification) return null;
 
   return (
-    <div className="fixed bottom-5 left-5 z-40 max-w-xs sm:max-w-sm bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 p-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-3 right-3 z-40 sm:bottom-5 sm:left-5 sm:right-auto sm:max-w-sm bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 p-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300"
+    >
       <img
         src={currentNotification.productImage}
         alt={currentNotification.productTitle}
-        className="w-13 h-13 rounded-xl object-cover border border-slate-100 shrink-0 shadow-sm"
+        width={56}
+        height={56}
+        className="w-14 h-14 rounded-xl object-cover border border-slate-100 shrink-0 shadow-sm"
       />
       <div className="flex-1 min-w-0 pr-4">
         <div className="flex items-center gap-1 text-[11px] font-bold text-slate-800">

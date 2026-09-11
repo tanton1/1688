@@ -9,7 +9,7 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     color: "#ff6000",
     defaultCurrency: "CNY",
     sampleUrl: "https://detail.1688.com/offer/684219482103.html",
-    description: "Nguồn hàng tận xưởng Trung Quốc giá sỉ gốc Alibaba"
+    description: "Sàn B2B Trung Quốc; cần xác minh nhà cung cấp, giá và điều kiện giao dịch"
   },
   {
     id: "TAOBAO",
@@ -19,7 +19,7 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     color: "#ff5000",
     defaultCurrency: "CNY",
     sampleUrl: "https://item.taobao.com/item.htm?id=681928471928",
-    description: "Sàn bán lẻ nội địa hàng đầu Trung Quốc, mẫu mã hot trend đa dạng"
+    description: "Sàn bán lẻ nội địa Trung Quốc với dữ liệu sản phẩm bằng tiếng Trung"
   },
   {
     id: "TMALL",
@@ -29,7 +29,7 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     color: "#ff0036",
     defaultCurrency: "CNY",
     sampleUrl: "https://detail.tmall.com/item.htm?id=712938491024",
-    description: "Thương hiệu chính hãng cao cấp, chất lượng đảm bảo tiêu chuẩn Tmall"
+    description: "Sàn bán lẻ nội địa Trung Quốc; trạng thái thương hiệu cần được xác minh theo từng gian hàng"
   },
   {
     id: "SHOPEE",
@@ -39,7 +39,7 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     color: "#ee4d2d",
     defaultCurrency: "VND",
     sampleUrl: "https://shopee.vn/product/12345678/987654321",
-    description: "Sàn thương mại điện tử phổ biến nhất Việt Nam & Đông Nam Á"
+    description: "Sàn thương mại điện tử tại Việt Nam và Đông Nam Á"
   },
   {
     id: "TIKTOK_SHOP",
@@ -49,7 +49,7 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     color: "#000000",
     defaultCurrency: "VND",
     sampleUrl: "https://shop.tiktok.com/view/product/1729384918294",
-    description: "Nền tảng mua sắm video ngắn & livestream xu hướng triệu view"
+    description: "Nền tảng mua sắm qua video ngắn và livestream"
   },
   {
     id: "ALIEXPRESS",
@@ -94,7 +94,7 @@ export function detectProductPlatform(url: string): SourcePlatform {
  * Bóc tách mã định danh sản phẩm (Source Product ID) từ URL
  */
 export function extractProductIdFromUrl(url: string, platform?: SourcePlatform): string {
-  if (!url) return `ext_${Date.now()}`;
+  if (!url) return "";
   const targetPlatform = platform || detectProductPlatform(url);
 
   try {
@@ -138,7 +138,14 @@ export function extractProductIdFromUrl(url: string, platform?: SourcePlatform):
     if (idMatch) return idMatch[1];
   }
 
-  return `clone_${Date.now()}`;
+  // Generic pages do not always expose a provider product ID. Use a stable,
+  // URL-derived identifier instead of inventing a different ID on every scan.
+  let hash = 2166136261;
+  for (let index = 0; index < url.length; index += 1) {
+    hash ^= url.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `url_${(hash >>> 0).toString(36)}`;
 }
 
 export interface ExtractedHtmlMetadata {

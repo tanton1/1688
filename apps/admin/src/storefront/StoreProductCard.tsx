@@ -1,6 +1,6 @@
 import React from "react";
 import { WebProduct } from "@hub1688/shared-types";
-import { ShoppingBag, Eye, Video, Sparkles, Star, Heart } from "lucide-react";
+import { ShoppingBag, Eye, Video, Sparkles, Star } from "lucide-react";
 
 interface StoreProductCardProps {
   product: WebProduct;
@@ -15,11 +15,10 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
 }) => {
   const minPrice = product.minPriceVND || 0;
   const maxPrice = product.maxPriceVND || minPrice;
-  const originalPrice = Math.round((minPrice * 1.32) / 1000) * 1000;
-  const discountPercent =
-    originalPrice > minPrice
-      ? Math.round(((originalPrice - minPrice) / originalPrice) * 100)
-      : 0;
+  const firstDiscountTier = [...(product.volumeDiscountTiers || [])]
+    .filter(tier => tier.discountPercent > 0)
+    .sort((left, right) => left.minQty - right.minQty)[0];
+  const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
 
   const totalStock = (product.variants || []).reduce(
     (acc, v) => acc + (v.stockQuantity || 0),
@@ -34,13 +33,17 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
     >
       {/* Product Image & Floating Badges */}
       <div className="relative aspect-square overflow-hidden bg-stone-100">
-        <img
-          loading="lazy"
-          decoding="async"
-          src={product.primaryImage || "https://placehold.co/400x400?text=San+Pham"}
-          alt={product.titleVI}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-        />
+        {product.primaryImage ? (
+          <img
+            loading="lazy"
+            decoding="async"
+            src={product.primaryImage}
+            alt={product.titleVI}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-stone-500">Chưa có ảnh</div>
+        )}
 
         {/* Top Badges (Left) */}
         <div className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 flex flex-col gap-1 items-start z-10">
@@ -59,10 +62,10 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
           )}
         </div>
 
-        {/* Discount Badge (Right) */}
-        {discountPercent > 0 && (
+        {/* Verified volume discount (Right) */}
+        {firstDiscountTier && (
           <span className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 bg-rose-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm z-10">
-            -{discountPercent}%
+            Từ {firstDiscountTier.minQty}: -{firstDiscountTier.discountPercent}%
           </span>
         )}
 
@@ -86,14 +89,16 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
       <div className="p-2.5 sm:p-4 flex flex-col flex-1 justify-between">
         <div>
           {/* Rating stars & review count */}
-          <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-amber-500 font-bold mb-1">
-            <div className="flex">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} size={11} className="fill-current text-amber-400" />
-              ))}
-            </div>
-            <span className="text-stone-800 text-[10px] font-extrabold">{product.rating || 4.9}</span>
-            <span className="text-stone-400 text-[10px]">({product.reviewCount || 980})</span>
+          <div className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold mb-1">
+            {hasReviews ? (
+              <>
+                <Star size={11} className="fill-current text-amber-400" />
+                <span className="text-stone-800 text-[10px] font-extrabold">{product.rating}</span>
+                <span className="text-stone-400 text-[10px]">({product.reviewCount})</span>
+              </>
+            ) : (
+              <span className="text-stone-400 text-[10px]">Chưa có đánh giá</span>
+            )}
           </div>
 
           {/* Title */}
@@ -105,10 +110,10 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
           </h3>
 
           {/* Volume Discount Tag */}
-          {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
+          {firstDiscountTier && (
             <div className="mb-2">
               <span className="text-[9px] sm:text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 sm:px-2 py-0.5 rounded-md inline-block">
-                Mua 2 Giảm 10% • Mua 3 Freeship
+                Mua từ {firstDiscountTier.minQty}: giảm {firstDiscountTier.discountPercent}%
               </span>
             </div>
           )}
@@ -119,7 +124,7 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
           <div className="min-w-0">
             <div className="flex items-baseline gap-1 flex-wrap">
               <span className="text-sm sm:text-base font-black text-orange-600 tracking-tight">
-                {minPrice.toLocaleString("vi-VN")}đ
+                {minPrice > 0 ? `${minPrice.toLocaleString("vi-VN")}đ` : "Liên hệ"}
               </span>
               {maxPrice > minPrice && (
                 <span className="text-[10px] sm:text-xs font-bold text-orange-500">
@@ -127,11 +132,6 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({
                 </span>
               )}
             </div>
-            {originalPrice > minPrice && (
-              <span className="text-[10px] text-stone-400 line-through block">
-                {originalPrice.toLocaleString("vi-VN")}đ
-              </span>
-            )}
           </div>
 
           {/* Touch-Friendly Action Button */}

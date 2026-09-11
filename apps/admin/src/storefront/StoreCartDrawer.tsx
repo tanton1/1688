@@ -7,11 +7,10 @@ import {
   Truck,
   Sparkles,
   ShieldCheck,
-  Tag,
-  Check,
-  Gift
+  Tag
 } from "lucide-react";
 import { StorefrontConfig } from "@hub1688/shared-types";
+import { calculateStorefrontPricing } from "@hub1688/shared-utils";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
 export interface CartItem {
@@ -23,6 +22,7 @@ export interface CartItem {
   image?: string;
   priceVND: number;
   quantity: number;
+  maxQuantity: number;
   customizationData?: Record<string, any>;
   customizedPreviewUrl?: string;
   giftAddonsSelected?: string[];
@@ -61,39 +61,38 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
 
   const rawSubtotal = items.reduce((sum, item) => sum + item.priceVND * item.quantity, 0);
 
-  // Discount code calculation
-  let discountAmount = 0;
-  const upperCode = (couponInput || appliedDiscountCode).trim().toUpperCase();
-  if (upperCode === "MACORNER10" || upperCode === "GIAM10") {
-    discountAmount = Math.round(rawSubtotal * 0.1);
-  } else if (upperCode === "MACORNER50K") {
-    discountAmount = Math.min(rawSubtotal, 50000);
-  }
-
-  const freeShipThreshold = config.freeShipThresholdVND || 500000;
-  const isFreeShipByThreshold = rawSubtotal >= freeShipThreshold;
-  const isFreeShipByCoupon = upperCode === "FREESHIP";
-  const isFreeShip = isFreeShipByThreshold || isFreeShipByCoupon;
+  const upperCode = appliedDiscountCode.trim().toUpperCase();
+  const pricing = calculateStorefrontPricing(rawSubtotal, config, upperCode);
+  const freeShipThreshold = Math.max(0, config.freeShipThresholdVND);
   const diffToFreeShip = Math.max(0, freeShipThreshold - rawSubtotal);
-  const progressPercent = Math.min(100, Math.round((rawSubtotal / freeShipThreshold) * 100));
-  const shippingFee = isFreeShip ? 0 : 30000;
-  const finalTotal = Math.max(0, rawSubtotal - discountAmount) + shippingFee;
+  const progressPercent = freeShipThreshold > 0
+    ? Math.min(100, Math.round((rawSubtotal / freeShipThreshold) * 100))
+    : 0;
+  const activeDiscountRules = (config.discountRules || []).filter(rule => rule.active);
 
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
     if (!couponInput.trim()) return;
     const testCode = couponInput.trim().toUpperCase();
-    if (["FREESHIP", "MACORNER10", "GIAM10", "MACORNER50K"].includes(testCode)) {
+    const candidate = calculateStorefrontPricing(rawSubtotal, config, testCode);
+    if (candidate.couponValid) {
       setCouponMsg({ text: `Áp dụng mã ${testCode} thành công! 🎉`, isError: false });
       onApplyDiscountCode?.(testCode);
     } else {
       setCouponMsg({ text: "Mã ưu đãi không hợp lệ hoặc đã hết hạn", isError: true });
+      onApplyDiscountCode?.("");
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-stone-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="absolute inset-0" onClick={onClose} />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Đóng giỏ hàng"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
         <div
@@ -126,7 +125,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 <button
                   type="button"
                   onClick={onClearCart}
-                  className="text-[11px] text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 font-bold cursor-pointer"
+                  className="min-h-11 px-3 text-[11px] text-rose-600 hover:text-rose-700 rounded-lg hover:bg-rose-50 font-bold cursor-pointer"
                   title="Xóa toàn bộ giỏ"
                 >
                   Xóa hết
@@ -136,7 +135,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 type="button"
                 onClick={onClose}
                 aria-label="Đóng giỏ hàng"
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors cursor-pointer"
+                className="w-11 h-11 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors cursor-pointer inline-flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -144,12 +143,12 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
           </div>
 
           {/* Freeship Progress Banner */}
-          <div className="px-4 sm:px-5 py-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border-b border-orange-100">
+          {(freeShipThreshold > 0 || pricing.freeShipping) && <div className="px-4 sm:px-5 py-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border-b border-orange-100">
             <div className="flex items-center justify-between text-xs font-bold mb-1.5">
               <div className="flex items-center gap-1.5 text-orange-800">
                 <Truck className="w-3.5 h-3.5 text-orange-600" />
                 <span>
-                  {isFreeShip
+                  {pricing.freeShipping
                     ? "🎉 Tuyệt vời! Bạn được MIỄN PHÍ VẬN CHUYỂN"
                     : `Mua thêm ${diffToFreeShip.toLocaleString("vi-VN")}đ để Freeship`}
                 </span>
@@ -162,7 +161,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-          </div>
+          </div>}
 
           {/* Items List */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 divide-y divide-stone-100">
@@ -190,11 +189,19 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                 <div key={idx} className="pt-4 first:pt-0 flex gap-3">
                   {/* Thumbnail */}
                   <div className="relative shrink-0">
-                    <img
-                      src={item.customizedPreviewUrl || item.image || "https://placehold.co/80x80?text=Macorner"}
-                      alt={item.productTitle}
-                      className="w-18 h-18 rounded-xl object-cover border border-stone-200 shadow-xs"
-                    />
+                    {item.customizedPreviewUrl || item.image ? (
+                      <img
+                        src={item.customizedPreviewUrl || item.image}
+                        alt={item.productTitle}
+                        width={72}
+                        height={72}
+                        className="w-[72px] h-[72px] rounded-xl object-cover border border-stone-200 shadow-xs"
+                      />
+                    ) : (
+                      <div className="w-[72px] h-[72px] rounded-xl border border-stone-200 bg-stone-100 text-stone-400 flex items-center justify-center" aria-label="Sản phẩm chưa có ảnh">
+                        <ShoppingBag className="w-6 h-6" />
+                      </div>
+                    )}
                     {item.customizedPreviewUrl && (
                       <span className="absolute -bottom-1 -right-1 bg-orange-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs flex items-center gap-0.5">
                         <Sparkles size={8} /> Custom
@@ -231,7 +238,8 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(item.skuCode, item.quantity - 1)}
-                          className="px-2 py-0.5 hover:bg-stone-200 text-stone-700 font-bold text-xs cursor-pointer"
+                          aria-label={`Giảm số lượng ${item.productTitle}`}
+                          className="w-11 h-11 hover:bg-stone-200 text-stone-700 font-bold text-base cursor-pointer"
                         >
                           -
                         </button>
@@ -241,7 +249,9 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(item.skuCode, item.quantity + 1)}
-                          className="px-2 py-0.5 hover:bg-stone-200 text-stone-700 font-bold text-xs cursor-pointer"
+                          disabled={item.quantity >= item.maxQuantity}
+                          aria-label={`Tăng số lượng ${item.productTitle}`}
+                          className="w-11 h-11 hover:bg-stone-200 text-stone-700 font-bold text-base cursor-pointer disabled:text-stone-300 disabled:cursor-not-allowed"
                         >
                           +
                         </button>
@@ -254,7 +264,8 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                         <button
                           type="button"
                           onClick={() => onRemoveItem(item.skuCode)}
-                          className="p-1 text-stone-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                          aria-label={`Xóa ${item.productTitle} khỏi giỏ hàng`}
+                          className="w-11 h-11 text-stone-400 hover:text-rose-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
                           title="Xóa món"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -271,27 +282,31 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
           {items.length > 0 && (
             <div className="p-4 sm:p-5 border-t border-stone-200 bg-stone-50/70 space-y-3 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
               {/* Coupon Code Input */}
-              <form onSubmit={handleApplyCoupon} className="flex gap-2">
+              {activeDiscountRules.length > 0 && <form onSubmit={handleApplyCoupon} className="flex gap-2">
                 <div className="relative flex-1">
+                  <label htmlFor="storefront-coupon" className="sr-only">Mã ưu đãi</label>
                   <Tag size={13} className="absolute left-3 top-2.5 text-stone-400" />
                   <input
+                    id="storefront-coupon"
+                    name="discountCode"
                     type="text"
-                    placeholder="Mã ưu đãi (FREESHIP, MACORNER10)"
+                    autoComplete="off"
+                    placeholder="Nhập mã ưu đãi…"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-stone-300 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-orange-500 font-bold uppercase"
+                    className="w-full min-h-11 pl-8 pr-3 bg-white border border-stone-300 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:border-orange-500 font-bold uppercase"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
+                  className="min-h-11 px-3.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
                 >
                   Áp Dụng
                 </button>
-              </form>
+              </form>}
 
               {couponMsg && (
-                <p className={`text-[11px] font-bold ${couponMsg.isError ? "text-rose-600" : "text-emerald-600"}`}>
+                <p role={couponMsg.isError ? "alert" : "status"} className={`text-[11px] font-bold ${couponMsg.isError ? "text-rose-600" : "text-emerald-600"}`}>
                   {couponMsg.text}
                 </p>
               )}
@@ -302,24 +317,24 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                   <span className="font-bold text-stone-900">{rawSubtotal.toLocaleString("vi-VN")}đ</span>
                 </div>
 
-                {discountAmount > 0 && (
+                {pricing.discountAmountVND > 0 && (
                   <div className="flex justify-between text-emerald-600 font-bold">
                     <span>Mã ưu đãi ({upperCode}):</span>
-                    <span>-{discountAmount.toLocaleString("vi-VN")}đ</span>
+                    <span>-{pricing.discountAmountVND.toLocaleString("vi-VN")}đ</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-stone-500">
                   <span>Phí vận chuyển:</span>
                   <span className="font-bold text-emerald-600">
-                    {isFreeShip ? "Miễn Phí (Freeship)" : "30.000đ"}
+                    {pricing.freeShipping ? "Miễn Phí (Freeship)" : `${pricing.shippingFeeVND.toLocaleString("vi-VN")}đ`}
                   </span>
                 </div>
 
                 <div className="flex justify-between text-sm font-black text-stone-900 pt-2 border-t border-stone-200">
                   <span>Tổng thanh toán:</span>
                   <span className="text-base font-black text-orange-600">
-                    {finalTotal.toLocaleString("vi-VN")}đ
+                    {pricing.finalTotalVND.toLocaleString("vi-VN")}đ
                   </span>
                 </div>
               </div>
@@ -335,7 +350,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
 
               <div className="flex items-center justify-center gap-2 text-[10px] text-stone-500 font-medium">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Bảo hành hài lòng 30 ngày • Quét mã VietQR hoặc COD</span>
+                <span>Giá và tồn kho sẽ được máy chủ xác minh khi tạo đơn</span>
               </div>
             </div>
           )}

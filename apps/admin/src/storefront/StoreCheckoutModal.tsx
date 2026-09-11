@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { StorefrontConfig, StorefrontCheckoutRequest, CustomerOrder } from "@hub1688/shared-types";
+import { calculateStorefrontPricing } from "@hub1688/shared-utils";
 import { CartItem } from "./StoreCartDrawer";
 import { AdminApi } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
@@ -39,22 +40,21 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [note, setNote] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"VIETQR" | "COD">("VIETQR");
+  const [paymentMethod, setPaymentMethod] = useState<"VIETQR" | "COD">("COD");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
+
+  const bankTransferAvailable = Boolean(config.bankName && config.bankAccountNo && config.bankAccountName);
+  useEffect(() => {
+    if (!bankTransferAvailable && paymentMethod === "VIETQR") setPaymentMethod("COD");
+  }, [bankTransferAvailable, paymentMethod]);
 
   if (!isOpen) return null;
 
   const totalAmount = items.reduce((sum, item) => sum + item.priceVND * item.quantity, 0);
   const normalizedDiscountCode = appliedDiscountCode.trim().toUpperCase();
-  const discountAmount = normalizedDiscountCode === "MACORNER10" || normalizedDiscountCode === "GIAM10"
-    ? Math.round(totalAmount * 0.1)
-    : normalizedDiscountCode === "MACORNER50K" ? Math.min(totalAmount, 50000) : 0;
-  const freeShipThreshold = config.freeShipThresholdVND || 500000;
-  const isFreeShip = totalAmount >= freeShipThreshold || normalizedDiscountCode === "FREESHIP";
-  const shippingFee = isFreeShip ? 0 : 30000;
-  const finalTotal = Math.max(0, totalAmount - discountAmount) + shippingFee;
+  const pricing = calculateStorefrontPricing(totalAmount, config, normalizedDiscountCode);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,13 +126,14 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">Thông Tin Đặt Hàng & Thanh Toán</h3>
-              <p className="text-[11px] text-slate-500">Đơn hàng được giao trực tiếp từ xưởng kiểm định</p>
+              <p className="text-[11px] text-slate-500">Giá, mã ưu đãi và tồn kho được máy chủ xác minh khi tạo đơn</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Đóng thanh toán"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
+            className="w-11 h-11 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 inline-flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
@@ -140,7 +141,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
           {formError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 font-medium">
+            <div role="alert" aria-live="assertive" className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 font-medium">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{formError}</span>
             </div>
@@ -155,58 +156,71 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="checkout-customer-name" className="block text-xs font-semibold text-slate-700 mb-1">
                   Họ và tên người nhận <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="checkout-customer-name"
+                  name="name"
                   type="text"
+                  autoComplete="name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Ví dụ: Nguyễn Văn A"
-                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
+                  placeholder="Ví dụ: Nguyễn Văn A…"
+                  className="w-full min-h-11 text-xs px-3 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="checkout-customer-phone" className="block text-xs font-semibold text-slate-700 mb-1">
                   Số điện thoại nhận hàng <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="checkout-customer-phone"
+                  name="tel"
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Ví dụ: 0912345678"
-                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
+                  placeholder="Ví dụ: 0912345678…"
+                  className="w-full min-h-11 text-xs px-3 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label htmlFor="checkout-customer-address" className="block text-xs font-semibold text-slate-700 mb-1">
                 Địa chỉ giao hàng chi tiết <span className="text-rose-500">*</span>
               </label>
               <textarea
+                id="checkout-customer-address"
+                name="street-address"
+                autoComplete="street-address"
                 rows={2}
                 value={customerAddress}
                 onChange={(e) => setCustomerAddress(e.target.value)}
-                placeholder="Số nhà, tên ngõ, tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố..."
+                placeholder="Số nhà, tên ngõ, tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố…"
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label htmlFor="checkout-note" className="block text-xs font-semibold text-slate-700 mb-1">
                 Ghi chú giao hàng (Tùy chọn)
               </label>
               <input
+                id="checkout-note"
+                name="note"
                 type="text"
+                autoComplete="off"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Ví dụ: Giao giờ hành chính, gọi trước khi đến 15 phút..."
-                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
+                placeholder="Ví dụ: Giao giờ hành chính, gọi trước khi đến 15 phút…"
+                className="w-full min-h-11 text-xs px-3 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
               />
             </div>
           </div>
@@ -220,7 +234,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Option VietQR */}
-              <label
+              {bankTransferAvailable && <label
                 className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
                   paymentMethod === "VIETQR"
                     ? "border-orange-500 bg-orange-50/50 shadow-xs"
@@ -244,7 +258,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                      Quét mã QR bằng mọi App Ngân hàng (MB, VCB, Tech, Vietin, MoMo...). Xử lý tự động siêu tốc.
+                      Quét bằng ứng dụng ngân hàng hỗ trợ VietQR. Mã QR điền sẵn tài khoản, số tiền và nội dung chuyển khoản.
                     </p>
                   </div>
                 </div>
@@ -252,7 +266,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   <QrCode className="w-3.5 h-3.5" />
                   <span>Mã QR tự động điền STK & Số tiền</span>
                 </div>
-              </label>
+              </label>}
 
               {/* Option COD */}
               <label
@@ -274,13 +288,13 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                   <div>
                     <span className="text-xs font-bold text-slate-900">Thanh Toán Khi Nhận Hàng (COD)</span>
                     <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                      Kiểm tra hàng trước khi thanh toán tiền mặt cho bưu tá giao hàng.
+                      Thanh toán tiền mặt cho đơn vị vận chuyển khi đơn hàng được giao tới địa chỉ nhận.
                     </p>
                   </div>
                 </div>
                 <div className="mt-3 pt-2 border-t border-slate-100 flex items-center gap-2 text-[10px] text-slate-600 font-semibold">
                   <Truck className="w-3.5 h-3.5 text-orange-500" />
-                  <span>Đồng kiểm an tâm 100%</span>
+                  <span>Không cần chuyển khoản trước</span>
                 </div>
               </label>
             </div>
@@ -311,22 +325,22 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 <span>Tiền hàng:</span>
                 <span className="font-semibold">{totalAmount.toLocaleString("vi-VN")}đ</span>
               </div>
-              {discountAmount > 0 && (
+              {pricing.discountAmountVND > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Giảm giá:</span>
-                  <span className="font-semibold">-{discountAmount.toLocaleString("vi-VN")}đ</span>
+                  <span className="font-semibold">-{pricing.discountAmountVND.toLocaleString("vi-VN")}đ</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-600">
                 <span>Phí vận chuyển:</span>
                 <span className="font-semibold text-emerald-600">
-                  {isFreeShip ? "Miễn phí (Freeship)" : `${shippingFee.toLocaleString("vi-VN")}đ`}
+                  {pricing.freeShipping ? "Miễn phí (Freeship)" : `${pricing.shippingFeeVND.toLocaleString("vi-VN")}đ`}
                 </span>
               </div>
               <div className="flex justify-between text-sm font-black text-slate-900 pt-1.5 border-t border-slate-200">
                 <span>Tổng cộng phải trả:</span>
                 <span className="text-base text-orange-600">
-                  {finalTotal.toLocaleString("vi-VN")}đ
+                  {pricing.finalTotalVND.toLocaleString("vi-VN")}đ
                 </span>
               </div>
             </div>
@@ -352,14 +366,14 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
                 <>
                   <Lock className="w-4 h-4" />
                   <span>
-                    Xác Nhận Đặt Hàng ({finalTotal.toLocaleString("vi-VN")}đ)
+                    Xác Nhận Đặt Hàng ({pricing.finalTotalVND.toLocaleString("vi-VN")}đ)
                   </span>
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </>
               )}
             </button>
             <p className="text-center text-[10px] text-slate-400 mt-2">
-              Bằng việc bấm xác nhận, bạn đồng ý với chính sách mua sắm & đổi trả của cửa hàng.
+              Tổng tiền cuối cùng trong phản hồi tạo đơn là số tiền cần thanh toán.
             </p>
           </div>
         </form>

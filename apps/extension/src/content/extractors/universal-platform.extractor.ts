@@ -26,16 +26,20 @@ export class UniversalPlatformExtractor {
     }
 
     // 2. Bóc tách phổ quát cho các nền tảng khác (Taobao, Tmall, Shopee, TikTok, AliExpress, Web)
-    const productId = extractProductIdFromUrl(url, platform) || `hub_${Date.now()}`;
+    const productId = extractProductIdFromUrl(url, platform);
+    if (!productId) throw new Error("EXTRACTION_FAILED: không xác định được ID sản phẩm từ URL");
 
     // A. Tiêu đề (Title)
     const title = this.extractTitle(platform);
+    if (!title || title.length < 3) throw new Error("EXTRACTION_FAILED: không tìm thấy tiêu đề sản phẩm");
 
     // B. Hình ảnh (Images)
     const images = this.extractImages(platform);
+    if (!images.length) throw new Error("EXTRACTION_FAILED: không tìm thấy ảnh sản phẩm");
 
     // C. Giá & Tiền tệ
     const { minPriceCNY, maxPriceCNY, originalCurrency, originalMin, originalMax } = this.extractPriceInfo(platform);
+    if (originalMin <= 0 || minPriceCNY <= 0) throw new Error("EXTRACTION_FAILED: không tìm thấy giá nguồn xác thực");
 
     // D. Video (nếu có)
     const videoUrl = this.extractVideo();
@@ -50,7 +54,7 @@ export class UniversalPlatformExtractor {
     const attributes = this.extractAttributes(platform);
 
     // H. Biến thể SKU
-    const { skuProps, skuMap } = this.extractVariants(platform, minPriceCNY, originalCurrency);
+    const { skuProps, skuMap } = this.extractVariants(platform, productId, minPriceCNY, originalCurrency);
 
     return {
       offerId: productId,
@@ -116,7 +120,7 @@ export class UniversalPlatformExtractor {
 
     // 3. Fallback: document.title
     const docTitle = document.title || "";
-    return docTitle.split(/[-|_|–]/)[0].trim() || `Sản phẩm ${platform}`;
+    return docTitle.split(/[-|_|–]/)[0].trim();
   }
 
   private static extractImages(platform: SourcePlatform): string[] {
@@ -194,11 +198,6 @@ export class UniversalPlatformExtractor {
           addImg(el.src);
         }
       });
-    }
-
-    // 5. Fallback placeholder
-    if (images.length === 0) {
-      images.push("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop");
     }
 
     return images.slice(0, 10);
@@ -335,7 +334,7 @@ export class UniversalPlatformExtractor {
     }
 
     // Mặc định an toàn nếu không bóc tách được từ DOM
-    let originalMin = foundPrices.length > 0 ? Math.min(...foundPrices) : (originalCurrency === "VND" ? 150000 : 35);
+    let originalMin = foundPrices.length > 0 ? Math.min(...foundPrices) : 0;
     let originalMax = foundPrices.length > 0 ? Math.max(...foundPrices) : originalMin;
 
     // Quy đổi ra CNY cho hệ thống định giá & biên lợi nhuận
@@ -384,12 +383,11 @@ export class UniversalPlatformExtractor {
       return {
         shopId: `shop_${productId}`,
         shopName: ogSite.trim(),
-        shopUrl: window.location.origin,
-        ratingScore: 4.9
+        shopUrl: window.location.origin
       };
     }
 
-    let shopName = `${platform} Store`;
+    let shopName = window.location.hostname;
     const shopSelectors = [
       ".shop-name",
       ".seller-name",
@@ -410,8 +408,7 @@ export class UniversalPlatformExtractor {
     return {
       shopId: `shop_${productId}`,
       shopName,
-      shopUrl: window.location.origin,
-      ratingScore: 4.9
+      shopUrl: window.location.origin
     };
   }
 
@@ -436,6 +433,7 @@ export class UniversalPlatformExtractor {
 
   private static extractVariants(
     platform: SourcePlatform,
+    productId: string,
     basePriceCNY: number,
     currency: "USD" | "VND" | "CNY" = "USD"
   ): {
@@ -530,7 +528,7 @@ export class UniversalPlatformExtractor {
               "Quy cách": v.option2 || ""
             },
             priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
-            stock: 100,
+            stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
             imageUrl: img
           };
 
@@ -571,7 +569,7 @@ export class UniversalPlatformExtractor {
             skuId: String(v.id),
             attributes: { "Phân loại": v.title || v.name || "Phân loại" },
             priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
-            stock: 100,
+            stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
             imageUrl: img
           };
 
@@ -596,10 +594,10 @@ export class UniversalPlatformExtractor {
 
     const skuMap: Record<string, Raw1688SkuItem> = {
       "val_default": {
-        skuId: `sku_${Date.now()}_default`,
+        skuId: `sku_${productId}_default`,
         attributes: { "Phân loại": "Tiêu chuẩn (Default)" },
         priceCNY: basePriceCNY,
-        stock: 500
+        stock: 0
       }
     };
 

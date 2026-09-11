@@ -13,11 +13,13 @@ export class Detail1688Extractor {
    */
   public static async extract(): Promise<Raw1688Product> {
     const offerIdMatch = window.location.pathname.match(/\/offer\/(\d+)\.html/);
-    const offerId = offerIdMatch ? offerIdMatch[1] : `1688_${Date.now()}`;
+    if (!offerIdMatch) throw new Error("EXTRACTION_FAILED: URL không chứa offer ID 1688 hợp lệ");
+    const offerId = offerIdMatch[1];
 
     // 1. Tiêu đề sản phẩm
     const titleEl = document.querySelector(".title-text, .d-title, h1, .title") as HTMLElement;
     const title = titleEl ? titleEl.innerText.trim() : document.title.replace(/- 1688.*/, "").trim();
+    if (!title || title.length < 3) throw new Error("EXTRACTION_FAILED: không tìm thấy tiêu đề sản phẩm");
 
     // 2. Thông tin Shop / Nhà cung cấp
     const shopNameEl = document.querySelector(".company-name, .shop-name, .supplier-name, .shop-head-info a") as HTMLElement;
@@ -27,13 +29,12 @@ export class Detail1688Extractor {
     const shop: Raw1688Shop = {
       shopId: `shop_${offerId}`,
       shopName,
-      shopUrl,
-      ratingScore: 4.8
+      shopUrl
     };
 
     // 3. Khoảng giá (Price range) & Bảng giá sỉ bậc thang (Price Tiers)
-    let minPriceCNY = 32.0;
-    let maxPriceCNY = 45.0;
+    let minPriceCNY = 0;
+    let maxPriceCNY = 0;
     const priceTiers: Raw1688PriceTier[] = [];
 
     const priceEls = document.querySelectorAll(".price-text, .price-num, .price, .normal-price");
@@ -49,6 +50,7 @@ export class Detail1688Extractor {
         maxPriceCNY = Math.max(...pricesFound);
       }
     }
+    if (minPriceCNY <= 0 || maxPriceCNY <= 0) throw new Error("EXTRACTION_FAILED: không tìm thấy giá nguồn xác thực");
 
     // Quét bảng giá sỉ bậc thang
     const ladderEls = document.querySelectorAll(".price-ladder .ladder-item, .step-price .price-item, .od-price-tier, .price-range-item");
@@ -137,9 +139,7 @@ export class Detail1688Extractor {
       }
     }
 
-    if (images.length === 0) {
-      images.push("https://cbu01.alicdn.com/img/ibank/dummy_1688.jpg");
-    }
+    if (images.length === 0) throw new Error("EXTRACTION_FAILED: không tìm thấy ảnh sản phẩm");
 
     // 6. Bóc tách Video 1688 (nếu có)
     let videoUrl: string | null = null;
@@ -328,7 +328,7 @@ export class Detail1688Extractor {
         default: {
           skuId: `sku_${offerId}_default`,
           priceCNY: fallbackPrice,
-          stock: 100,
+          stock: 0,
           attributes: { "Phân loại": "Tiêu chuẩn" }
         }
       }
@@ -772,7 +772,7 @@ export class Detail1688Extractor {
           skuId,
           attributes: { [skuProps[0].propNameCN]: v.valueCN },
           priceCNY: fallbackPrice,
-          stock: 120,
+          stock: 0,
           imageUrl: v.imageUrl
         };
         skuMap[v.valueId] = skuMap[v.valueCN];
@@ -790,7 +790,7 @@ export class Detail1688Extractor {
               [skuProps[1].propNameCN]: v2.valueCN
             },
             priceCNY: fallbackPrice,
-            stock: 120,
+            stock: 0,
             imageUrl: v1.imageUrl
           };
           skuMap[`${v1.valueId}_${v2.valueId}`] = skuMap[key];

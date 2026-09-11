@@ -5,14 +5,30 @@ import {
   AICopywritingStyle,
   WebProduct
 } from "@hub1688/shared-types";
-import { generateAICopywriting } from "@hub1688/shared-utils";
 import { storeConnectorsService } from "../services/store-connectors.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { supabaseService } from "../services/supabase.service.js";
-import { aiGatewayService } from "../services/ai-gateway.service.js";
+import { AiGatewayError, aiGatewayService } from "../services/ai-gateway.service.js";
 import { inMemoryProducts } from "./import.controller.js";
+import { ENV } from "../config/env.js";
 
 export class StoreConnectorsController {
+  private sendAiError(res: Response, error: unknown): void {
+    if (error instanceof AiGatewayError) {
+      const status = error.code === "AI_NOT_CONFIGURED" ? 503 : error.code === "AI_MODEL_NOT_SUPPORTED" ? 400 : 502;
+      const message = error.code === "AI_NOT_CONFIGURED"
+        ? "Dịch vụ AI chưa được cấu hình trên máy chủ"
+        : error.code === "AI_MODEL_NOT_SUPPORTED"
+          ? "Mô hình AI không nằm trong danh sách được máy chủ hỗ trợ"
+          : "Nhà cung cấp AI không thể xử lý yêu cầu";
+      res.status(status).json({ success: false, error: error.code, message });
+      return;
+    }
+
+    console.error("[StoreConnectorsController] unexpected AI error");
+    res.status(500).json({ success: false, error: "INTERNAL_ERROR" });
+  }
+
   /**
    * Helper tìm sản phẩm theo ID từ cache hoặc Supabase
    */
@@ -38,21 +54,30 @@ export class StoreConnectorsController {
    * Đồng bộ sang WooCommerce REST API
    */
   public async syncWooCommerce(req: Request, res: Response): Promise<void> {
-    const { productId, config } = req.body as {
-      productId: string;
-      config: WooCommerceConfig;
+    const { productId } = req.body as { productId: string };
+    const config: WooCommerceConfig = {
+      storeUrl: ENV.WOOCOMMERCE_STORE_URL,
+      siteUrl: ENV.WOOCOMMERCE_STORE_URL,
+      consumerKey: ENV.WOOCOMMERCE_CONSUMER_KEY,
+      consumerSecret: ENV.WOOCOMMERCE_CONSUMER_SECRET
     };
-
-    if (!productId || !config?.siteUrl || !config?.consumerKey || !config?.consumerSecret) {
-      res.status(400).json({
-        error: "Yêu cầu đầy đủ productId, siteUrl, consumerKey và consumerSecret"
-      });
-      return;
-    }
 
     const product = await this.findProduct(productId);
     if (!product) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
+      return;
+    }
+    if (product.status !== "PUBLISHED") {
+      res.status(409).json({
+        error: "PRODUCT_NOT_PUBLISHED",
+        message: "Chỉ có thể đồng bộ sản phẩm đã vượt qua bước duyệt và được xuất bản"
+      });
+      return;
+    }
+    if (!config.siteUrl || !config.consumerKey || !config.consumerSecret) {
+      res.status(503).json({
+        error: "WOOCOMMERCE_NOT_CONFIGURED"
+      });
       return;
     }
 
@@ -67,21 +92,35 @@ export class StoreConnectorsController {
    * Đồng bộ sang Shopify REST Admin API
    */
   public async syncShopify(req: Request, res: Response): Promise<void> {
-    const { productId, config } = req.body as {
-      productId: string;
-      config: ShopifyConfig;
+    const { productId } = req.body as { productId: string };
+    const config: ShopifyConfig = {
+      shopDomain: ENV.SHOPIFY_SHOP_DOMAIN,
+      accessToken: ENV.SHOPIFY_ACCESS_TOKEN,
+      apiVersion: ENV.SHOPIFY_API_VERSION,
+      currency: ENV.SHOPIFY_STORE_CURRENCY,
+      exchangeRateVNDToUSD: ENV.SHOPIFY_VND_PER_USD
     };
-
-    if (!productId || !config?.shopDomain || !config?.accessToken) {
-      res.status(400).json({
-        error: "Yêu cầu đầy đủ productId, shopDomain và accessToken"
-      });
-      return;
-    }
 
     const product = await this.findProduct(productId);
     if (!product) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
+      return;
+    }
+    if (product.status !== "PUBLISHED") {
+      res.status(409).json({
+        error: "PRODUCT_NOT_PUBLISHED",
+        message: "Chỉ có thể đồng bộ sản phẩm đã vượt qua bước duyệt và được xuất bản"
+      });
+      return;
+    }
+    if (!config.shopDomain || !config.accessToken) {
+      res.status(503).json({
+        error: "SHOPIFY_NOT_CONFIGURED"
+      });
+      return;
+    }
+    if (config.currency === "USD" && (!config.exchangeRateVNDToUSD || config.exchangeRateVNDToUSD <= 0)) {
+      res.status(503).json({ error: "SHOPIFY_EXCHANGE_RATE_REQUIRED" });
       return;
     }
 
@@ -107,18 +146,43 @@ export class StoreConnectorsController {
     }
 
     const products: WebProduct[] = [];
+    const missingProductIds: string[] = [];
     for (const id of productIds) {
       const p = await this.findProduct(id);
       if (p) products.push(p);
+      else missingProductIds.push(id);
     }
 
-    if (products.length === 0) {
-      res.status(404).json({ error: "Không tìm thấy sản phẩm nào hợp lệ để xuất CSV" });
+    if (missingProductIds.length > 0) {
+      res.status(404).json({ error: "PRODUCTS_NOT_FOUND", productIds: missingProductIds });
+      return;
+    }
+    const unpublishedProductIds = products.filter(product => product.status !== "PUBLISHED").map(product => product.id);
+    if (unpublishedProductIds.length > 0) {
+      res.status(409).json({
+        error: "PRODUCT_NOT_PUBLISHED",
+        message: "Chỉ có thể xuất sản phẩm đã vượt qua bước duyệt và được xuất bản",
+        productIds: unpublishedProductIds
+      });
       return;
     }
 
     const targetPlatform = platform || "SHOPEE";
-    const csvContent = storeConnectorsService.exportCSV(products, targetPlatform);
+    let csvContent: string;
+    try {
+      csvContent = storeConnectorsService.exportCSV(products, targetPlatform, {
+        currency: ENV.SHOPIFY_STORE_CURRENCY,
+        exchangeRateVNDToUSD: ENV.SHOPIFY_VND_PER_USD
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "SHOPIFY_EXCHANGE_RATE_REQUIRED") {
+        res.status(503).json({ error: "SHOPIFY_EXCHANGE_RATE_REQUIRED" });
+        return;
+      }
+      console.error("[CSV export]", error);
+      res.status(500).json({ error: "CSV_EXPORT_FAILED" });
+      return;
+    }
 
     const filename = `${targetPlatform.toLowerCase()}_products_export_${Date.now()}.csv`;
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -130,10 +194,11 @@ export class StoreConnectorsController {
    * Kiểm tra kết nối Telegram Bot
    */
   public async testTelegram(req: Request, res: Response): Promise<void> {
-    const { botToken, chatId } = req.body as { botToken: string; chatId: string };
+    const botToken = ENV.TELEGRAM_BOT_TOKEN;
+    const chatId = ENV.TELEGRAM_CHAT_ID;
 
     if (!botToken || !chatId) {
-      res.status(400).json({ error: "botToken và chatId là bắt buộc" });
+      res.status(503).json({ error: "TELEGRAM_NOT_CONFIGURED" });
       return;
     }
 
@@ -145,15 +210,15 @@ export class StoreConnectorsController {
    * Gửi cảnh báo thủ công hoặc kích hoạt test biến động giá / hết hàng
    */
   public async sendTelegramAlert(req: Request, res: Response): Promise<void> {
-    const { botToken, chatId, type, data } = req.body as {
-      botToken: string;
-      chatId: string;
+    const { type, data } = req.body as {
       type: "PRICE_CHANGE" | "STOCK" | "CUSTOM";
       data: any;
     };
+    const botToken = ENV.TELEGRAM_BOT_TOKEN;
+    const chatId = ENV.TELEGRAM_CHAT_ID;
 
     if (!botToken || !chatId) {
-      res.status(400).json({ error: "botToken và chatId là bắt buộc" });
+      res.status(503).json({ error: "TELEGRAM_NOT_CONFIGURED" });
       return;
     }
 
@@ -161,12 +226,12 @@ export class StoreConnectorsController {
       const result = await telegramAlertService.sendPriceChangeAlert({
         botToken,
         chatId,
-        productTitle: data.productTitle || "Sản phẩm thử nghiệm",
-        skuCode: data.skuCode || "TEST-01",
-        oldPriceCNY: Number(data.oldPriceCNY) || 20,
-        newPriceCNY: Number(data.newPriceCNY) || 25,
-        oldPriceVND: Number(data.oldPriceVND) || 85000,
-        newPriceVND: Number(data.newPriceVND) || 105000,
+        productTitle: data.productTitle,
+        skuCode: data.skuCode,
+        oldPriceCNY: Number(data.oldPriceCNY),
+        newPriceCNY: Number(data.newPriceCNY),
+        oldPriceVND: Number(data.oldPriceVND),
+        newPriceVND: Number(data.newPriceVND),
         sourceUrl: data.sourceUrl
       });
       res.json(result);
@@ -177,10 +242,10 @@ export class StoreConnectorsController {
       const result = await telegramAlertService.sendStockAlert({
         botToken,
         chatId,
-        productTitle: data.productTitle || "Sản phẩm thử nghiệm",
-        skuCode: data.skuCode || "TEST-01",
-        variantName: data.variantName || "Màu Đen - Size L",
-        remainingStock: Number(data.remainingStock) || 0,
+        productTitle: data.productTitle,
+        skuCode: data.skuCode,
+        variantName: data.variantName,
+        remainingStock: Number(data.remainingStock),
         sourceUrl: data.sourceUrl
       });
       res.json(result);
@@ -191,7 +256,7 @@ export class StoreConnectorsController {
     const result = await telegramAlertService.sendMessage(
       botToken,
       chatId,
-      data.message || "🔔 Cảnh báo từ 1688 Listing Sync Hub"
+      data.message
     );
     res.json(result);
   }
@@ -200,11 +265,10 @@ export class StoreConnectorsController {
    * Tạo bài viết bán hàng AI Copywriting (AIDA, PAS, Storytelling, Social Ads) bằng ChatGPT/Gemini
    */
   public async generateAICopy(req: Request, res: Response): Promise<void> {
-    const { productId, style, language, apiKey, model } = req.body as {
+    const { productId, style, language, model } = req.body as {
       productId: string;
       style?: AICopywritingStyle;
       language?: "VI" | "EN";
-      apiKey?: string;
       model?: string;
     };
 
@@ -219,33 +283,35 @@ export class StoreConnectorsController {
       return;
     }
 
-    const headerKey = req.headers["x-ai-api-key"] as string | undefined;
-    const headerModel = req.headers["x-ai-model"] as string | undefined;
+    const headerModel = req.header("x-ai-model") || undefined;
 
-    const copyResult = await aiGatewayService.generateEcommerceCopy({
-      product,
-      style: style || "AIDA",
-      language: language || "VI",
-      apiKey: apiKey || headerKey,
-      model: model || headerModel
-    });
+    try {
+      const copyResult = await aiGatewayService.generateEcommerceCopy({
+        product,
+        style: style || "AIDA",
+        language: language || "VI",
+        model: model || headerModel
+      });
 
-    res.json({
-      success: true,
-      productId: product.id,
-      style: style || "AIDA",
-      language: language || "VI",
-      copy: copyResult
-    });
+      res.json({
+        success: true,
+        productId: product.id,
+        style: style || "AIDA",
+        language: language || "VI",
+        copy: copyResult,
+        mode: ENV.DEMO_MODE && !aiGatewayService.isConfigured() ? "DEMO" : "LIVE"
+      });
+    } catch (error) {
+      this.sendAiError(res, error);
+    }
   }
 
   /**
    * Dịch chữ tiếng Trung trên hình ảnh sản phẩm bằng AI Vision (ChatGPT/Gemini OCR)
    */
   public async translateImage(req: Request, res: Response): Promise<void> {
-    const { imageUrl, apiKey, model } = req.body as {
+    const { imageUrl, model } = req.body as {
       imageUrl: string;
-      apiKey?: string;
       model?: string;
     };
 
@@ -254,16 +320,18 @@ export class StoreConnectorsController {
       return;
     }
 
-    const headerKey = req.headers["x-ai-api-key"] as string | undefined;
-    const headerModel = req.headers["x-ai-model"] as string | undefined;
+    const headerModel = req.header("x-ai-model") || undefined;
 
-    const result = await aiGatewayService.translateImageChineseText({
-      imageUrl,
-      apiKey: apiKey || headerKey,
-      model: model || headerModel
-    });
+    try {
+      const result = await aiGatewayService.translateImageChineseText({
+        imageUrl,
+        model: model || headerModel
+      });
 
-    res.json(result);
+      res.json(result);
+    } catch (error) {
+      this.sendAiError(res, error);
+    }
   }
 
   /**

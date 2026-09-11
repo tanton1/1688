@@ -90,8 +90,20 @@ export interface CustomerOrder {
   giftAddonsSelected?: string[];
   discountCode?: string;
   discountAmountVND?: number;
+  shippingFeeVND?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type StorefrontDiscountType = "PERCENT" | "FIXED" | "FREE_SHIPPING";
+
+export interface StorefrontDiscountRule {
+  code: string;
+  type: StorefrontDiscountType;
+  value: number;
+  maxDiscountVND?: number;
+  label?: string;
+  active: boolean;
 }
 
 export interface StorefrontConfig {
@@ -101,6 +113,8 @@ export interface StorefrontConfig {
   zaloUrl?: string;
   address?: string;
   freeShipThresholdVND: number;
+  shippingFeeVND: number;
+  discountRules: StorefrontDiscountRule[];
   bankName: string;
   bankAccountNo: string;
   bankAccountName: string;
@@ -118,16 +132,16 @@ export interface StorefrontCheckoutRequest {
   items: Array<{
     productId: string;
     skuCode: string;
+    sourceSkuId?: string;
     variantName: string;
     quantity: number;
     sellingPriceVND: number;
     image?: string;
     customizationData?: Record<string, any>;
     customizedPreviewUrl?: string;
+    giftAddonsSelected?: string[];
   }>;
   giftAddonsSelected?: string[];
   discountCode?: string;
   discountAmountVND?: number;
 }
-
-

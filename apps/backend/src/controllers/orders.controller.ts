@@ -4,7 +4,9 @@ import { OrderSourcingStatus } from "@hub1688/shared-types";
 
 export class OrdersController {
   public async listOrders(req: Request, res: Response): Promise<void> {
-    const orders = await ordersService.listOrders();
+    let orders;
+    try { orders = await ordersService.listOrders(); }
+    catch { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
     const totalRevenue = orders.reduce((sum, o) => sum + o.totalAmountVND, 0);
     const totalProfit = orders.reduce((sum, o) => sum + o.estimatedProfitVND, 0);
     const pendingSourcingCount = orders.filter(o => o.status === "PENDING_SOURCING").length;
@@ -23,7 +25,9 @@ export class OrdersController {
 
   public async getOrderById(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    const order = await ordersService.getOrderById(id);
+    let order;
+    try { order = await ordersService.getOrderById(id); }
+    catch { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
     if (!order) {
       res.status(404).json({ error: "Không tìm thấy đơn hàng" });
       return;
@@ -33,8 +37,10 @@ export class OrdersController {
 
   public async createOrderWebhook(req: Request, res: Response): Promise<void> {
     const payload = req.body;
-    const order = await ordersService.createOrder(payload);
-    res.status(201).json({ success: true, order });
+    try {
+      const order = await ordersService.createOrder(payload);
+      res.status(201).json({ success: true, order });
+    } catch { res.status(503).json({ error: "PERSISTENCE_FAILED" }); }
   }
 
   public async updateOrderStatus(req: Request, res: Response): Promise<void> {
@@ -46,7 +52,9 @@ export class OrdersController {
       return;
     }
 
-    const updated = await ordersService.updateOrderStatus(id, status, note);
+    let updated;
+    try { updated = await ordersService.updateOrderStatus(id, status, note); }
+    catch { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
     if (!updated) {
       res.status(404).json({ error: "Không tìm thấy đơn hàng" });
       return;
@@ -57,7 +65,9 @@ export class OrdersController {
 
   public async deleteOrder(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    const success = await ordersService.deleteOrder(id);
-    res.json({ success });
+    try {
+      const success = await ordersService.deleteOrder(id);
+      res.status(success ? 200 : 404).json(success ? { success } : { success: false, error: "ORDER_NOT_FOUND" });
+    } catch { res.status(503).json({ error: "PERSISTENCE_FAILED" }); }
   }
 }

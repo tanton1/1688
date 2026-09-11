@@ -7,7 +7,7 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
   const isVariable = (product.variants?.length || 0) > 1;
 
   const images = [
-    { src: product.primaryImage, alt: product.titleVI },
+    ...(product.primaryImage ? [{ src: product.primaryImage, alt: product.titleVI }] : []),
     ...(product.galleryImages || []).map((img, i) => ({
       src: img,
       alt: `${product.titleVI} - Ảnh #${i + 1}`
@@ -45,7 +45,7 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
     sku: product.skuCode,
     manage_stock: true,
     stock_quantity: product.variants.reduce((sum, v) => sum + v.stockQuantity, 0),
-    categories: [{ name: product.categoryName || "Thời trang" }],
+    categories: product.categoryName ? [{ name: product.categoryName }] : [],
     images,
     attributes
   };
@@ -56,20 +56,26 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
  */
 export function buildShopifyPayload(product: WebProduct, config?: Partial<ShopifyConfig>): Record<string, any> {
   const images = [
-    { src: product.primaryImage, alt: product.titleEN || product.titleVI },
+    ...(product.primaryImage ? [{ src: product.primaryImage, alt: product.titleEN || product.titleVI }] : []),
     ...(product.galleryImages || []).map((img, i) => ({
       src: img,
       alt: `${product.titleEN || product.titleVI} - Detail #${i + 1}`
     }))
   ];
 
+  const shopifyCurrency = config?.currency || "VND";
+  const vndPerUsd = config?.exchangeRateVNDToUSD;
+  if (shopifyCurrency === "USD" && (!vndPerUsd || vndPerUsd <= 0)) {
+    throw new Error("SHOPIFY_EXCHANGE_RATE_REQUIRED");
+  }
   const variants = product.variants.map(v => {
-    // Giá USD ước tính
-    const priceUSD = (v.sellingPriceVND / 24500).toFixed(2);
+    const price = shopifyCurrency === "USD"
+      ? (v.sellingPriceVND / vndPerUsd!).toFixed(2)
+      : Math.round(v.sellingPriceVND).toString();
     return {
       option1: v.colorNameEN || v.colorName || "Default",
       option2: v.sizeNameEN || v.sizeName || "Freesize",
-      price: priceUSD,
+      price,
       sku: v.sourceSkuId,
       inventory_management: "shopify",
       inventory_quantity: v.stockQuantity
@@ -80,8 +86,8 @@ export function buildShopifyPayload(product: WebProduct, config?: Partial<Shopif
     product: {
       title: product.titleEN || product.titleVI,
       body_html: product.fullDescEN || product.fullDescVI || "",
-      vendor: product.supplierName || "1688 Hub Store",
-      product_type: product.categoryName || "Fashion",
+      vendor: product.supplierName || "",
+      product_type: product.categoryName || "",
       tags: (product.focusKeywords || []).join(", "),
       images,
       options: [
@@ -125,17 +131,17 @@ export function buildMarketplaceCSV(
       for (const v of p.variants) {
         if (!v.selectedForSale) continue;
         const row = [
-          "10001", // Default Fashion Category
+          "",
           p.titleVI.replace(/"/g, '""'),
           (p.shortDescVI || p.titleVI).replace(/"/g, '""'),
           v.sourceSkuId,
           "Màu Sắc",
-          v.colorName || "Mặc định",
+          v.colorName || "",
           "Kích Thước",
-          v.sizeName || "Freesize",
+          v.sizeName || "",
           (v.sellingPriceVND || p.minPriceVND || 0).toString(),
-          (v.stockQuantity ?? 100).toString(),
-          "250", // 250g
+          (v.stockQuantity ?? 0).toString(),
+          "",
           p.primaryImage || "",
           p.galleryImages[0] || "",
           p.galleryImages[1] || ""
@@ -167,15 +173,15 @@ export function buildMarketplaceCSV(
         if (!v.selectedForSale) continue;
         const row = [
           p.titleVI.replace(/"/g, '""'),
-          p.categoryName || "Apparel",
-          "OEM",
+          p.categoryName || "",
+          "",
           (p.shortDescVI || p.titleVI).replace(/"/g, '""'),
-          "0.25",
-          v.colorName || "Default",
-          v.sizeName || "Free",
+          "",
+          v.colorName || "",
+          v.sizeName || "",
           v.sourceSkuId,
           (v.sellingPriceVND || p.minPriceVND || 0).toString(),
-          (v.stockQuantity ?? 100).toString(),
+          (v.stockQuantity ?? 0).toString(),
           p.primaryImage || ""
         ];
         rows.push(row.map(cell => `"${cell}"`).join(","));
@@ -186,9 +192,9 @@ export function buildMarketplaceCSV(
 }
 
 /**
- * Xuất file CSV chuẩn 100% của Shopify (Shopify Product Import Standard CSV)
+ * Xuất file CSV theo cấu trúc Shopify Product Import CSV.
  */
-export function buildShopifyCSV(products: WebProduct[]): string {
+export function buildShopifyCSV(products: WebProduct[], config: Pick<ShopifyConfig, "currency" | "exchangeRateVNDToUSD"> = { currency: "VND" }): string {
   const headers = [
     "Handle",
     "Title",
@@ -222,33 +228,27 @@ export function buildShopifyCSV(products: WebProduct[]): string {
 
   for (const p of products) {
     const handle = (p.slug || p.skuCode || `prod-${Date.now()}`).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
-    const activeVariants = (p.variants || []).filter(v => v.selectedForSale);
-    const variantsToExport = activeVariants.length > 0 ? activeVariants : [
-      {
-        sourceSkuId: p.skuCode || `SKU-${Date.now()}`,
-        colorName: "Default",
-        sizeName: "Standard",
-        sellingPriceVND: p.minPriceVND,
-        stockQuantity: 100,
-        selectedForSale: true
-      } as any
-    ];
+    const variantsToExport = (p.variants || []).filter(v => v.selectedForSale && v.sellingPriceVND > 0);
+    if (config.currency === "USD" && (!config.exchangeRateVNDToUSD || config.exchangeRateVNDToUSD <= 0)) {
+      throw new Error("SHOPIFY_EXCHANGE_RATE_REQUIRED");
+    }
 
     const allImages = [p.primaryImage, ...(p.galleryImages || [])].filter(Boolean);
 
     variantsToExport.forEach((v, index) => {
       const isFirst = index === 0;
-      const priceUSD = ((v.sellingPriceVND || p.minPriceVND) / 25400).toFixed(2);
-      const comparePriceUSD = (parseFloat(priceUSD) * 1.3).toFixed(2);
+      const price = config.currency === "USD"
+        ? (v.sellingPriceVND / config.exchangeRateVNDToUSD!).toFixed(2)
+        : Math.round(v.sellingPriceVND).toString();
       const imageSrc = allImages[index] || (isFirst ? allImages[0] : "");
 
       const row = [
         handle,
         isFirst ? (p.titleEN || p.titleVI || "").replace(/"/g, '""') : "",
         isFirst ? (p.fullDescEN || p.fullDescVI || p.shortDescVI || "").replace(/"/g, '""') : "",
-        p.supplierName || "1688 Listing Sync Hub",
-        p.categoryName || "Apparel & Accessories",
-        p.categoryName || "General",
+        p.supplierName || "",
+        p.categoryName || "",
+        p.categoryName || "",
         (p.focusKeywords || []).join(", "),
         "TRUE",
         "Color",
@@ -256,13 +256,13 @@ export function buildShopifyCSV(products: WebProduct[]): string {
         "Size",
         v.sizeNameEN || v.sizeName || "Standard",
         v.sourceSkuId,
-        "250",
+        "",
         "shopify",
-        (v.stockQuantity || 100).toString(),
+        (v.stockQuantity ?? 0).toString(),
         "deny",
         "manual",
-        priceUSD,
-        comparePriceUSD,
+        price,
+        "",
         "TRUE",
         "FALSE",
         imageSrc || "",
@@ -313,7 +313,7 @@ export function buildWooCommerceCSV(products: WebProduct[]): string {
     const row = [
       "",
       p.variants.length > 1 ? "variable" : "simple",
-      p.skuCode || `SKU-${Date.now()}`,
+      p.skuCode || "",
       (p.titleVI || p.titleEN || "").replace(/"/g, '""'),
       "1",
       "0",
@@ -324,7 +324,7 @@ export function buildWooCommerceCSV(products: WebProduct[]): string {
       "1",
       p.variants.reduce((acc, v) => acc + (v.stockQuantity || 0), 0).toString(),
       p.minPriceVND.toString(),
-      (p.categoryName || "Sản phẩm mới").replace(/"/g, '""'),
+      (p.categoryName || "").replace(/"/g, '""'),
       imagesStr,
       "Phân loại",
       colorValues || "Mặc định",
@@ -367,29 +367,18 @@ export function buildHaravanCSV(products: WebProduct[]): string {
 
   for (const p of products) {
     const handle = (p.slug || p.skuCode || `sp-${Date.now()}`).toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    const activeVariants = (p.variants || []).filter(v => v.selectedForSale);
-    const variantsToExport = activeVariants.length > 0 ? activeVariants : [
-      {
-        sourceSkuId: p.skuCode || `SKU-${Date.now()}`,
-        colorName: "Tiêu chuẩn",
-        sizeName: "Freesize",
-        sellingPriceVND: p.minPriceVND,
-        stockQuantity: 100,
-        selectedForSale: true
-      } as any
-    ];
+    const variantsToExport = (p.variants || []).filter(v => v.selectedForSale && v.sellingPriceVND > 0);
 
     variantsToExport.forEach((v, idx) => {
       const isFirst = idx === 0;
-      const comparePrice = Math.round((v.sellingPriceVND || p.minPriceVND) * 1.25);
       const imageSrc = (p.galleryImages && p.galleryImages[idx]) || p.primaryImage || "";
 
       const row = [
         handle,
         isFirst ? (p.titleVI || "").replace(/"/g, '""') : "",
         isFirst ? (p.fullDescVI || p.shortDescVI || "").replace(/"/g, '""') : "",
-        p.supplierName || "1688 Sync Hub",
-        p.categoryName || "Thời trang & Đời sống",
+        p.supplierName || "",
+        p.categoryName || "",
         (p.focusKeywords || []).join(", "),
         "true",
         "Màu sắc",
@@ -397,11 +386,11 @@ export function buildHaravanCSV(products: WebProduct[]): string {
         "Kích thước",
         v.sizeName || "Tiêu chuẩn",
         v.sourceSkuId,
-        "250",
+        "",
         "haravan",
-        (v.stockQuantity || 100).toString(),
-        (v.sellingPriceVND || p.minPriceVND).toString(),
-        comparePrice.toString(),
+        (v.stockQuantity ?? 0).toString(),
+        v.sellingPriceVND.toString(),
+        "",
         imageSrc
       ];
 
@@ -422,25 +411,26 @@ export function convertRawProductToExportable(
 ): WebProduct {
   const activeVariants = (variants || []).filter(v => v.selectedForSale);
   const minPrice = activeVariants.length > 0
-    ? Math.min(...activeVariants.map(v => v.sellingPriceVND || 250000))
-    : 250000;
+    ? Math.min(...activeVariants.map(v => Number(v.sellingPriceVND) || 0))
+    : 0;
   const maxPrice = activeVariants.length > 0
-    ? Math.max(...activeVariants.map(v => v.sellingPriceVND || 250000))
+    ? Math.max(...activeVariants.map(v => Number(v.sellingPriceVND) || 0))
     : minPrice;
+  const extractedTitle = typeof raw.title === "string" && raw.title.trim() ? raw.title.trim() : "Sản phẩm chưa có tiêu đề";
 
   return {
     id: `prod_${raw.offerId || Date.now()}`,
     sourcePlatform: raw.sourcePlatform || "1688",
     sourceProductId: raw.offerId || `src_${Date.now()}`,
     sourceUrl: raw.sourceUrl || "",
-    supplierName: raw.shop?.shopName || "OEM Supplier",
+    supplierName: raw.shop?.shopName || "",
     categoryName,
     skuCode: `HUB-${raw.offerId || Date.now()}`,
-    titleVI: raw.title || "Sản phẩm chất lượng cao",
-    titleEN: raw.title || "High Quality Product",
-    slug: (raw.title || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60),
-    shortDescVI: `Sản phẩm ${raw.title} chất lượng cao, bền đẹp, tiện dụng. Phù hợp cho nhu cầu hàng ngày và làm quà tặng ý nghĩa.`,
-    fullDescVI: `<h3>Mô tả chi tiết sản phẩm: ${raw.title}</h3><p>Sản phẩm chính hãng với thiết kế tinh xảo, chất liệu an toàn, độ bền cao.</p>`,
+    titleVI: extractedTitle,
+    titleEN: extractedTitle,
+    slug: extractedTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || `product-${raw.offerId || "draft"}`,
+    shortDescVI: `Dữ liệu trích xuất từ nguồn ${raw.sourcePlatform || "1688"}; cần kiểm tra nội dung trước khi đăng bán.`,
+    fullDescVI: `<h3>${extractedTitle}</h3><p>Thông tin mô tả chưa được nguồn cung cấp đầy đủ. Vui lòng xác minh và bổ sung trước khi xuất bản.</p>`,
     minPriceVND: minPrice,
     maxPriceVND: maxPrice,
     primaryImage: raw.images?.[0] || "",
@@ -450,21 +440,21 @@ export function convertRawProductToExportable(
         sourceSkuId: `SKU_${raw.offerId || "default"}`,
         colorName: "Tiêu chuẩn",
         sizeName: "Mặc định",
-        costPriceVND: 120000,
+        costPriceVND: 0,
         sellingPriceVND: minPrice,
-        stockQuantity: 200,
-        sourceAvailable: true,
-        selectedForSale: true
+        stockQuantity: 0,
+        sourceAvailable: false,
+        selectedForSale: false
       }
     ],
-    qualityScore: 90,
-    status: "READY_TO_REVIEW",
+    qualityScore: 0,
+    status: "DRAFT",
     isTitleLocked: false,
     isDescLocked: false,
     isImagesLocked: false,
     isPriceAutoSync: true,
     isStockAutoSync: true,
-    focusKeywords: ["Sản phẩm hot trend", "Hàng xuất khẩu", "Bán chạy 2026"],
+    focusKeywords: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -484,8 +474,12 @@ export function generateVietQRUrl(params: {
   description?: string;
   accountName?: string;
 }): string {
-  const bank = encodeURIComponent(params.bankId || params.bankCode || "MB");
-  const account = encodeURIComponent(params.accountNo || "");
+  const bankId = params.bankId || params.bankCode;
+  if (!bankId?.trim() || !params.accountNo?.trim()) {
+    throw new Error("VIETQR_ACCOUNT_REQUIRED");
+  }
+  const bank = encodeURIComponent(bankId.trim());
+  const account = encodeURIComponent(params.accountNo.trim());
   const amountVal = params.amount ?? params.amountVND;
   const desc = encodeURIComponent(params.orderInfo || params.description || "Thanh toan don hang");
   const accountName = params.accountName ? encodeURIComponent(params.accountName) : "";
@@ -506,5 +500,3 @@ export function generateVietQRUrl(params: {
   }
   return url;
 }
-
-

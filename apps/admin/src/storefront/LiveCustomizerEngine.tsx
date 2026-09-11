@@ -83,7 +83,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
 
     ctx.font = "9px sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.fillText("Bản vẽ mô phỏng thành phẩm in thực tế • 100% Khắc/In Theo Yêu Cầu", 20, 46);
+    ctx.fillText("Bản xem trước theo nội dung tùy chỉnh • Kiểm tra kỹ trước khi đặt hàng", 20, 46);
 
     try {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
@@ -467,7 +467,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
               <CheckCircle2 size={15} className="text-orange-400 shrink-0" />
               Thay đổi sẽ hiển thị ngay tức thì trên hình minh họa
             </span>
-            <span className="text-[10px] bg-orange-500/30 px-1.5 py-0.5 rounded font-mono">100% Free Custom</span>
+            <span className="text-[10px] bg-orange-500/30 px-1.5 py-0.5 rounded">Tùy chỉnh trực tiếp</span>
           </div>
 
           {fields.map((field) => (

@@ -52,7 +52,7 @@ export class CloneController {
         product
       });
     } catch (err: any) {
-      const status = ["EXTRACTION_FAILED", "QUALITY_GATE_FAILED", "DEMO_DATA_CANNOT_BE_IMPORTED"].some(code => String(err?.message).includes(code)) ? 422 : 500;
+      const status = ["EXTRACTION_FAILED", "EXTRACTION_NOT_VERIFIED", "QUALITY_GATE_FAILED", "DEMO_DATA_CANNOT_BE_IMPORTED"].some(code => String(err?.message).includes(code)) ? 422 : 500;
       res.status(status).json({ success: false, error: err.message || "Lỗi thực hiện clone sản phẩm" });
     }
   }
@@ -93,7 +93,13 @@ export class CloneController {
       const result = await multiPlatformClonerService.find1688SuppliersByImage(req.body);
       res.json(result);
     } catch (err: any) {
-      const status = err?.message === "VISUAL_SOURCING_PROVIDER_NOT_CONFIGURED" ? 501 : 500;
+      const status = err?.message === "VISUAL_SOURCING_PROVIDER_NOT_CONFIGURED"
+        ? 501
+        : err?.message === "VISUAL_SOURCING_INPUT_INVALID"
+          ? 400
+          : err?.message === "VISUAL_SOURCING_PRODUCT_NOT_FOUND"
+            ? 404
+            : 500;
       res.status(status).json({ success: false, error: err.message || "Lỗi tìm kiếm nguồn xưởng 1688" });
     }
   }

@@ -234,6 +234,7 @@ test("5. SEO Optimizer Engine (Slug, Keywords, Alt, Meta, FAQs, Schema)", (t) =>
   assert.equal(jsonLd["@type"], "Product");
   assert.equal(jsonLd.sku, "SKU-TEST-001");
   assert.equal(jsonLd.offers.lowPrice, 250000);
+  assert.equal(jsonLd.aggregateRating, undefined, "Không được tự sinh rating/review khi chưa có dữ liệu thật");
 
   // Test SEO Audit
   const audit = auditListingSEO({
@@ -259,26 +260,27 @@ test("6. AI Marketing Copywriter Engine", (t) => {
   // Test AIDA VI
   const aidaVI = generateMarketingCopy(dummyProduct, "AIDA", "VI");
   assert.equal(aidaVI.style, "AIDA");
-  assert.ok(aidaVI.headline.includes("ĐỪNG BỎ LỠ"));
-  assert.ok(aidaVI.bodyHtml.includes("ATTENTION"));
+  assert.ok(aidaVI.headline.includes("Khám phá"));
+  assert.ok(aidaVI.bodyHtml.includes("Thông tin chính"));
   assert.ok(aidaVI.bodyHtml.includes("250.000"));
 
   // Test PAS VI
   const pasVI = generateMarketingCopy(dummyProduct, "PAS", "VI");
   assert.equal(pasVI.style, "PAS");
-  assert.ok(pasVI.headline.includes("NỖI LO"));
-  assert.ok(pasVI.bodyHtml.includes("PROBLEM"));
+  assert.ok(pasVI.headline.includes("Kiểm tra"));
+  assert.ok(pasVI.bodyHtml.includes("Vấn đề"));
 
   // Test Storytelling EN
   const storyEN = generateMarketingCopy(dummyProduct, "STORYTELLING", "EN");
   assert.equal(storyEN.style, "STORYTELLING");
-  assert.ok(storyEN.bodyHtml.includes("story") || storyEN.bodyHtml.includes("Chapter"));
+  assert.ok(storyEN.bodyHtml.includes("draft"));
 
   // Test Social Ads EN
   const adsEN = generateMarketingCopy(dummyProduct, "SOCIAL_ADS", "EN");
   assert.equal(adsEN.style, "SOCIAL_ADS");
   assert.ok(adsEN.headline.length > 0);
   assert.ok(adsEN.callToAction.length > 0);
+  assert.doesNotMatch(JSON.stringify([aidaVI, pasVI, storyEN, adsEN]), /free shipping|freeship|limited stock|100%|guaranteed/i);
 });
 
 test("7. Omnichannel Connectors Payload Builders", (t) => {
@@ -358,6 +360,10 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.equal(extractProductIdFromUrl("https://shopee.vn/product/12345678/987654321"), "987654321");
   assert.equal(extractProductIdFromUrl("https://shop.tiktok.com/view/product/1729384918294"), "1729384918294");
   assert.equal(extractProductIdFromUrl("https://www.aliexpress.com/item/1005004819283746.html"), "1005004819283746");
+  const genericId = extractProductIdFromUrl("https://example.com/");
+  assert.equal(genericId, extractProductIdFromUrl("https://example.com/"));
+  assert.match(genericId, /^url_[a-z0-9]+$/);
+  assert.equal(extractProductIdFromUrl(""), "");
 
   // 3. Supported Platforms Meta
   assert.equal(SUPPORTED_PLATFORMS_META.length >= 7, true);
@@ -625,10 +631,10 @@ test("12. Media Mirroring & Extension Bulk Sourcing Contracts", (t) => {
   // Simulated mirrored product
   const mirroredProduct = {
     ...sampleProduct,
-    primaryImage: "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/primary_a8f9b2c3.jpg",
+    primaryImage: "https://example-project.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/primary_a8f9b2c3.jpg",
     galleryImages: [
-      "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_1_b7e6d5c4.jpg",
-      "https://jpbrwfctgrufbdkstufq.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_2_c9d8e7f6.jpg"
+      "https://example-project.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_1_b7e6d5c4.jpg",
+      "https://example-project.supabase.co/storage/v1/object/public/product-media/mirrored/prod_sample_01/gallery_2_c9d8e7f6.jpg"
     ],
     isMediaMirrored: true,
     mirroredAt: new Date().toISOString()
@@ -759,6 +765,3 @@ test("13. Variant Sample Images, Detail Description Images & Synchronization Int
   assert.equal(normalizedVariants.length, 4);
   assert.ok(normalizedVariants.every(v => v.imageUrl && v.imageUrl.startsWith("https://")));
 });
-
-
-

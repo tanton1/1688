@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { PricingEngineService } from "../services/pricing.service.js";
 import { z } from "zod";
 import { supabaseService } from "../services/supabase.service.js";
+import { DEFAULT_PRICING_RULE } from "@hub1688/shared-utils";
 
 const pricingService = new PricingEngineService();
 
@@ -77,8 +78,17 @@ export class PricingController {
   }
 
   public async deleteRule(req: Request, res: Response): Promise<void> {
-    if (supabaseService.isConfigured() && !(await supabaseService.deletePricingRule(req.params.id))) {
-      res.status(404).json({ error: "PRICING_RULE_NOT_FOUND" }); return;
+    if (req.params.id === DEFAULT_PRICING_RULE.id) {
+      res.status(409).json({ error: "PRICING_RULE_NOT_DELETABLE", message: "Không thể xóa quy tắc mặc định" });
+      return;
+    }
+    if (supabaseService.isConfigured()) {
+      if (!(await supabaseService.deletePricingRule(req.params.id))) {
+        res.status(404).json({ error: "PRICING_RULE_NOT_FOUND" }); return;
+      }
+      pricingService.deleteRule(req.params.id);
+      res.json({ success: true });
+      return;
     }
     const deleted = pricingService.deleteRule(req.params.id);
     if (!deleted) {

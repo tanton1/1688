@@ -201,7 +201,9 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
 
       if (res.success && res.matches) {
         setVisualMatches(res.matches);
-        onShowToast(`Đã tìm thấy ${res.matches.length} xưởng 1688 nguồn sản xuất tương đồng!`, "success");
+        onShowToast(res.mode === "DEMO"
+          ? "Chế độ Demo: kết quả xưởng là dữ liệu mô phỏng, không dùng để đặt hàng."
+          : `Đã tìm thấy ${res.matches.length} xưởng 1688 nguồn sản xuất tương đồng!`, "success");
       }
     } catch (err: any) {
       onShowToast(err.message || "Không thể tìm kiếm xưởng 1688", "error");
@@ -484,10 +486,10 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                       {/* Visual Sourcing Button */}
                       <button
                         type="button"
-                        disabled={isLoadingVisual}
+                        disabled={isLoadingVisual || previewData.estimatedSellingPriceVND <= 0}
                         onClick={handleFind1688Factory}
-                        className="px-3 py-1 text-xs font-bold text-amber-300 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 rounded-lg shadow-sm flex items-center space-x-1.5 transition-all"
-                        title="Tìm nguồn xưởng sản xuất gốc trên 1688 bằng hình ảnh để tăng biên lãi"
+                        className="px-3 py-1 text-xs font-bold text-amber-300 bg-amber-950/60 hover:bg-amber-900/80 disabled:opacity-50 disabled:cursor-not-allowed border border-amber-500/40 rounded-lg shadow-sm flex items-center space-x-1.5 transition-all"
+                        title={previewData.estimatedSellingPriceVND > 0 ? "Tìm nguồn 1688 bằng hình ảnh" : "Cần xác minh giá bán VND trước khi tìm nguồn"}
                       >
                         {isLoadingVisual ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -498,7 +500,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                       </button>
 
                       <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        Chất lượng: {previewData.qualityScorePreview}/100
+                        Mức đủ dữ liệu: {previewData.qualityScorePreview}/100
                       </span>
                       <span className={`px-2 py-0.5 text-xs font-bold rounded border ${previewData.extractionStatus === "LIVE" ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" : previewData.extractionStatus === "DEMO" ? "bg-amber-500/10 text-amber-300 border-amber-500/30" : "bg-rose-500/10 text-rose-300 border-rose-500/30"}`}>
                         {previewData.extractionStatus} · {Math.round(previewData.confidence * 100)}%
@@ -531,6 +533,11 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                   {/* Visual Sourcing Results Box */}
                   {visualMatches && visualMatches.length > 0 && (
                     <div className="p-4 rounded-xl bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/40 space-y-3 animate-fadeIn">
+                      {visualMatches.some(match => match.isDemo) && (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200" role="note">
+                          Chế độ Demo — kết quả xưởng, giá và độ tương đồng là dữ liệu mô phỏng.
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <Factory className="w-4 h-4 text-amber-400" />
@@ -539,7 +546,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400">
-                          Giá bán dự kiến: <strong className="text-emerald-400">{previewData.estimatedSellingPriceVND.toLocaleString("vi-VN")} ₫</strong>
+                          Giá bán: <strong className="text-emerald-400">{previewData.estimatedSellingPriceVND > 0 ? `${previewData.estimatedSellingPriceVND.toLocaleString("vi-VN")} ₫` : "Chưa xác định"}</strong>
                         </span>
                       </div>
 
@@ -549,7 +556,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                             <div className="flex items-center justify-between">
                               <span className="text-[11px] font-bold text-slate-200 line-clamp-1">{m.shopName}</span>
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">
-                                Khớp {m.similarityScore}%
+                                {m.isDemo ? "DEMO" : `Khớp ${m.similarityScore}%`}
                               </span>
                             </div>
                             <div className="text-xs text-slate-400 line-clamp-2">{m.titleVI}</div>
@@ -663,19 +670,21 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                         <div>
                           <div className="text-[11px] text-slate-400">Giá vốn quy đổi (VNĐ)</div>
                           <div className="text-base font-bold text-amber-400 mt-0.5">
-                            {previewData.estimatedCostVND.toLocaleString("vi-VN")} ₫
+                            {previewData.estimatedCostVND > 0 ? `${previewData.estimatedCostVND.toLocaleString("vi-VN")} ₫` : "Chưa xác định"}
                           </div>
                         </div>
 
                         <div>
                           <div className="text-[11px] text-slate-400 flex items-center justify-between">
                             <span>Giá bán niêm yết</span>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">
-                              +{previewData.estimatedMarginPercent}%
-                            </span>
+                            {previewData.estimatedMarginPercent > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">
+                                +{previewData.estimatedMarginPercent}%
+                              </span>
+                            )}
                           </div>
                           <div className="text-base font-bold text-emerald-400 mt-0.5">
-                            {previewData.estimatedSellingPriceVND.toLocaleString("vi-VN")} ₫
+                            {previewData.estimatedSellingPriceVND > 0 ? `${previewData.estimatedSellingPriceVND.toLocaleString("vi-VN")} ₫` : "Chưa xác định"}
                           </div>
                         </div>
                       </div>
@@ -716,7 +725,7 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
                                 <td className="p-2 font-mono text-slate-400 text-[11px]">{v.skuId}</td>
                                 <td className="p-2 font-medium text-slate-200">{v.nameVI || v.name}</td>
                                 <td className="p-2 text-right font-semibold text-emerald-400">
-                                  {v.priceVND.toLocaleString("vi-VN")} ₫
+                                  {v.priceVND > 0 ? `${v.priceVND.toLocaleString("vi-VN")} ₫` : "Chưa xác định"}
                                 </td>
                                 <td className="p-2 text-right text-slate-400">{v.stock}</td>
                               </tr>

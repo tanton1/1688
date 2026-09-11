@@ -24,8 +24,12 @@ export const QuickImportCard: React.FC<QuickImportCardProps> = ({
     autoPricing: true
   });
 
-  const skuCount = Object.keys(product.skuMap || {}).length || 12;
-  const totalStock = Object.values(product.skuMap || {}).reduce((s, item) => s + (item.stock || 0), 0) || 2430;
+  const uniqueSkuIds = new Set(Object.values(product.skuMap || {}).map(item => item.skuId));
+  const skuCount = uniqueSkuIds.size;
+  const totalStock = [...uniqueSkuIds].reduce((sum, skuId) => {
+    const item = Object.values(product.skuMap || {}).find(candidate => candidate.skuId === skuId);
+    return sum + (item?.stock || 0);
+  }, 0);
 
   const handleToggle = (key: keyof typeof options) => {
     setOptions(prev => ({ ...prev, [key]: !prev[key] }));

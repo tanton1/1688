@@ -101,29 +101,26 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
       targetPlatform: "ALL",
       isDefault: false,
       content: {
-        titlePrefix: "[Chính Hãng]",
-        titleSuffix: "- Chất Lượng Cao",
+        titlePrefix: "",
+        titleSuffix: "",
         titleFormula: "{prefix} {title} {suffix}",
         shortDescVI: "",
-        fullDescVI: `### 🌟 ĐIỂM NỔI BẬT CỦA SẢN PHẨM\n- Chất liệu cao cấp, độ bền vượt trội.\n- Thiết kế hiện đại, tiện dụng.\n\n### 🛡️ CAM KẾT & CHÍNH SÁCH BẢO HÀNH\n- 1 đổi 1 trong 30 ngày nếu có lỗi sản xuất.\n- Kiểm tra hàng trước khi thanh toán.`,
-        attributes: [
-          { key: "Chất liệu", value: "Cao cấp" },
-          { key: "Xuất xứ", value: "Chính hãng" }
-        ],
-        warrantyPolicy: "Bảo hành 1 đổi 1 trong vòng 30 ngày.",
-        shippingPolicy: "Giao hàng nhanh 2-4 ngày toàn quốc.",
-        focusKeywords: ["chính hãng", "cao cấp"],
+        fullDescVI: `### THÔNG TIN SẢN PHẨM\n- Bổ sung đặc điểm đã được xác minh từ dữ liệu nguồn.\n- Bổ sung kích thước, chất liệu và hướng dẫn sử dụng nếu có.\n\n### CHÍNH SÁCH\n- Chỉ ghi bảo hành, đổi trả và vận chuyển theo chính sách thực tế của cửa hàng.`,
+        attributes: [],
+        warrantyPolicy: "",
+        shippingPolicy: "",
+        focusKeywords: [],
         faqs: []
       },
       variation: {
         options: [
           { name: "Phân Loại", values: ["Tiêu Chuẩn", "Nâng Cấp"] }
         ],
-        defaultStock: 999,
+        defaultStock: 0,
         skuPattern: "{SKU}-{OPT1}",
         predefinedVariants: [
-          { name: "Tiêu Chuẩn", option1: "Tiêu Chuẩn", priceAdjustmentVND: 0, stock: 999 },
-          { name: "Nâng Cấp", option1: "Nâng Cấp", priceAdjustmentVND: 50000, stock: 999 }
+          { name: "Tiêu Chuẩn", option1: "Tiêu Chuẩn", priceAdjustmentVND: 0, stock: 0 },
+          { name: "Nâng Cấp", option1: "Nâng Cấp", priceAdjustmentVND: 0, stock: 0 }
         ]
       }
     };
@@ -293,7 +290,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     const opts = variationObj.options || [];
     const opt1 = opts[0];
     const opt2 = opts[1];
-    const defaultStock = variationObj.defaultStock || 999;
+    const defaultStock = variationObj.defaultStock ?? 0;
     const existingVariants = variationObj.predefinedVariants || [];
 
     const newVariants: Array<{
@@ -353,18 +350,6 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     }
   };
 
-  const updateVariantStock = (idx: number, stock: number) => {
-    if (!editingTemplate || !editingTemplate.variation) return;
-    const variants = [...(editingTemplate.variation.predefinedVariants || [])];
-    if (variants[idx]) {
-      variants[idx] = { ...variants[idx], stock };
-      setEditingTemplate({
-        ...editingTemplate,
-        variation: { ...editingTemplate.variation, predefinedVariants: variants }
-      });
-    }
-  };
-
   // Quick Presets Loaders
   const loadVariationPresetPreset = (type: "POD" | "FASHION" | "APPLIANCE" | "TECH") => {
     if (!editingTemplate) return;
@@ -374,9 +359,9 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
       preset = {
         options: [
           { name: "Kích thước (Size)", values: ["Size Vừa (7x9 inch)", "Size Lớn (9x10 inch)"] },
-          { name: "Combo / Đóng gói", values: ["1 PCS (Đơn)", "Combo 2 PCS (Tiết Kiệm 10%)", "Combo 4 PCS (Gia Đình)", "Combo 6 PCS (Đại Gia Đình)"] }
+          { name: "Combo / Đóng gói", values: ["1 PCS (Đơn)", "Combo 2 PCS", "Combo 4 PCS", "Combo 6 PCS"] }
         ],
-        defaultStock: 999,
+        defaultStock: 0,
         skuPattern: "{SKU}-{SIZE}-{COMBO}",
         predefinedVariants: []
       };
@@ -386,7 +371,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
           { name: "Kích thước (Size)", values: ["Size S", "Size M", "Size L", "Size XL", "Size 2XL"] },
           { name: "Màu sắc (Color)", values: ["Đen Basic", "Trắng Tinh Khôi", "Xám Khói", "Nâu Be"] }
         ],
-        defaultStock: 200,
+        defaultStock: 0,
         skuPattern: "{SKU}-{SIZE}-{COLOR}",
         predefinedVariants: []
       };
@@ -395,7 +380,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
         options: [
           { name: "Phiên bản (Model)", values: ["Bản Tiêu Chuẩn", "Bản Nâng Cấp (Kèm Phụ Kiện)", "Bản Cao Cấp Full Box"] }
         ],
-        defaultStock: 150,
+        defaultStock: 0,
         skuPattern: "{SKU}-{MODEL}",
         predefinedVariants: []
       };
@@ -405,7 +390,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
           { name: "Màu khung máy", values: ["Đen Nhám (Black)", "Bạc Ánh Kim (Silver)", "Vàng Hồng (Rose)"] },
           { name: "Loại Dây Đeo", values: ["Dây Silicon Thể Thao", "Dây Thép Milanese", "Dây Da Bò Cao Cấp"] }
         ],
-        defaultStock: 100,
+        defaultStock: 0,
         skuPattern: "{SKU}-{COLOR}-{STRAP}",
         predefinedVariants: []
       };
@@ -418,7 +403,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
   const addAttributeRow = () => {
     if (!editingTemplate) return;
     const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
-    const attrs = [...(content.attributes || []), { key: "Thông số", value: "Chi tiết" }];
+    const attrs = [...(content.attributes || []), { key: "", value: "" }];
     setEditingTemplate({
       ...editingTemplate,
       content: { ...content, attributes: attrs }
@@ -475,11 +460,11 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
     let snippet = "";
     if (blockType === "HIGHLIGHTS") {
-      snippet = `\n\n### 🌟 ĐIỂM NỔI BẬT CỦA SẢN PHẨM\n- Thiết kế tinh xảo, bắt mắt theo xu hướng mới nhất.\n- Gia công tỉ mỉ từng chi tiết, độ bền cao vượt trội.\n- Tiện dụng trong nhiều hoàn cảnh sinh hoạt hàng ngày.`;
+      snippet = `\n\n### ĐIỂM NỔI BẬT CỦA SẢN PHẨM\n- [Bổ sung đặc điểm đã xác minh từ nguồn]\n- [Bổ sung công dụng hoặc phạm vi sử dụng thực tế]\n- [Bổ sung khác biệt giữa các phân loại]`;
     } else if (blockType === "SPECS") {
-      snippet = `\n\n### 📐 BẢNG THÔNG SỐ CHI TIẾT\n- Kích thước: Tiêu chuẩn chính xác theo mô tả.\n- Trọng lượng: Gọn nhẹ, dễ dàng bảo quản hoặc mang theo.\n- Xuất xứ: Xưởng gia công đạt tiêu chuẩn kiểm định.`;
+      snippet = `\n\n### BẢNG THÔNG SỐ CHI TIẾT\n- Kích thước: [Cần xác minh]\n- Trọng lượng: [Cần xác minh]\n- Xuất xứ: [Cần xác minh]`;
     } else if (blockType === "POLICY") {
-      snippet = `\n\n### 🛡️ CAM KẾT VÀ CHÍNH SÁCH BẢO HÀNH\n- 100% đúng mô tả và hình ảnh thực tế.\n- Hỗ trợ đổi mới 1:1 trong 30 ngày nếu phát hiện bất kỳ lỗi nào từ nhà sản xuất.\n- Khách hàng được kiểm tra hàng trước khi thanh toán.`;
+      snippet = `\n\n### CHÍNH SÁCH BẢO HÀNH VÀ ĐỔI TRẢ\n- [Chỉ điền thời hạn và điều kiện đang được cửa hàng áp dụng]\n- [Nêu rõ trường hợp được và không được hỗ trợ]\n- [Nêu kênh liên hệ xử lý yêu cầu]`;
     } else if (blockType === "USAGE") {
       snippet = `\n\n### 💡 HƯỚNG DẪN SỬ DỤNG & BẢO QUẢN\n- Bảo quản ở nơi khô ráo thoáng mát, tránh ánh nắng trực tiếp.\n- Tránh tiếp xúc với hóa chất tẩy rửa mạnh.\n- Đọc kỹ hướng dẫn kèm theo hộp sản phẩm.`;
     }
@@ -879,7 +864,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                             ...editingTemplate,
                             content: { ...editingTemplate.content, titlePrefix: e.target.value }
                           })}
-                          placeholder="Ví dụ: [Chính Hãng] hoặc [Quà Tặng]"
+                          placeholder="Ví dụ: [Quà tặng] hoặc [Unisex]"
                           className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         />
                       </div>
@@ -906,7 +891,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                       <span className="text-slate-400 font-medium block mb-1">Xem trước tiêu đề mẫu:</span>
                       <p className="font-semibold text-slate-800">
                         <span className="text-indigo-600">{editingTemplate.content?.titlePrefix || ""}</span>{" "}
-                        Áo Thun Form Rộng Unisex Streetwear Cotton 100%{" "}
+                        Tên sản phẩm nguồn sau khi làm sạch{" "}
                         <span className="text-teal-600">{editingTemplate.content?.titleSuffix || ""}</span>
                       </p>
                     </div>
@@ -1010,7 +995,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                             type="text"
                             value={attr.value}
                             onChange={(e) => updateAttributeRow(idx, attr.key, e.target.value)}
-                            placeholder="Giá trị (vd: 100% Cotton)"
+                            placeholder="Giá trị đã xác minh từ nguồn"
                             className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
                           />
                           <button
@@ -1042,7 +1027,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                           ...editingTemplate,
                           content: { ...editingTemplate.content, warrantyPolicy: e.target.value }
                         })}
-                        placeholder="Cam kết 1 đổi 1 trong 30 ngày đối với lỗi kỹ thuật..."
+                        placeholder="Chỉ nhập chính sách bảo hành đang áp dụng"
                         className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
@@ -1305,19 +1290,13 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div>
                       <label className="block text-slate-700 font-semibold mb-1">
-                        Tồn kho mặc định cho mỗi biến thể
+                        Tồn kho mẫu (luôn bắt đầu từ 0)
                       </label>
                       <input
                         type="number"
-                        value={editingTemplate.variation?.defaultStock ?? 999}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          setEditingTemplate({
-                            ...editingTemplate,
-                            variation: { ...editingTemplate.variation!, defaultStock: val }
-                          });
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                        value={0}
+                        readOnly
+                        className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-xs text-slate-500 cursor-not-allowed"
                       />
                     </div>
 
@@ -1360,7 +1339,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                               <th className="py-2.5 px-3 font-semibold">Tùy Chọn 2</th>
                             )}
                             <th className="py-2.5 px-3 font-semibold">Chênh Lệch Giá (+VND)</th>
-                            <th className="py-2.5 px-3 font-semibold">Tồn Kho</th>
+                                  <th className="py-2.5 px-3 font-semibold">Tồn kho khi áp dụng</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1393,9 +1372,10 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                               <td className="py-2 px-3">
                                 <input
                                   type="number"
-                                  value={variant.stock ?? 999}
-                                  onChange={(e) => updateVariantStock(idx, parseInt(e.target.value) || 0)}
-                                  className="w-20 px-2 py-1 bg-white border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500"
+                                    value={0}
+                                    readOnly
+                                    title="Tồn kho phải được lấy từ nguồn đã xác minh"
+                                    className="w-20 px-2 py-1 bg-slate-100 border border-slate-300 rounded text-xs text-slate-500 cursor-not-allowed"
                                 />
                               </td>
                             </tr>

@@ -10,6 +10,7 @@ import { ENV } from "./config/env.js";
 export const app = express();
 
 app.disable("x-powered-by");
+if (ENV.NODE_ENV === "production") app.set("trust proxy", 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use((req, res, next) => {
   req.requestId = req.header("x-request-id") || crypto.randomUUID();
@@ -20,13 +21,18 @@ app.use((req, res, next) => {
   });
   next();
 });
-app.use(cors({
-  credentials: true,
-  origin(origin, callback) {
-    if (!origin || ENV.CORS_ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-    if (ENV.NODE_ENV !== "production" && /^chrome-extension:\/\/[a-z]{32}$/.test(origin)) return callback(null, true);
-    callback(new Error("CORS_ORIGIN_DENIED"));
-  }
+app.use(cors((req, callback) => {
+  const origin = req.header("origin");
+  const requestOrigin = `${req.protocol}://${req.get("host")}`;
+  const isAllowed = !origin ||
+    origin === requestOrigin ||
+    ENV.CORS_ALLOWED_ORIGINS.includes(origin) ||
+    (ENV.NODE_ENV !== "production" && /^chrome-extension:\/\/[a-z]{32}$/.test(origin));
+
+  callback(isAllowed ? null : new Error("CORS_ORIGIN_DENIED"), {
+    credentials: true,
+    origin: isAllowed
+  });
 }));
 app.use(express.json({ limit: ENV.JSON_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: false, limit: ENV.JSON_BODY_LIMIT }));

@@ -40,12 +40,14 @@ export class Search1688Extractor {
 
       // 2. Tiêu đề
       const titleEl = card.querySelector(".title, .desc, .subject, [class*='title'], [class*='desc']") as HTMLElement;
-      const title = titleEl ? titleEl.innerText.trim() : `Sản phẩm 1688 #${offerId}`;
+      const title = titleEl ? titleEl.innerText.trim() : "";
+      if (!title) return;
 
       // 3. Giá tệ CNY
       const priceEl = card.querySelector(".price, .money, .value, [class*='price'], [class*='money']") as HTMLElement;
       const priceText = priceEl ? priceEl.innerText.replace(/[¥￥\s]/g, "") : "0";
-      const priceCNY = parseFloat(priceText) || 25.0;
+      const priceCNY = parseFloat(priceText);
+      if (!Number.isFinite(priceCNY) || priceCNY <= 0) return;
 
       // 4. Ảnh đại diện
       const imgEl = card.querySelector("img") as HTMLImageElement;
@@ -73,4 +75,3 @@ export class Search1688Extractor {
     return items;
   }
 }
-

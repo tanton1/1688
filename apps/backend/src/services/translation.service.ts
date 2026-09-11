@@ -41,8 +41,8 @@ export class TranslationEngineService {
     const cleanedCN = clean1688Title(rawTitleCN);
     const translatedLiteral = applyGlossary(cleanedCN, this.customGlossary);
     const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
-    const seoTitle = `${cleanTitle} – Cao Cấp, Bền Đẹp, Chuẩn Form`;
-    const displayTitle = `${cleanTitle} (Mẫu Mới 2026)`;
+    const seoTitle = category ? `${cleanTitle} – ${category}` : cleanTitle;
+    const displayTitle = cleanTitle;
 
     return {
       original: rawTitleCN,
@@ -60,8 +60,8 @@ export class TranslationEngineService {
     const cleanedCN = clean1688Title(rawTitleCN);
     const translatedLiteral = applyGlossaryEN(cleanedCN);
     const cleanTitle = this.formatEcommerceTitle(translatedLiteral);
-    const seoTitle = `${cleanTitle} - Premium Quality & Modern Design`;
-    const displayTitle = `${cleanTitle} (New Arrival 2026)`;
+    const seoTitle = category ? `${cleanTitle} - ${category}` : cleanTitle;
+    const displayTitle = cleanTitle;
 
     return {
       original: rawTitleCN,
@@ -117,28 +117,20 @@ export class TranslationEngineService {
     attributes: ProductAttributeItem[],
     rawDescText: string = ""
   ): string {
-    const materialAttr = attributes.find(a => a.keyVI === "Chất liệu")?.valueVI || "Vải cao cấp thoáng khí";
-    const originAttr = attributes.find(a => a.keyVI === "Xuất xứ")?.valueVI || "Nội địa cao cấp";
+    const verifiedAttributes = attributes
+      .filter(attribute => attribute.keyVI && attribute.valueVI)
+      .map(attribute => `• **${attribute.keyVI}**: ${attribute.valueVI}`)
+      .join("\n");
 
     return `
 ### GIỚI THIỆU SẢN PHẨM
-${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong cách hiện đại, thanh lịch và phù hợp sử dụng hàng ngày hoặc đi chơi, đi làm.
+${titleVI}
 
-### ĐẶC ĐIỂM NỔI BẬT
-• Thiết kế tôn dáng, đường may tỉ mỉ, chắc chắn từng chi tiết.
-• Vải mềm mại, co giãn đàn hồi và thoáng mát vượt trội.
-• Khả năng thấm hút mồ hôi và nhanh khô, không xù lông hay phai màu sau nhiều lần giặt.
-• Form chuẩn, mang lại cảm giác thoải mái suốt ngày dài.
+### THÔNG TIN ĐÃ TRÍCH XUẤT
+${verifiedAttributes || "Nguồn chưa cung cấp thuộc tính chi tiết."}
 
-### THÔNG SỐ & CHẤT LIỆU
-• **Chất liệu**: ${materialAttr}
-• **Xuất xứ**: ${originAttr}
-• **Quy cách đóng gói**: Túi zip bảo quản chuyên dụng
-
-### HƯỚNG DẪN BẢO QUẢN
-• Giặt ở nhiệt độ thường với đồ có màu tương tự.
-• Không sử dụng hóa chất tẩy mạnh.
-• Phơi ở nơi thoáng gió, tránh ánh nắng gay gắt trực tiếp.
+### LƯU Ý
+Nội dung được tạo từ dữ liệu nguồn. Cần đối chiếu hình ảnh, phân loại và hướng dẫn sử dụng trước khi xuất bản.
     `.trim();
   }
 
@@ -150,28 +142,20 @@ ${titleVI} được sản xuất với tiêu chuẩn chất lượng cao, phong 
     attributes: ProductAttributeItem[],
     rawDescText: string = ""
   ): string {
-    const materialAttr = attributes.find(a => a.keyEN === "Material")?.valueEN || "High Quality Breathable Fabric";
-    const originAttr = attributes.find(a => a.keyEN === "Origin")?.valueEN || "Certified Factory Direct";
+    const verifiedAttributes = attributes
+      .filter(attribute => attribute.keyEN && attribute.valueEN)
+      .map(attribute => `• **${attribute.keyEN}**: ${attribute.valueEN}`)
+      .join("\n");
 
     return `
 ### PRODUCT OVERVIEW
-${titleEN} features contemporary craftsmanship, premium comfort, and an elegant silhouette suitable for everyday wear, work, or casual outings.
+${titleEN}
 
-### KEY HIGHLIGHTS
-• Flattering fit with reinforced, precision stitching throughout.
-• Ultra-soft touch, breathable fabric with natural flexibility.
-• Moisture-wicking and quick-drying, resilient against shrinkage or fading.
-• Ergonomic cut providing effortless comfort all day long.
+### EXTRACTED PRODUCT DATA
+${verifiedAttributes || "The source did not provide detailed product attributes."}
 
-### SPECIFICATIONS & MATERIALS
-• **Material**: ${materialAttr}
-• **Origin**: ${originAttr}
-• **Packaging**: Eco-friendly protective zipper bag
-
-### CARE INSTRUCTIONS
-• Machine wash cold with like colors.
-• Tumble dry low or air dry in shade.
-• Do not bleach or use harsh chemicals.
+### NOTICE
+This draft is generated from source data. Verify images, variants, and usage instructions before publishing.
     `.trim();
   }
 
@@ -212,7 +196,7 @@ ${titleEN} features contemporary craftsmanship, premium comfort, and an elegant 
       skuCode = `SKU-${Date.now().toString().slice(-6)}`,
       minPriceVND = 0,
       maxPriceVND = 0,
-      supplierName = "1688 Direct Hub"
+      supplierName = ""
     } = params;
 
     const slug = generateSlug(titleVI);
@@ -237,6 +221,17 @@ ${titleEN} features contemporary craftsmanship, premium comfort, and an elegant 
       slug
     });
 
+    const seoAudit = auditListingSEO({
+      titleVI,
+      slug,
+      metaDescription: metaVI.metaDescription,
+      imagesSEO,
+      focusKeywords: focusKeywordsVI,
+      faqs,
+      primaryImage,
+      galleryImages,
+      detailImages
+    });
     const seo: ProductSEOMetadata = {
       metaTitleVI: metaVI.metaTitle,
       metaTitleEN: metaEN.metaTitle,
@@ -247,7 +242,7 @@ ${titleEN} features contemporary craftsmanship, premium comfort, and an elegant 
       imagesSEO,
       faqs,
       jsonLdSchema,
-      seoScore: 95
+      seoScore: seoAudit.score
     };
 
     return {

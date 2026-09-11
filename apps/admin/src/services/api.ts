@@ -242,7 +242,7 @@ export const AdminApi = {
   },
 
   // 16. Omnichannel Connectors - WooCommerce
-  async syncWooCommerce(productId: string, _config?: any): Promise<{ success: boolean; result: any }> {
+  async syncWooCommerce(productId: string): Promise<{ success: boolean; result: any }> {
     return request("/api/v1/connectors/woocommerce/sync", {
       method: "POST",
       body: JSON.stringify({ productId })
@@ -250,7 +250,7 @@ export const AdminApi = {
   },
 
   // 17. Omnichannel Connectors - Shopify
-  async syncShopify(productId: string, _config?: any): Promise<{ success: boolean; result: any }> {
+  async syncShopify(productId: string): Promise<{ success: boolean; result: any }> {
     return request("/api/v1/connectors/shopify/sync", {
       method: "POST",
       body: JSON.stringify({ productId })
@@ -272,14 +272,14 @@ export const AdminApi = {
   },
 
   // 19. Telegram Alerts
-  async testTelegram(botToken: string, chatId: string): Promise<any> {
+  async testTelegram(): Promise<any> {
     return request("/api/v1/connectors/telegram/test", {
       method: "POST",
       body: JSON.stringify({})
     });
   },
 
-  async sendTelegramAlert(botToken: string, chatId: string, type: string, data: any): Promise<any> {
+  async sendTelegramAlert(type: string, data: any): Promise<any> {
     return request("/api/v1/connectors/telegram/send-alert", {
       method: "POST",
       body: JSON.stringify({ type, data })

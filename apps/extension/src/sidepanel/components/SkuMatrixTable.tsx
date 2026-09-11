@@ -40,8 +40,8 @@ export const SkuMatrixTable: React.FC<SkuMatrixTableProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {variants.map((v) => {
-              const safeCost = typeof v.costPriceVND === "number" && !isNaN(v.costPriceVND) ? v.costPriceVND : 120000;
-              const safeSelling = typeof v.sellingPriceVND === "number" && !isNaN(v.sellingPriceVND) ? v.sellingPriceVND : 250000;
+              const safeCost = typeof v.costPriceVND === "number" && Number.isFinite(v.costPriceVND) ? v.costPriceVND : 0;
+              const safeSelling = typeof v.sellingPriceVND === "number" && Number.isFinite(v.sellingPriceVND) ? v.sellingPriceVND : 0;
 
               return (
                 <tr
@@ -94,7 +94,7 @@ export const SkuMatrixTable: React.FC<SkuMatrixTableProps> = ({
                     />
                   </td>
                   <td className="p-2 text-right font-medium text-gray-600">
-                    {v.stockQuantity ?? 100}
+                    {v.stockQuantity ?? 0}
                   </td>
                 </tr>
               );

@@ -45,12 +45,11 @@ export function extractSEOKeywords(
       if (seg.length > 5 && seg.length < 40) keywords.add(seg);
     });
 
-    // 3. Ghép với ngành hàng và từ khóa ý định mua hàng (Buyer Intent)
+    // 3. Chỉ ghép từ khóa từ dữ liệu đầu vào, không tự thêm tuyên bố chất lượng/xu hướng.
     const catLower = category.toLowerCase();
-    keywords.add(`${catLower} cao cấp`);
-    keywords.add(`${catLower} hot trend 2026`);
-    keywords.add(`${cleanTitle.slice(0, 30)} chính hãng`);
-    keywords.add(`${cleanTitle.slice(0, 30)} giá sỉ tận xưởng`);
+    keywords.add(catLower);
+    keywords.add(`${cleanTitle.slice(0, 40).toLowerCase()} ${catLower}`);
+    keywords.add(`${cleanTitle.slice(0, 40).toLowerCase()} thông tin sản phẩm`);
   } else {
     // English keywords
     keywords.add(cleanTitle.toLowerCase());
@@ -60,10 +59,9 @@ export function extractSEOKeywords(
     });
 
     const catLower = category.toLowerCase();
-    keywords.add(`premium ${catLower}`);
-    keywords.add(`trendy ${catLower} 2026`);
-    keywords.add(`${cleanTitle.slice(0, 30)} online`);
-    keywords.add(`wholesale ${catLower}`);
+    keywords.add(catLower);
+    keywords.add(`${cleanTitle.slice(0, 40).toLowerCase()} ${catLower}`);
+    keywords.add(`${cleanTitle.slice(0, 40).toLowerCase()} product details`);
   }
 
   return Array.from(keywords).slice(0, 8);
@@ -82,27 +80,27 @@ export function generateSEOMeta(
 
   if (language === "VI") {
     // Meta Title chuẩn độ dài 50-65 ký tự
-    let metaTitle = `${cleanTitle} | Hàng Cao Cấp, Chuẩn Form`;
+    let metaTitle = `${cleanTitle} | ${category}`;
     if (metaTitle.length > 65) {
       metaTitle = cleanTitle.slice(0, 62) + "...";
     }
 
     // Lấy thông tin chất liệu nếu có
-    const material = attributes?.find(a => a.keyVI === "Chất liệu")?.valueVI || "vải cao cấp thoáng khí";
+    const material = attributes?.find(a => a.keyVI === "Chất liệu")?.valueVI;
 
     // Meta Description chuẩn 125-155 ký tự với Call-To-Action (CTA)
-    const metaDescription = `Mua ngay ${cleanTitle} chất lượng cao, ${material}. Thiết kế tôn dáng, form chuẩn đẹp, độ bền cao. Cam kết giá tốt tận gốc, hỗ trợ đổi trả uy tín!`.slice(0, 158);
+    const metaDescription = `Xem ${cleanTitle} trong danh mục ${category}. ${material ? `Chất liệu theo dữ liệu nguồn: ${material}.` : "Thông tin chất liệu được hiển thị theo dữ liệu đã xác minh."} Kiểm tra phân loại, giá và tồn kho trước khi đặt hàng.`.slice(0, 158);
 
     return { metaTitle, metaDescription };
   } else {
     // English Meta
-    let metaTitle = `${cleanTitle} - Premium Quality & Trendy Style`;
+    let metaTitle = `${cleanTitle} | ${category}`;
     if (metaTitle.length > 65) {
       metaTitle = cleanTitle.slice(0, 62) + "...";
     }
 
-    const material = attributes?.find(a => a.keyEN === "Material")?.valueEN || "premium breathable fabric";
-    const metaDescription = `Shop ${cleanTitle} crafted from ${material}. Designed for everyday elegance, comfort, and durability. Fast shipping & satisfaction guarantee. Buy now!`.slice(0, 158);
+    const material = attributes?.find(a => a.keyEN === "Material")?.valueEN;
+    const metaDescription = `View ${cleanTitle} in ${category}. ${material ? `Source-listed material: ${material}.` : "Material details are shown when verified."} Review available variants, current price, and stock before ordering.`.slice(0, 158);
 
     return { metaTitle, metaDescription };
   }
@@ -125,7 +123,7 @@ export function generateImageAltTags(
   if (primaryImage) {
     result.push({
       url: primaryImage,
-      alt: `${title} - Ảnh đại diện chính thức cao cấp sắc nét`,
+      alt: `${title} - Ảnh đại diện sản phẩm`,
       title: `${title} - Hình ảnh chính diện`,
       type: "PRIMARY"
     });
@@ -135,7 +133,7 @@ export function generateImageAltTags(
   galleryImages.forEach((url, idx) => {
     result.push({
       url,
-      alt: `${title} - Góc chụp chi tiết #${idx + 1} chất liệu và đường may chuẩn form`,
+      alt: `${title} - Góc chụp chi tiết #${idx + 1}`,
       title: `${title} - Chi tiết sản phẩm góc ${idx + 1}`,
       type: "GALLERY"
     });
@@ -145,7 +143,7 @@ export function generateImageAltTags(
   detailImages.forEach((url, idx) => {
     result.push({
       url,
-      alt: `${title} - Bảng thông số kích thước Size Chart & infographic chi tiết #${idx + 1}`,
+      alt: `${title} - Ảnh mô tả hoặc Size Chart #${idx + 1}`,
       title: `${title} - Bảng thông số kỹ thuật #${idx + 1}`,
       type: "DETAIL"
     });
@@ -181,34 +179,34 @@ export function generateProductFAQs(
     return [
       {
         question: `Làm sao để chọn đúng kích cỡ (size) cho ${title}?`,
-        answer: `Bạn nên tham khảo bảng đo kích thước chi tiết (ngực, eo, mông, chiều dài) trong phần mô tả ảnh chi tiết. Nếu ở giữa 2 size hoặc thích mặc rộng rãi thoải mái, chúng tôi khuyên bạn nên chọn tăng 1 size.`
+        answer: `Hãy đối chiếu tên phân loại và bảng kích thước do người bán cung cấp trong phần mô tả. Nếu chưa có đủ số đo, cần xác nhận với cửa hàng trước khi đặt.`
       },
       {
-        question: `Chất liệu sản phẩm có bị xù lông hoặc phai màu sau khi giặt không?`,
-        answer: `Sản phẩm sử dụng chất liệu vải đã qua xử lý giữ màu và chống co rút. Để sản phẩm luôn như mới, nên giặt ở nhiệt độ thường với trang phục cùng màu và tránh chất tẩy rửa mạnh.`
+        question: `Chất liệu của ${title} được ghi ở đâu?`,
+        answer: `Chất liệu chỉ được hiển thị khi có trong thuộc tính hoặc mô tả từ nguồn. Nếu mục này đang trống, cửa hàng cần xác minh trước khi tư vấn cho khách.`
       },
       {
         question: `Thời gian giao hàng và chính sách đổi trả như thế nào?`,
-        answer: `Đơn hàng được đóng gói kỹ lưỡng và giao trong 1-3 ngày làm việc. Chúng tôi hỗ trợ đổi trả hoặc đổi size trong vòng 7 ngày nếu sản phẩm còn nguyên tem mác và chưa qua sử dụng.`
+        answer: `Thời gian giao và điều kiện đổi trả phụ thuộc chính sách hiện hành của cửa hàng. Hãy kiểm tra thông tin được công bố tại thời điểm đặt hàng.`
       },
       {
-        question: `Sản phẩm có giống 100% so với hình ảnh thực tế không?`,
-        answer: `Toàn bộ hình ảnh và video đều là ảnh chụp mẫu thực tế từ xưởng sản xuất. Màu sắc có thể chênh lệch nhẹ 3-5% do độ phân giải màn hình hiển thị.`
+        question: `Hình ảnh của ${title} lấy từ đâu?`,
+        answer: `Hình ảnh được đồng bộ từ nguồn sản phẩm đã ghi nhận. Cửa hàng cần kiểm tra quyền sử dụng và độ chính xác của ảnh trước khi xuất bản.`
       }
     ];
   } else {
     return [
       {
         question: `How do I choose the correct size for ${title}?`,
-        answer: `Please refer to our comprehensive size guide in the product details image section. If you are between two sizes or prefer a relaxed silhouette, we suggest ordering one size up.`
+        answer: `Compare the selected variant with the source-provided size guide. If measurements are missing, confirm them with the store before ordering.`
       },
       {
         question: `What is the recommended care instruction for this item?`,
-        answer: `Machine wash cold with like colors on a delicate cycle. Do not bleach. Hang or line dry in shade to preserve fabric softness and garment shape.`
+        answer: `Use only the care instructions supplied in the verified product attributes or packaging. Ask the store when those instructions are unavailable.`
       },
       {
         question: `What is your return and exchange policy?`,
-        answer: `We offer hassle-free 14-day returns and size exchanges provided the item is in unworn condition with all original tags attached.`
+        answer: `Delivery estimates and return eligibility follow the store policy published at the time of purchase.`
       }
     ];
   }
@@ -219,11 +217,30 @@ export function generateProductFAQs(
  */
 export function generateProductJsonLd(
   product: Partial<WebProduct>,
-  siteUrl: string = "https://1688-phi.vercel.app"
+  siteUrl: string = ""
 ): Record<string, any> {
   const images = [product.primaryImage, ...(product.galleryImages || [])].filter(Boolean);
   const minPrice = product.minPriceVND || 0;
   const maxPrice = product.maxPriceVND || minPrice;
+  const activeVariants = (product.variants || []).filter(variant => variant.selectedForSale !== false);
+  const hasStock = activeVariants.some(variant => variant.sourceAvailable !== false && (variant.stockQuantity ?? 0) > 0);
+  const productUrl = siteUrl && (product.slug || product.skuCode)
+    ? `${siteUrl.replace(/\/$/, "")}/products/${product.slug || product.skuCode}`
+    : undefined;
+  const offers = minPrice > 0 ? {
+    "@type": "AggregateOffer",
+    ...(productUrl ? { "url": productUrl } : {}),
+    "priceCurrency": "VND",
+    "lowPrice": minPrice,
+    "highPrice": maxPrice,
+    "offerCount": activeVariants.length,
+    "availability": hasStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+  } : undefined;
+  const aggregateRating = Number(product.rating) > 0 && Number(product.reviewCount) > 0 ? {
+    "@type": "AggregateRating",
+    "ratingValue": Number(product.rating),
+    "reviewCount": Number(product.reviewCount)
+  } : undefined;
 
   return {
     "@context": "https://schema.org/",
@@ -232,27 +249,14 @@ export function generateProductJsonLd(
     "image": images,
     "description": product.shortDescVI || product.shortDescEN || product.titleVI,
     "sku": product.skuCode,
-    "mpn": product.sourceProductId || product.skuCode,
-    "brand": {
+    ...(product.sourceProductId || product.skuCode ? { "mpn": product.sourceProductId || product.skuCode } : {}),
+    ...(product.supplierName ? { "brand": {
       "@type": "Brand",
-      "name": product.supplierName || "1688 Direct Hub"
-    },
-    "category": product.categoryName || "Thời trang",
-    "offers": {
-      "@type": "AggregateOffer",
-      "url": `${siteUrl}/products/${product.slug || product.skuCode}`,
-      "priceCurrency": "VND",
-      "lowPrice": minPrice,
-      "highPrice": maxPrice,
-      "offerCount": product.variants?.length || 1,
-      "availability": "https://schema.org/InStock",
-      "itemCondition": "https://schema.org/NewCondition"
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": "128"
-    }
+      "name": product.supplierName
+    } } : {}),
+    ...(product.categoryName ? { "category": product.categoryName } : {}),
+    ...(offers ? { offers } : {}),
+    ...(aggregateRating ? { aggregateRating } : {})
   };
 }
 
@@ -298,12 +302,12 @@ export function auditListingSEO(product: Partial<WebProduct>): {
     scoreDelta: 20,
     tip: isMetaGood
       ? "Mô tả ngắn gọn, hấp dẫn kèm lời kêu gọi hành động chuẩn CTR."
-      : "Cần viết Meta Description từ 110 - 160 ký tự kèm ưu đãi để tăng tỷ lệ click."
+      : "Cần viết Meta Description từ 110 - 160 ký tự mô tả đúng nội dung sản phẩm."
   });
   if (isMetaGood) score += 20;
 
   // 3. Thẻ ALT ảnh chuẩn SEO
-  const totalImages = (product.galleryImages?.length || 0) + 1 + (product.detailImages?.length || 0);
+  const totalImages = (product.galleryImages?.length || 0) + (product.primaryImage ? 1 : 0) + (product.detailImages?.length || 0);
   const altItems = product.imagesSEO || product.seo?.imagesSEO || [];
   const hasAltCoverage = altItems.length > 0 && altItems.every(img => Boolean(img.alt?.trim()));
   checks.push({
@@ -312,7 +316,7 @@ export function auditListingSEO(product: Partial<WebProduct>): {
     passed: hasAltCoverage,
     scoreDelta: 20,
     tip: hasAltCoverage
-      ? "100% hình ảnh đã có thẻ mô tả ALT, tối ưu cho Google Image Search."
+      ? "Các hình ảnh hiện có đều đã có thẻ mô tả ALT."
       : "Bổ sung thẻ ALT chứa từ khóa cho ảnh để thu hút truy cập từ tìm kiếm hình ảnh."
   });
   if (hasAltCoverage) score += 20;

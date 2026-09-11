@@ -36,7 +36,7 @@ interface BannerFrameStudioModalProps {
   initialMode?: StudioMode;
 }
 
-// Bảng size mẫu thông minh cho thời trang
+// Bảng size do người vận hành nhập từ tài liệu nguồn đã xác minh.
 interface SizeRow {
   size: string;
   bust: number; // Vòng ngực (cm)
@@ -46,62 +46,48 @@ interface SizeRow {
   weightKg: string; // Cân nặng quy đổi chuẩn (kg)
 }
 
-const DEFAULT_SIZE_ROWS: SizeRow[] = [
-  { size: "S", bust: 88, length: 62, shoulder: 37, weightJin: "80-95 斤", weightKg: "40-47 kg" },
-  { size: "M", bust: 92, length: 64, shoulder: 38.5, weightJin: "96-110 斤", weightKg: "48-55 kg" },
-  { size: "L", bust: 96, length: 66, shoulder: 40, weightJin: "111-125 斤", weightKg: "55-62 kg" },
-  { size: "XL", bust: 100, length: 68, shoulder: 41.5, weightJin: "126-140 斤", weightKg: "63-70 kg" },
-  { size: "2XL", bust: 104, length: 70, shoulder: 43, weightJin: "141-155 斤", weightKg: "70-77 kg" }
-];
+const DEFAULT_SIZE_ROWS: SizeRow[] = [];
 
 // Tem mác tiếng Trung phổ biến trên ảnh 1688 / Taobao và bản dịch tương ứng
 const CHINESE_BADGE_PRESETS = [
   {
-    id: "HOT_SALE",
-    cnText: "爆款热销",
-    textVI: "🔥 SẢN PHẨM BÁN CHẠY",
-    textEN: "🔥 BEST SELLER ITEM",
-    bgColor: "#e11d48",
+    id: "CUSTOM",
+    cnText: "Nhập đúng nội dung trên ảnh nguồn",
+    textVI: "",
+    textEN: "",
+    bgColor: "#475569",
     textColor: "#ffffff"
   },
   {
-    id: "FREESHIP",
-    cnText: "全国包邮",
-    textVI: "🚚 MIỄN PHÍ VẬN CHUYỂN",
-    textEN: "🚚 FREE SHIPPING",
-    bgColor: "#059669",
+    id: "MATERIAL",
+    cnText: "面料 / 材质",
+    textVI: "CHẤT LIỆU: [CẦN XÁC MINH]",
+    textEN: "MATERIAL: [VERIFY SOURCE]",
+    bgColor: "#0369a1",
     textColor: "#ffffff"
   },
   {
-    id: "FACTORY_DIRECT",
-    cnText: "源头厂家直销",
-    textVI: "🏭 GIÁ SỈ TẬN XƯỞNG 1688",
-    textEN: "🏭 1688 FACTORY DIRECT",
-    bgColor: "#2563eb",
+    id: "SIZE",
+    cnText: "尺码",
+    textVI: "KÍCH THƯỚC: [CẦN XÁC MINH]",
+    textEN: "SIZE: [VERIFY SOURCE]",
+    bgColor: "#7c3aed",
     textColor: "#ffffff"
   },
   {
-    id: "PREMIUM_MATERIAL",
-    cnText: "100% 桑蚕丝/纯棉",
-    textVI: "✨ 100% CHẤT LIỆU CAO CẤP",
-    textEN: "✨ 100% PREMIUM QUALITY",
-    bgColor: "#d97706",
+    id: "COLOR",
+    cnText: "颜色",
+    textVI: "MÀU SẮC: [CẦN XÁC MINH]",
+    textEN: "COLOR: [VERIFY SOURCE]",
+    bgColor: "#be123c",
     textColor: "#ffffff"
   },
   {
-    id: "AUTHENTIC_MALL",
-    cnText: "正品保障 假一赔十",
-    textVI: "🛡️ CHÍNH HÃNG - ĐỔI TRẢ 7 NGÀY",
-    textEN: "🛡️ 100% AUTHENTIC GUARANTEE",
-    bgColor: "#4f46e5",
-    textColor: "#ffffff"
-  },
-  {
-    id: "NEW_ARRIVAL",
-    cnText: "2026 春装首发",
-    textVI: "⭐ HÀNG MỚI VỀ 2026",
-    textEN: "⭐ NEW ARRIVAL 2026",
-    bgColor: "#ea580c",
+    id: "ORIGIN",
+    cnText: "产地",
+    textVI: "NƠI SẢN XUẤT: [CẦN XÁC MINH]",
+    textEN: "PLACE OF MANUFACTURE: [VERIFY SOURCE]",
+    bgColor: "#0f766e",
     textColor: "#ffffff"
   }
 ];
@@ -126,7 +112,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
 
   // State công cụ 1: Bảng size
   const [sizeRows, setSizeRows] = useState<SizeRow[]>(DEFAULT_SIZE_ROWS);
-  const [sizeTableTitle, setSizeTableTitle] = useState("BẢNG QUY ĐỔI KÍCH CỠ CHUẨN (SIZE GUIDE)");
+  const [sizeTableTitle, setSizeTableTitle] = useState("BẢNG KÍCH THƯỚC (CẦN XÁC MINH)");
   const [sizeTableTheme, setSizeTableTheme] = useState<"LIGHT" | "DARK" | "ORANGE">("LIGHT");
   const [sizeTablePosition, setSizeTablePosition] = useState<"BOTTOM" | "CENTER" | "TOP">("BOTTOM");
 
@@ -142,18 +128,28 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
   const [inpaintHeight, setInpaintHeight] = useState(12); // %
   const [inpaintBgColor, setInpaintBgColor] = useState("#FFFFFF");
   const [inpaintTextColor, setInpaintTextColor] = useState("#1E293B");
-  const [inpaintText, setInpaintText] = useState("HÀNG THIẾT KẾ CAO CẤP CHÍNH HÃNG");
+  const [inpaintText, setInpaintText] = useState("");
   const [inpaintFontSize, setInpaintFontSize] = useState(24);
 
   // State Frame Mode
-  const [selectedTemplate, setSelectedTemplate] = useState<FrameTemplateId>("FREESHIP_XTRA");
-  const [badgeText, setBadgeText] = useState("FREESHIP XTRA");
-  const [discountText, setDiscountText] = useState("-45%");
-  const [shopBrandText, setShopBrandText] = useState("XƯỞNG CHÍNH HÃNG");
+  const [selectedTemplate, setSelectedTemplate] = useState<FrameTemplateId>("LUXURY_MINIMAL");
+  const [badgeText, setBadgeText] = useState("");
+  const [discountText, setDiscountText] = useState("");
+  const [shopBrandText, setShopBrandText] = useState("");
 
   // Ảnh đang chọn để chỉnh sửa
   const [selectedImageSrc, setSelectedImageSrc] = useState(product?.primaryImage || "");
   const [isApplying, setIsApplying] = useState(false);
+
+  const hasCompleteSizeData = sizeRows.length > 0 && sizeRows.every(row =>
+    row.size.trim() && row.bust > 0 && row.length > 0 && row.shoulder > 0 && row.weightKg.trim()
+  );
+  const hasUsableBadgeText = Boolean(customBadgeText.trim())
+    && !/CẦN XÁC MINH|VERIFY SOURCE/i.test(customBadgeText);
+  const canExport = studioMode === "FRAME"
+    || translateTool === "INPAINT_TEXT"
+    || (translateTool === "SIZE_CHART" && hasCompleteSizeData)
+    || (translateTool === "BADGE_REPLACER" && hasUsableBadgeText);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -170,33 +166,19 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
   // Đổi ngôn ngữ đích -> Cập nhật tiêu đề bảng size & badge text
   useEffect(() => {
     if (targetLanguage === "VI") {
-      setSizeTableTitle("BẢNG QUY ĐỔI KÍCH CỠ CHUẨN (SIZE GUIDE)");
+      setSizeTableTitle("BẢNG KÍCH THƯỚC (CẦN XÁC MINH)");
       setCustomBadgeText(selectedBadgePreset.textVI);
     } else {
-      setSizeTableTitle("OFFICIAL SIZE CHART & FIT GUIDE");
+      setSizeTableTitle("SIZE CHART (VERIFY SOURCE)");
       setCustomBadgeText(selectedBadgePreset.textEN);
     }
   }, [targetLanguage, selectedBadgePreset]);
 
-  // Cập nhật text mặc định theo từng template khung viền
+  // Mẫu khung chỉ định bố cục. Nội dung thương mại luôn do người vận hành nhập.
   useEffect(() => {
-    if (selectedTemplate === "FREESHIP_XTRA") {
-      setBadgeText("FREESHIP XTRA");
-      setDiscountText("-40%");
-      setShopBrandText("MALL CHÍNH HÃNG");
-    } else if (selectedTemplate === "FLASH_SALE") {
-      setBadgeText("⚡ FLASH SALE 2026");
-      setDiscountText("-50%");
-      setShopBrandText("GIÁ HỦY DIỆT");
-    } else if (selectedTemplate === "VERIFIED_MALL") {
-      setBadgeText("KIỂM ĐỊNH 100%");
-      setDiscountText("GIÁ GỐC 1688");
-      setShopBrandText("ĐỔI TRẢ 7 NGÀY");
-    } else if (selectedTemplate === "LUXURY_MINIMAL") {
-      setBadgeText("NEW ARRIVAL");
-      setDiscountText("PREMIUM");
-      setShopBrandText("EXCLUSIVE");
-    }
+    setBadgeText("");
+    setDiscountText("");
+    setShopBrandText("");
   }, [selectedTemplate]);
 
   // Render Canvas chính
@@ -234,7 +216,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
       // ==========================================
       if (studioMode === "TRANSLATE") {
         // CÔNG CỤ A: BẢNG SIZE CHUẨN (SIZE CHART)
-        if (translateTool === "SIZE_CHART") {
+        if (translateTool === "SIZE_CHART" && hasCompleteSizeData) {
           const tableW = targetW - 60;
           const rowH = 42;
           const headerH = 50;
@@ -283,8 +265,8 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
           ctx.font = "italic 11px sans-serif";
           ctx.fillText(
             targetLanguage === "VI"
-              ? "★ Tự động quy đổi đơn vị Trung Quốc 1 斤 = 0.5 kg chuẩn để người mua chọn size chính xác"
-              : "★ Automatically converted Chinese unit (1 Jin = 0.5 kg) for accurate international fit",
+              ? "Đơn vị tham chiếu: 1 斤 = 0,5 kg • Đối chiếu tài liệu nguồn trước khi sử dụng"
+              : "Reference conversion: 1 Jin = 0.5 kg • Verify against the source before use",
             targetW / 2,
             tableY + 48
           );
@@ -354,7 +336,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
         }
 
         // CÔNG CỤ B: XÓA & THAY THẾ TEM MÁC TIẾNG TRUNG
-        if (translateTool === "BADGE_REPLACER") {
+        if (translateTool === "BADGE_REPLACER" && customBadgeText.trim()) {
           const badgeW = 340;
           const badgeH = 68;
           let bx = 30;
@@ -453,21 +435,23 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
           ctx.fillStyle = grad;
           ctx.fillRect(0, 0, size, 70);
 
-          // Chữ thương hiệu trên cùng
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 26px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`★ ${shopBrandText} ★`, size / 2, 45);
+          if (shopBrandText.trim()) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 26px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(shopBrandText, size / 2, 45);
+          }
 
-          // Badge Freeship Xtra góc trái dưới
-          ctx.fillStyle = "#00bfa5";
-          ctx.beginPath();
-          ctx.roundRect(24, size - 110, 260, 65, 12);
-          ctx.fill();
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 24px sans-serif";
-          ctx.textAlign = "left";
-          ctx.fillText(`🚚 ${badgeText}`, 40, size - 68);
+          if (badgeText.trim()) {
+            ctx.fillStyle = "#00bfa5";
+            ctx.beginPath();
+            ctx.roundRect(24, size - 110, 260, 65, 12);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 24px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(badgeText, 40, size - 68);
+          }
 
           // Badge Giảm giá góc phải trên
           if (discountText) {
@@ -490,60 +474,66 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
           ctx.fillStyle = "#ff4500";
           ctx.fillRect(0, size - 90, size, 90);
 
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 34px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`🔥 ${badgeText} 🔥`, size / 2, size - 35);
+          if (badgeText.trim()) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 34px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(badgeText, size / 2, size - 35);
+          }
 
-          // Badge giảm giá vàng góc trên
-          ctx.fillStyle = "#ffcc00";
-          ctx.beginPath();
-          ctx.roundRect(24, 24, 180, 75, 16);
-          ctx.fill();
-          ctx.fillStyle = "#000000";
-          ctx.font = "extrabold 36px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(discountText, 114, 75);
+          if (discountText.trim()) {
+            ctx.fillStyle = "#ffcc00";
+            ctx.beginPath();
+            ctx.roundRect(24, 24, 180, 75, 16);
+            ctx.fill();
+            ctx.fillStyle = "#000000";
+            ctx.font = "extrabold 36px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(discountText, 114, 75);
+          }
         } else if (selectedTemplate === "VERIFIED_MALL") {
           // Viền Xanh Navy Luxury
           ctx.lineWidth = 22;
           ctx.strokeStyle = "#1e3a8a";
           ctx.strokeRect(11, 11, size - 22, size - 22);
 
-          // Badge góc trái
-          ctx.fillStyle = "#1e3a8a";
-          ctx.beginPath();
-          ctx.roundRect(24, 24, 280, 60, 10);
-          ctx.fill();
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 22px sans-serif";
-          ctx.textAlign = "left";
-          ctx.fillText(`🛡️ ${badgeText}`, 40, 62);
+          if (badgeText.trim()) {
+            ctx.fillStyle = "#1e3a8a";
+            ctx.beginPath();
+            ctx.roundRect(24, 24, 280, 60, 10);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 22px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(badgeText, 40, 62);
+          }
 
-          // Badge góc phải đáy
-          ctx.fillStyle = "#d97706";
-          ctx.beginPath();
-          ctx.roundRect(size - 280, size - 85, 256, 60, 10);
-          ctx.fill();
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 22px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`✨ ${shopBrandText}`, size - 152, size - 48);
+          if (shopBrandText.trim()) {
+            ctx.fillStyle = "#d97706";
+            ctx.beginPath();
+            ctx.roundRect(size - 280, size - 85, 256, 60, 10);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 22px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(shopBrandText, size - 152, size - 48);
+          }
         } else if (selectedTemplate === "LUXURY_MINIMAL") {
           // Viền Trắng Bo Góc
           ctx.lineWidth = 16;
           ctx.strokeStyle = "#ffffff";
           ctx.strokeRect(8, 8, size - 16, size - 16);
 
-          // Tag thanh lịch giữa đáy
-          ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-          ctx.beginPath();
-          ctx.roundRect(size / 2 - 160, size - 80, 320, 55, 28);
-          ctx.fill();
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "600 20px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(`• ${badgeText} •`, size / 2, size - 45);
+          if (badgeText.trim()) {
+            ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+            ctx.beginPath();
+            ctx.roundRect(size / 2 - 160, size - 80, 320, 55, 28);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "600 20px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(badgeText, size / 2, size - 45);
+          }
         }
       }
     };
@@ -578,6 +568,10 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
 
   // Tải ảnh PNG về máy
   const handleDownload = () => {
+    if (!canExport) {
+      onShowToast("Hãy nhập và xác minh đầy đủ dữ liệu trước khi xuất ảnh", "error");
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const url = canvas.toDataURL("image/png");
@@ -592,6 +586,10 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
 
   // Áp dụng làm ảnh chính sản phẩm
   const handleApplyAsPrimary = () => {
+    if (!canExport) {
+      onShowToast("Hãy nhập và xác minh đầy đủ dữ liệu trước khi áp dụng ảnh", "error");
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     setIsApplying(true);
@@ -609,6 +607,10 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
 
   // Áp dụng thay thế trực tiếp ảnh đang chọn (Gallery / Detail image)
   const handleApplyToCurrentSlot = () => {
+    if (!canExport) {
+      onShowToast("Hãy nhập và xác minh đầy đủ dữ liệu trước khi áp dụng ảnh", "error");
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     setIsApplying(true);
@@ -870,13 +872,13 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                   </button>
                 </div>
 
-                {/* CHI TIẾT CÔNG CỤ 1: BẢNG SIZE CHUẨN */}
+                {/* CHI TIẾT CÔNG CỤ 1: BẢNG SIZE */}
                 {translateTool === "SIZE_CHART" && (
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-3">
                       <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                         <Table className="w-3.5 h-3.5 text-orange-600" />
-                        Tùy Biến Bảng Size Thông Số ({targetLanguage === "VI" ? "Tiếng Việt" : "English"}):
+                        Bảng size từ dữ liệu đã xác minh ({targetLanguage === "VI" ? "Tiếng Việt" : "English"})
                       </label>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] text-slate-500">Vị trí:</span>
@@ -902,6 +904,19 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                       </div>
                     </div>
 
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <p className="text-[11px] leading-relaxed text-amber-900">
+                        Không có số đo mẫu. Chỉ nhập thông số từ tài liệu của nhà cung cấp và kiểm tra lại trước khi dùng.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setSizeRows(rows => [...rows, { size: "", bust: 0, length: 0, shoulder: 0, weightJin: "", weightKg: "" }])}
+                        className="shrink-0 rounded-md bg-amber-900 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-amber-800"
+                      >
+                        + Thêm dòng
+                      </button>
+                    </div>
+
                     {/* Bảng chỉnh sửa nhanh các dòng size */}
                     <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-48 overflow-y-auto">
                       <table className="w-full text-xs text-left">
@@ -912,6 +927,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                             <th className="p-1.5">Dài (cm)</th>
                             <th className="p-1.5">Vai (cm)</th>
                             <th className="p-1.5">Cân nặng (kg)</th>
+                            <th className="p-1.5 w-8"><span className="sr-only">Xóa</span></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -932,10 +948,12 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                               <td className="p-1">
                                 <input
                                   type="number"
-                                  value={row.bust}
+                                  min="0.1"
+                                  step="0.1"
+                                  value={row.bust || ""}
                                   onChange={(e) => {
                                     const next = [...sizeRows];
-                                    next[idx].bust = parseInt(e.target.value) || 0;
+                                    next[idx].bust = parseFloat(e.target.value) || 0;
                                     setSizeRows(next);
                                   }}
                                   className="w-14 text-xs border border-slate-200 rounded p-0.5"
@@ -944,10 +962,12 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                               <td className="p-1">
                                 <input
                                   type="number"
-                                  value={row.length}
+                                  min="0.1"
+                                  step="0.1"
+                                  value={row.length || ""}
                                   onChange={(e) => {
                                     const next = [...sizeRows];
-                                    next[idx].length = parseInt(e.target.value) || 0;
+                                    next[idx].length = parseFloat(e.target.value) || 0;
                                     setSizeRows(next);
                                   }}
                                   className="w-14 text-xs border border-slate-200 rounded p-0.5"
@@ -956,7 +976,9 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                               <td className="p-1">
                                 <input
                                   type="number"
-                                  value={row.shoulder}
+                                  min="0.1"
+                                  step="0.1"
+                                  value={row.shoulder || ""}
                                   onChange={(e) => {
                                     const next = [...sizeRows];
                                     next[idx].shoulder = parseFloat(e.target.value) || 0;
@@ -977,14 +999,31 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                                   className="w-20 font-bold text-emerald-700 text-xs border border-slate-200 rounded p-0.5"
                                 />
                               </td>
+                              <td className="p-1 text-center">
+                                <button
+                                  type="button"
+                                  aria-label={`Xóa dòng size ${row.size || idx + 1}`}
+                                  onClick={() => setSizeRows(rows => rows.filter((_, rowIndex) => rowIndex !== idx))}
+                                  className="w-6 h-6 rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                  ×
+                                </button>
+                              </td>
                             </tr>
                           ))}
+                          {sizeRows.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="px-3 py-6 text-center text-[11px] text-slate-500">
+                                Chưa có dữ liệu. Chọn “Thêm dòng” để nhập số đo đã kiểm chứng.
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
 
                     <p className="text-[11px] text-slate-500 italic">
-                      💡 Mẹo: Bảng size được render đè trực tiếp lên bảng size tiếng Trung gốc trên ảnh, chữ to rõ nét để khách hàng trên điện thoại dễ đọc.
+                      Bảng chỉ được render khi mọi dòng có đủ size, số đo và khoảng cân nặng.
                     </p>
                   </div>
                 )}
@@ -993,8 +1032,12 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                 {translateTool === "BADGE_REPLACER" && (
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <label className="block text-xs font-bold text-slate-800">
-                      Chọn Tem Mác Tiếng Trung Muốn Thay Thế (Chinese Badge Presets):
+                      Chọn nhóm thông tin cần dịch hoặc tự nhập
                     </label>
+
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                      Công cụ không tự tạo cam kết bán hàng. Hãy đối chiếu ảnh nguồn và chính sách cửa hàng trước khi xuất ảnh.
+                    </p>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {CHINESE_BADGE_PRESETS.map((preset) => (
@@ -1012,7 +1055,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                           }`}
                         >
                           <span className="text-[10px] text-slate-400 font-mono block">
-                            Chữ gốc: {preset.cnText}
+                            Gợi ý nguồn: {preset.cnText}
                           </span>
                           <span className="text-xs font-bold text-slate-800 block truncate mt-0.5">
                             {targetLanguage === "VI" ? preset.textVI : preset.textEN}
@@ -1030,6 +1073,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                           type="text"
                           value={customBadgeText}
                           onChange={(e) => setCustomBadgeText(e.target.value)}
+                          placeholder="Nhập bản dịch đã đối chiếu"
                           className="w-full text-xs px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                         />
                       </div>
@@ -1168,34 +1212,37 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
             {/* 2. NẾU Ở CHẾ ĐỘ ĐÓNG KHUNG PROMO (FRAME MODE) */}
             {studioMode === "FRAME" && (
               <div className="space-y-4">
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-relaxed text-amber-900">
+                  Khung chỉ cung cấp bố cục. Nội dung về giảm giá, vận chuyển, thương hiệu hoặc kiểm định phải được xác minh trước khi nhập.
+                </p>
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-2">
-                    Chọn Mẫu Khung Viền Thương Mại (Frames):
+                    Chọn bố cục khung:
                   </label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {[
                       {
                         id: "FREESHIP_XTRA",
-                        name: "Freeship Xtra",
-                        desc: "Viền đỏ cam phong cách Shopee Mall",
+                        name: "Cam thương mại",
+                        desc: "Header và nhãn góc, không kèm nội dung mặc định",
                         icon: <Truck className="w-4 h-4 text-orange-600" />
                       },
                       {
                         id: "FLASH_SALE",
-                        name: "Flash Sale Neon",
-                        desc: "Khung cam rực lửa, tăng click",
+                        name: "Cam tương phản",
+                        desc: "Banner đáy và ô thông tin góc trên",
                         icon: <Flame className="w-4 h-4 text-rose-600" />
                       },
                       {
                         id: "VERIFIED_MALL",
-                        name: "Xưởng 1688 Kiểm Định",
-                        desc: "Viền xanh navy sang trọng, uy tín",
+                        name: "Navy hai nhãn",
+                        desc: "Hai vùng nội dung độc lập trên nền xanh navy",
                         icon: <ShieldCheck className="w-4 h-4 text-blue-600" />
                       },
                       {
                         id: "LUXURY_MINIMAL",
-                        name: "Minimalist Cao Cấp",
-                        desc: "Viền trắng thanh lịch phong cách Hàn Quốc",
+                        name: "Tối giản",
+                        desc: "Viền trắng và một nhãn nội dung tùy chọn",
                         icon: <Sparkles className="w-4 h-4 text-slate-800" />
                       }
                     ].map(tmpl => (
@@ -1228,7 +1275,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                       type="text"
                       value={badgeText}
                       onChange={(e) => setBadgeText(e.target.value)}
-                      placeholder="FREESHIP XTRA hoặc FLASH SALE"
+                      placeholder="Nhập nội dung đã xác minh"
                       className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                     />
                   </div>
@@ -1242,7 +1289,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                         type="text"
                         value={discountText}
                         onChange={(e) => setDiscountText(e.target.value)}
-                        placeholder="-45% hoặc GIẢM 50K"
+                        placeholder="Chỉ nhập ưu đãi đang có hiệu lực"
                         className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                       />
                     </div>
@@ -1254,7 +1301,7 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
                         type="text"
                         value={shopBrandText}
                         onChange={(e) => setShopBrandText(e.target.value)}
-                        placeholder="MALL CHÍNH HÃNG"
+                        placeholder="Tên cửa hàng hoặc tagline đã duyệt"
                         className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                       />
                     </div>
@@ -1267,8 +1314,9 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
             <div className="pt-4 border-t border-slate-100 flex flex-wrap gap-2 justify-end">
               <button
                 type="button"
+                disabled={!canExport}
                 onClick={handleDownload}
-                className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
               >
                 <Download className="w-4 h-4" />
                 Tải Ảnh PNG Về Máy
@@ -1277,9 +1325,9 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
               {/* Nút 1: Áp dụng thay thế ảnh đang chọn (Gallery hoặc Bảng size) */}
               <button
                 type="button"
-                disabled={isApplying}
+                disabled={isApplying || !canExport}
                 onClick={handleApplyToCurrentSlot}
-                className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-all"
+                className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-all"
                 title="Thay thế ảnh vừa dịch vào vị trí ảnh này trong sản phẩm"
               >
                 <Check className="w-4 h-4" />
@@ -1289,9 +1337,9 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
               {/* Nút 2: Áp dụng làm ảnh bìa chính */}
               <button
                 type="button"
-                disabled={isApplying}
+                disabled={isApplying || !canExport}
                 onClick={handleApplyAsPrimary}
-                className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 transition-all"
+                className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-1.5 transition-all"
                 title="Đặt ảnh đã xử lý này làm ảnh bìa chính (Avatar) của sản phẩm"
               >
                 <CheckCircle className="w-4 h-4" />

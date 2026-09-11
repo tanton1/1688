@@ -140,7 +140,7 @@ export class ImportController {
     if (Array.isArray(normalized.variants) && normalized.variants.length > 0) {
       // Ưu tiên sử dụng danh sách biến thể được chuẩn hóa từ Extension (đã bóc tách đủ hình ảnh mẫu & SKU)
       const mappedVariants: WebProductVariant[] = normalized.variants.map((nv, idx) => {
-        const pricing = pricingService.calculate(nv.priceCNY || raw.prices?.minPriceCNY || 30, pricingRule.id);
+        const pricing = pricingService.calculate(nv.priceCNY, pricingRule.id);
         const costVND = pricing.totalCostVND;
         const sellVND = pricing.finalSellingPriceVND;
         const isSelected = settings.selectedSkuIds && settings.selectedSkuIds.length > 0
@@ -235,13 +235,13 @@ export class ImportController {
       // Tiếng Việt
       titleVI: finalTitle,
       titleVariants,
-      shortDescVI: `Sản phẩm ${finalTitle} nhập chính hãng nguồn 1688`,
+      shortDescVI: `Bản nháp được tạo từ dữ liệu nguồn 1688; cần kiểm tra trước khi đăng bán.`,
       fullDescVI: structuredDesc,
 
       // Tiếng Anh
       titleEN: finalTitleEN,
       titleVariantsEN,
-      shortDescEN: `High-quality ${finalTitleEN} imported directly from verified 1688 manufacturer`,
+      shortDescEN: `Draft created from 1688 source data; review before publishing.`,
       fullDescEN: structuredDescEN,
       displayLanguage: settings.targetLanguage === "en" ? "EN" : "VI",
 
@@ -307,10 +307,10 @@ export class ImportController {
     if (supabaseService.isConfigured()) {
       try {
         const supplierId = await supabaseService.upsertSupplier(normalized.supplier);
-        if (supplierId) {
-          await supabaseService.saveSourceProduct(normalized, supplierId);
-        }
-        await supabaseService.saveWebProduct(newProduct);
+        if (!supplierId) throw new Error("SUPPLIER_PERSISTENCE_FAILED");
+        const sourceId = await supabaseService.saveSourceProduct(normalized, supplierId);
+        if (!sourceId) throw new Error("SOURCE_PERSISTENCE_FAILED");
+        if (!(await supabaseService.saveWebProduct(newProduct))) throw new Error("PRODUCT_PERSISTENCE_FAILED");
       } catch (dbErr) {
         inMemoryProducts.delete(productId);
         console.error("[Supabase save error]", dbErr);
@@ -336,7 +336,7 @@ export class ImportController {
       return;
     }
 
-    const jobId = `job_${Date.now()}`;
+    const jobId = crypto.randomUUID();
     const jobStatus: ImportJobStatus = {
       jobId,
       totalItems: offerIds.length,
@@ -347,10 +347,15 @@ export class ImportController {
     };
 
     inMemoryJobs.set(jobId, jobStatus);
+    if (supabaseService.isConfigured() && !(await supabaseService.saveImportJob(jobStatus))) {
+      inMemoryJobs.delete(jobId);
+      res.status(503).json({ error: "PERSISTENCE_FAILED" });
+      return;
+    }
 
     // Bulk extraction must be performed by the authenticated extension so its DOM
     // adapters can send normalized products. Never manufacture catalog data here.
-    queueMicrotask(() => {
+    queueMicrotask(async () => {
       for (const offerId of offerIds) {
         jobStatus.results.push({
           offerId,
@@ -361,6 +366,10 @@ export class ImportController {
         jobStatus.completedItems++;
       }
       jobStatus.status = "FAILED";
+      if (supabaseService.isConfigured()) {
+        const persisted = await supabaseService.saveImportJob(jobStatus);
+        if (!persisted) console.error("[importBulk] Không thể cập nhật trạng thái job", jobId);
+      }
     });
 
     res.status(202).json({
@@ -372,7 +381,9 @@ export class ImportController {
 
   public async getJobStatus(req: Request, res: Response): Promise<void> {
     const { jobId } = req.params;
-    const job = inMemoryJobs.get(jobId);
+    const job = supabaseService.isConfigured()
+      ? await supabaseService.getImportJob(jobId)
+      : inMemoryJobs.get(jobId);
     if (!job) {
       res.status(404).json({ error: "Job not found" });
       return;

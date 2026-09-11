@@ -9,20 +9,13 @@ import {
   Check,
   Truck,
   ShieldCheck,
-  RotateCcw,
   Video,
   Sparkles,
   Gift,
-  Clock,
-  Star,
-  Flame,
-  CheckCircle2,
-  ImageIcon,
-  Share2
+  Star
 } from "lucide-react";
 
 interface StoreProductDetailModalProps {
-  isOpen: boolean;
   product: WebProduct;
   onClose: () => void;
   onAddToCart: (
@@ -44,14 +37,12 @@ interface StoreProductDetailModalProps {
 }
 
 export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = ({
-  isOpen,
   product,
   onClose,
   onAddToCart,
   onBuyNow
 }) => {
-  const dialogRef = useAccessibleDialog<HTMLDivElement>(isOpen, onClose);
-  if (!isOpen) return null;
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(true, onClose);
 
   const validVariants = (product.variants || []).filter(v => v.selectedForSale !== false);
   const [selectedVariant, setSelectedVariant] = useState<WebProductVariant>(validVariants[0] || product.variants[0]);
@@ -115,9 +106,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const discountPercent = activeDiscountTier?.discountPercent || 0;
   const currentPrice = Math.round(basePrice * (1 - discountPercent / 100));
-  const originalPrice = Math.round((basePrice * 1.32) / 1000) * 1000;
   const currentStock = selectedVariant?.stockQuantity ?? 0;
   const isOutOfStock = currentStock <= 0;
+  const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
 
   // Add-ons total calculation
   const addonsTotal = (product.giftAddons || [])
@@ -154,7 +145,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     onBuyNow(selectedVariant, quantity, product, customizationValues, renderedPreviewUrl, selectedAddons);
   };
 
-  const totalPriceCalculated = currentPrice * quantity + addonsTotal;
+  const totalPriceCalculated = (currentPrice + addonsTotal) * quantity;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/75 backdrop-blur-xs flex items-center justify-center sm:p-4 lg:p-6 animate-in fade-in duration-200">
@@ -199,7 +190,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10">
                 {product.isPersonalized && (
                   <span className="bg-orange-600/95 backdrop-blur-xs text-white font-black text-[10px] px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 uppercase tracking-wider">
-                    <Sparkles size={11} /> Cá Nhân Hóa 100%
+                    <Sparkles size={11} /> Có thể cá nhân hóa
                   </span>
                 )}
                 {discountPercent > 0 && (
@@ -243,22 +234,24 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               ))}
             </div>
 
-            {/* Urgency & Guarantee banner */}
+            {/* Verified availability and policies */}
             <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-3 sm:p-3.5 space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-bold text-orange-950">
-                <Flame size={15} className="text-orange-600 fill-orange-500 shrink-0" />
-                <span>Hơn 1,200+ khách hàng đã đánh giá 5 sao cho sản phẩm này</span>
+                <ShoppingBag size={15} className="text-orange-600 shrink-0" />
+                <span>{isOutOfStock ? "Phân loại này đang tạm hết hàng" : `Tồn kho hiện tại: ${currentStock.toLocaleString("vi-VN")} sản phẩm`}</span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-stone-700">
-                <Clock size={13} className="text-stone-500 shrink-0" />
-                <span>
-                  Đặt trong <strong>02h 15m</strong> tới để được ưu tiên lên khuôn in sớm nhất
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-stone-700">
-                <Truck size={13} className="text-emerald-600 shrink-0" />
-                <span>Miễn phí vận chuyển toàn quốc cho đơn từ 500.000đ</span>
-              </div>
+              {product.shippingPolicy && (
+                <div className="flex items-start gap-2 text-[11px] text-stone-700">
+                  <Truck size={13} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{product.shippingPolicy}</span>
+                </div>
+              )}
+              {product.warrantyPolicy && (
+                <div className="flex items-start gap-2 text-[11px] text-stone-700">
+                  <ShieldCheck size={13} className="text-blue-600 shrink-0 mt-0.5" />
+                  <span>{product.warrantyPolicy}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -272,13 +265,15 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 </span>
 
                 <div className="flex items-center gap-1 text-xs">
-                  <div className="flex text-amber-400">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={13} className="fill-current" />
-                    ))}
-                  </div>
-                  <span className="font-extrabold text-stone-900">{product.rating || 4.9}</span>
-                  <span className="text-stone-400 text-[11px]">({product.reviewCount || 1200} đánh giá)</span>
+                  {hasReviews ? (
+                    <>
+                      <Star size={13} className="fill-current text-amber-400" />
+                      <span className="font-extrabold text-stone-900">{product.rating}</span>
+                      <span className="text-stone-400 text-[11px]">({product.reviewCount} đánh giá)</span>
+                    </>
+                  ) : (
+                    <span className="text-stone-400 text-[11px]">Chưa có đánh giá</span>
+                  )}
                 </div>
               </div>
 
@@ -292,11 +287,6 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 <span className="text-2xl sm:text-3xl font-black text-orange-600 tracking-tight">
                   {currentPrice.toLocaleString("vi-VN")}đ
                 </span>
-                {originalPrice > currentPrice && (
-                  <span className="text-xs sm:text-sm font-medium text-stone-400 line-through">
-                    {originalPrice.toLocaleString("vi-VN")}đ
-                  </span>
-                )}
                 {discountPercent > 0 && (
                   <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md">
                     Tiết kiệm {discountPercent}%
@@ -440,6 +430,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     <button
                       type="button"
                       onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      aria-label="Giảm số lượng"
                       className="px-3 py-1.5 hover:bg-stone-200 font-bold text-stone-700 transition-colors text-sm cursor-pointer"
                     >
                       -
@@ -449,7 +440,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     </span>
                     <button
                       type="button"
-                      onClick={() => setQuantity((q) => q + 1)}
+                      disabled={isOutOfStock || quantity >= currentStock}
+                      onClick={() => setQuantity((q) => Math.min(currentStock, q + 1))}
+                      aria-label="Tăng số lượng"
                       className="px-3 py-1.5 hover:bg-stone-200 font-bold text-stone-700 transition-colors text-sm cursor-pointer"
                     >
                       +
@@ -529,7 +522,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               }`}
             >
               <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-              <span>Đánh Giá Khách Hàng ({product.reviewCount || 1200})</span>
+              <span>Đánh Giá Khách Hàng ({product.reviewCount || 0})</span>
             </button>
           </div>
 
@@ -538,12 +531,15 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             <div className="text-xs text-stone-700 leading-relaxed space-y-3 max-h-60 sm:max-h-72 overflow-y-auto pr-2 whitespace-pre-line">
               {product.fullDescVI ||
                 product.shortDescVI ||
-                "Sản phẩm được gia công tỉ mỉ bằng công nghệ in UV và cắt laser độ nét cao, bảo đảm sắc nét và bền bỉ theo thời gian."}
+                "Chưa có mô tả chi tiết cho sản phẩm này."}
             </div>
           )}
 
           {activeTab === "specs" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              {(!product.attributes || product.attributes.length === 0) && (
+                <div className="sm:col-span-2 p-3 text-center text-stone-500 bg-white border border-stone-200 rounded-xl">Chưa có thông số kỹ thuật.</div>
+              )}
               {(product.attributes || []).map((attr, idx) => (
                 <div key={idx} className="flex p-2 rounded-lg bg-white border border-stone-200/80">
                   <span className="font-semibold text-stone-500 w-1/3 truncate">{attr.keyVI || attr.keyCN}:</span>
@@ -555,36 +551,16 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
           {activeTab === "reviews" && (
             <div className="space-y-2.5 max-h-60 sm:max-h-72 overflow-y-auto pr-2">
-              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 font-bold text-stone-800">
-                    <span>Nguyễn Thùy Dung</span>
-                    <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                      <CheckCircle2 size={10} /> Đã mua hàng
-                    </span>
-                  </div>
-                  <div className="flex text-amber-400 text-xs">★★★★★</div>
-                </div>
-                <p className="text-xs text-stone-600">
-                  "Sản phẩm đẹp hơn cả mong đợi! Biển đèn LED phát sáng rất ấm áp, chữ khắc laser sắc nét. Bạn mình nhận quà thích mê ly. Sẽ tiếp tục ủng hộ shop!"
-                </p>
-                <span className="text-[10px] text-stone-400">2 ngày trước • Đã mua: Đế Gỗ LED Vàng Ấm</span>
-              </div>
-
-              <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 font-bold text-stone-800">
-                    <span>Trần Quốc Bảo</span>
-                    <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                      <CheckCircle2 size={10} /> Đã mua hàng
-                    </span>
-                  </div>
-                  <div className="flex text-amber-400 text-xs">★★★★★</div>
-                </div>
-                <p className="text-xs text-stone-600">
-                  "Ly giữ nhiệt in hình 2 đứa bạn thân giống y xì đúc trên bản dựng preview luôn. Đóng gói hộp quà rất sang trọng, giao nhanh kịp sinh nhật."
-                </p>
-                <span className="text-[10px] text-stone-400">5 ngày trước • Đã mua: Ly 20oz Skinny</span>
+              <div className="p-4 bg-white rounded-xl border border-stone-200 text-center space-y-1">
+                {hasReviews ? (
+                  <>
+                    <div className="flex items-center justify-center gap-1 text-amber-500"><Star size={16} className="fill-current" /><strong>{product.rating}/5</strong></div>
+                    <p className="text-xs text-stone-600">Tổng hợp từ {product.reviewCount} lượt đánh giá đã ghi nhận.</p>
+                    <p className="text-[10px] text-stone-400">Nội dung từng đánh giá chưa được công khai qua API.</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-stone-500">Sản phẩm này chưa có đánh giá.</p>
+                )}
               </div>
             </div>
           )}

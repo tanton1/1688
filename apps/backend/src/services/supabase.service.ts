@@ -7,7 +7,10 @@ import {
   ExistingProductCheckResult,
   CustomerOrder,
   PricingRuleConfig,
-  ProductTemplate
+  ProductTemplate,
+  ImportJobStatus,
+  ProductDiffSummary,
+  Raw1688Product
 } from "@hub1688/shared-types";
 import { ENV } from "../config/env.js";
 
@@ -43,8 +46,28 @@ export class SupabaseDataService {
       totalAmountVND: Number(row.total_amount_vnd) || 0, totalCostVND: Number(row.total_cost_vnd) || 0,
       estimatedProfitVND: Number(row.estimated_profit_vnd) || 0, status: row.status,
       paymentMethod: row.payment_method, paymentStatus: row.payment_status,
-      note: row.note, createdAt: row.created_at, updatedAt: row.updated_at
+      note: row.note, giftAddonsSelected: row.gift_addons_json || [], discountCode: row.discount_code,
+      discountAmountVND: Number(row.discount_amount_vnd) || 0, shippingFeeVND: Number(row.shipping_fee_vnd) || 0,
+      createdAt: row.created_at, updatedAt: row.updated_at
     })) as CustomerOrder[];
+  }
+
+  public async getOrderForTracking(orderNumber: string, customerPhone: string): Promise<CustomerOrder | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("customer_orders")
+      .select("*").ilike("order_number", orderNumber).maybeSingle();
+    if (error || !data) return null;
+    if ((data.customer_phone || "").replace(/\D/g, "") !== customerPhone) return null;
+    return {
+      id: data.id, orderNumber: data.order_number, platform: data.platform,
+      customerName: data.customer_name, customerPhone: data.customer_phone, customerAddress: data.customer_address,
+      items: data.items_json || [], totalAmountVND: Number(data.total_amount_vnd) || 0,
+      totalCostVND: Number(data.total_cost_vnd) || 0, estimatedProfitVND: Number(data.estimated_profit_vnd) || 0,
+      status: data.status, paymentMethod: data.payment_method, paymentStatus: data.payment_status,
+      note: data.note, giftAddonsSelected: data.gift_addons_json || [], discountCode: data.discount_code,
+      discountAmountVND: Number(data.discount_amount_vnd) || 0, shippingFeeVND: Number(data.shipping_fee_vnd) || 0,
+      createdAt: data.created_at, updatedAt: data.updated_at
+    } as CustomerOrder;
   }
 
   public async saveOrder(order: CustomerOrder): Promise<boolean> {
@@ -56,9 +79,26 @@ export class SupabaseDataService {
       total_amount_vnd: order.totalAmountVND, total_cost_vnd: order.totalCostVND,
       estimated_profit_vnd: order.estimatedProfitVND, status: order.status,
       payment_method: order.paymentMethod || null, payment_status: order.paymentStatus || null,
-      note: order.note || null, created_at: order.createdAt, updated_at: order.updatedAt
+      note: order.note || null, gift_addons_json: order.giftAddonsSelected || [],
+      discount_code: order.discountCode || null, discount_amount_vnd: order.discountAmountVND || 0,
+      shipping_fee_vnd: order.shippingFeeVND || 0,
+      created_at: order.createdAt, updated_at: order.updatedAt
     }, { onConflict: "id" });
     return !error;
+  }
+
+  public async createStorefrontOrderAtomic(order: CustomerOrder, reservations: Array<{ productId: string; sourceSkuId: string; quantity: number; expectedBasePriceVND: number }>): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.rpc("create_storefront_order_atomic", {
+      p_order: order,
+      p_reservations: reservations
+    });
+    if (error) {
+      console.error("[Supabase atomic checkout]", error);
+      if (error.message.includes("STOCK_OR_PRICE_CHANGED")) throw new Error("STOCK_OR_PRICE_CHANGED");
+      return false;
+    }
+    return true;
   }
 
   public async deleteOrder(id: string): Promise<boolean> {
@@ -157,6 +197,63 @@ export class SupabaseDataService {
     return !error;
   }
 
+  public async saveImportJob(job: ImportJobStatus): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("import_jobs").upsert({
+      id: job.jobId,
+      status: job.status,
+      total_items: job.totalItems,
+      completed_items: job.completedItems,
+      failed_items: job.failedItems,
+      results_json: job.results,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "id" });
+    return !error;
+  }
+
+  public async getImportJob(jobId: string): Promise<ImportJobStatus | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("import_jobs").select("*").eq("id", jobId).maybeSingle();
+    if (error || !data) return null;
+    return {
+      jobId: data.id,
+      status: data.status,
+      totalItems: data.total_items,
+      completedItems: data.completed_items,
+      failedItems: data.failed_items,
+      results: data.results_json || []
+    } as ImportJobStatus;
+  }
+
+  public async saveDiffLog(summary: ProductDiffSummary, snapshot: Raw1688Product): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client.from("sync_logs").insert({
+      product_id: summary.webProductId,
+      event_type: summary.hasUnavailableSku ? "SKU_REMOVED" : summary.hasPriceChange ? "PRICE_CHANGED" : "REVIEW_REQUIRED",
+      old_value_json: summary,
+      new_value_json: snapshot,
+      diff_summary: summary.changes.map(change => change.fieldName).join(", "),
+      status: "PENDING_REVIEW",
+      created_at: summary.detectedAt
+    });
+    return !error;
+  }
+
+  public async listPendingDiffLogs(): Promise<Array<{ summary: ProductDiffSummary; snapshot: Raw1688Product }> | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("sync_logs")
+      .select("old_value_json,new_value_json").eq("status", "PENDING_REVIEW").order("created_at", { ascending: false });
+    if (error || !data) return null;
+    return data.map(row => ({ summary: row.old_value_json as ProductDiffSummary, snapshot: row.new_value_json as Raw1688Product }));
+  }
+
+  public async resolveDiffLog(webProductId: string, status: "APPLIED" | "IGNORED"): Promise<boolean> {
+    if (!this.client) return false;
+    const { data, error } = await this.client.from("sync_logs").update({ status })
+      .eq("product_id", webProductId).eq("status", "PENDING_REVIEW").select("id");
+    return !error && Boolean(data?.length);
+  }
+
   /**
    * Lấy danh sách sản phẩm từ Supabase kèm bộ lọc
    */
@@ -165,6 +262,8 @@ export class SupabaseDataService {
     category?: string;
     search?: string;
     minQuality?: number;
+    maxQuality?: number;
+    media?: string;
     sort?: string;
     page?: number;
     pageSize?: number;
@@ -185,6 +284,11 @@ export class SupabaseDataService {
       if (params?.minQuality) {
         query = query.gte("quality_score", params.minQuality);
       }
+      if (params?.maxQuality !== undefined) {
+        query = query.lte("quality_score", params.maxQuality);
+      }
+      if (params?.media === "VIDEO_ONLY") query = query.not("video_url", "is", null);
+      if (params?.media === "NO_VIDEO") query = query.is("video_url", null);
       if (params?.search?.trim()) {
         const escaped = params.search.trim().replace(/[,%()]/g, "");
         query = query.or(`title_vi.ilike.%${escaped}%,title_en.ilike.%${escaped}%,sku_code.ilike.%${escaped}%,source_product_id.ilike.%${escaped}%,supplier_name.ilike.%${escaped}%`);
@@ -196,6 +300,8 @@ export class SupabaseDataService {
         query = query.order("min_price_vnd", { ascending: false });
       } else if (params?.sort === "QUALITY_DESC") {
         query = query.order("quality_score", { ascending: false });
+      } else if (params?.sort === "UPDATED_ASC") {
+        query = query.order("updated_at", { ascending: true });
       } else {
         query = query.order("updated_at", { ascending: false });
       }
@@ -235,6 +341,19 @@ export class SupabaseDataService {
       return this.mapDbRowToWebProduct(data);
     } catch (err) {
       console.error("[Supabase getProductById exception]", err);
+      return null;
+    }
+  }
+
+  public async getProductBySourceId(sourceProductId: string): Promise<WebProduct | null> {
+    if (!this.client) return null;
+    try {
+      const { data, error } = await this.client.from("products")
+        .select("*, product_variants(*)").eq("source_product_id", sourceProductId).maybeSingle();
+      if (error || !data) return null;
+      return this.mapDbRowToWebProduct(data);
+    } catch (error) {
+      console.error("[Supabase getProductBySourceId exception]", error);
       return null;
     }
   }
@@ -299,7 +418,7 @@ export class SupabaseDataService {
           shop_name: shop.shopName,
           company_name: shop.companyName,
           shop_url: shop.shopUrl,
-          rating_score: shop.ratingScore || 4.8,
+          rating_score: shop.ratingScore ?? null,
           updated_at: new Date().toISOString()
         },
         { onConflict: "source_platform, shop_id" }
@@ -404,6 +523,15 @@ export class SupabaseDataService {
         images_seo: product.imagesSEO || [],
         faqs_json: product.faqs || [],
         store_sync_history: product.storeSyncHistory || [],
+        is_personalized: Boolean(product.isPersonalized),
+        personalization_fields: product.personalizationFields || [],
+        customizer_template_url: product.customizerMockupTemplateUrl || null,
+        volume_discount_tiers: product.volumeDiscountTiers || [],
+        gift_addons: product.giftAddons || [],
+        occasion_tags: product.occasionTags || [],
+        recipient_tags: product.recipientTags || [],
+        rating: product.rating ?? null,
+        review_count: product.reviewCount ?? 0,
         warranty_policy: product.warrantyPolicy || null,
         shipping_policy: product.shippingPolicy || null,
         source_platform: product.sourcePlatform || "1688",
@@ -489,6 +617,7 @@ export class SupabaseDataService {
         updated_at: new Date().toISOString()
       };
       if (updates.version !== undefined) dbUpdates.version = updates.version;
+      if (updates.slug !== undefined) dbUpdates.slug = updates.slug;
 
       if (updates.titleVI !== undefined) dbUpdates.title_vi = updates.titleVI;
       if (updates.titleEN !== undefined) dbUpdates.title_en = updates.titleEN;
@@ -513,6 +642,15 @@ export class SupabaseDataService {
       if (updates.imagesSEO !== undefined) dbUpdates.images_seo = updates.imagesSEO;
       if (updates.faqs !== undefined) dbUpdates.faqs_json = updates.faqs;
       if (updates.storeSyncHistory !== undefined) dbUpdates.store_sync_history = updates.storeSyncHistory;
+      if (updates.isPersonalized !== undefined) dbUpdates.is_personalized = updates.isPersonalized;
+      if (updates.personalizationFields !== undefined) dbUpdates.personalization_fields = updates.personalizationFields;
+      if (updates.customizerMockupTemplateUrl !== undefined) dbUpdates.customizer_template_url = updates.customizerMockupTemplateUrl;
+      if (updates.volumeDiscountTiers !== undefined) dbUpdates.volume_discount_tiers = updates.volumeDiscountTiers;
+      if (updates.giftAddons !== undefined) dbUpdates.gift_addons = updates.giftAddons;
+      if (updates.occasionTags !== undefined) dbUpdates.occasion_tags = updates.occasionTags;
+      if (updates.recipientTags !== undefined) dbUpdates.recipient_tags = updates.recipientTags;
+      if (updates.rating !== undefined) dbUpdates.rating = updates.rating;
+      if (updates.reviewCount !== undefined) dbUpdates.review_count = updates.reviewCount;
       if (updates.warrantyPolicy !== undefined) dbUpdates.warranty_policy = updates.warrantyPolicy;
       if (updates.shippingPolicy !== undefined) dbUpdates.shipping_policy = updates.shippingPolicy;
       if (updates.sourcePlatform !== undefined) dbUpdates.source_platform = updates.sourcePlatform;
@@ -647,6 +785,15 @@ export class SupabaseDataService {
       imagesSEO: row.images_seo || [],
       faqs: row.faqs_json || [],
       storeSyncHistory: row.store_sync_history || [],
+      isPersonalized: Boolean(row.is_personalized),
+      personalizationFields: row.personalization_fields || [],
+      customizerMockupTemplateUrl: row.customizer_template_url,
+      volumeDiscountTiers: row.volume_discount_tiers || [],
+      giftAddons: row.gift_addons || [],
+      occasionTags: row.occasion_tags || [],
+      recipientTags: row.recipient_tags || [],
+      rating: row.rating == null ? undefined : Number(row.rating),
+      reviewCount: Number(row.review_count) || 0,
       warrantyPolicy: row.warranty_policy,
       shippingPolicy: row.shipping_policy,
       status: row.status,

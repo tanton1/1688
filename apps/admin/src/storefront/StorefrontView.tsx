@@ -20,7 +20,6 @@ import {
   Layers,
   Sparkles,
   Phone,
-  Mail,
   MapPin,
   ShieldCheck,
   Truck,
@@ -43,13 +42,15 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 }) => {
   // Store Config
   const [config, setConfig] = useState<StorefrontConfig>({
-    storeName: "1688 SYNC STORE",
-    tagline: "Hàng xưởng sỉ cao cấp - Giá tận gốc",
-    hotline: "0988.888.888",
+    storeName: "1688 STORE",
+    tagline: "Cửa hàng trực tuyến",
+    hotline: "",
     freeShipThresholdVND: 500000,
-    bankName: "MBBank (Quân Đội)",
-    bankAccountNo: "888899991688",
-    bankAccountName: "CHU CUA HANG 1688"
+    shippingFeeVND: 30000,
+    discountRules: [],
+    bankName: "",
+    bankAccountNo: "",
+    bankAccountName: ""
   });
 
   // Products & Categories
@@ -69,7 +70,10 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem("hub1688_storefront_cart");
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed)
+        ? parsed.map(item => ({ ...item, maxQuantity: Number.isFinite(item.maxQuantity) ? item.maxQuantity : Number.MAX_SAFE_INTEGER }))
+        : [];
     } catch {
       return [];
     }
@@ -146,6 +150,11 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       setCatalogMode(STOREFRONT_DEMO_MODE && loadedProducts.length === 0 ? "DEMO" : "LIVE");
 
       setProducts(finalCatalog);
+      setCart(current => current.map(item => {
+        const product = finalCatalog.find(candidate => candidate.id === item.productId);
+        const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
+        return variant ? { ...item, maxQuantity: Math.max(0, variant.stockQuantity ?? 0) } : item;
+      }));
       const catSet = new Set(finalCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
 
@@ -203,7 +212,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       const existingIdx = prev.findIndex(item => item.skuCode === sku);
       if (existingIdx >= 0) {
         const next = [...prev];
-        next[existingIdx].quantity += quantity;
+        const nextQuantity = Math.min(variant.stockQuantity, next[existingIdx].quantity + quantity);
+        next[existingIdx] = {
+          ...next[existingIdx],
+          quantity: nextQuantity,
+          maxQuantity: variant.stockQuantity,
+          priceVND: calculateUnitPrice(product, variant, nextQuantity, giftAddonsSelected)
+        };
         return next;
       } else {
         const newItem: CartItem = {
@@ -214,7 +229,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           productTitle: product.titleVI,
           image: customizedPreviewUrl || variant.imageUrl || product.primaryImage,
           priceVND: price,
-          quantity,
+          quantity: Math.min(quantity, variant.stockQuantity),
+          maxQuantity: variant.stockQuantity,
           customizationData,
           customizedPreviewUrl,
           giftAddonsSelected
@@ -262,10 +278,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       if (item.skuCode !== skuCode) return item;
       const product = products.find(candidate => candidate.id === item.productId);
       const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
+      const maxQuantity = Math.max(0, variant?.stockQuantity ?? item.maxQuantity);
+      const nextQuantity = Math.min(qty, maxQuantity);
       return {
         ...item,
-        quantity: qty,
-        priceVND: product && variant ? calculateUnitPrice(product, variant, qty, item.giftAddonsSelected) : item.priceVND
+        quantity: nextQuantity,
+        maxQuantity,
+        priceVND: product && variant ? calculateUnitPrice(product, variant, nextQuantity, item.giftAddonsSelected) : item.priceVND
       };
     }));
   };
@@ -487,21 +506,21 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                 <span className="text-white font-extrabold text-sm">{config.storeName}</span>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-400">
-                {config.tagline || "Kênh phân phối nguồn hàng xưởng sỉ uy tín, giá tận gốc không qua trung gian."}
+                {config.tagline || "Cửa hàng trực tuyến"}
               </p>
               <div className="pt-1 flex items-center gap-2 text-emerald-400 font-bold text-[11px]">
                 <ShieldCheck className="w-4 h-4" />
-                <span>Kiểm định chất lượng 100%</span>
+                <span>Giá và tồn kho được xác nhận khi đặt hàng</span>
               </div>
             </div>
 
             {/* Contact Col */}
             <div className="space-y-2.5">
               <h4 className="text-white font-bold text-xs uppercase tracking-wider">Liên Hệ & Hỗ Trợ</h4>
-              <p className="flex items-center gap-2 text-[11px]">
+              {config.hotline && <p className="flex items-center gap-2 text-[11px]">
                 <Phone className="w-3.5 h-3.5 text-orange-500" />
                 <span>Hotline: <strong className="text-white">{config.hotline}</strong></span>
-              </p>
+              </p>}
               {config.address && (
                 <p className="flex items-start gap-2 text-[11px]">
                   <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
@@ -522,12 +541,12 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
             {/* Policy Col */}
             <div className="space-y-2">
-              <h4 className="text-white font-bold text-xs uppercase tracking-wider">Chính Sách Khách Hàng</h4>
+              <h4 className="text-white font-bold text-xs uppercase tracking-wider">Thông Tin Mua Hàng</h4>
               <ul className="space-y-1.5 text-[11px]">
-                <li className="hover:text-white cursor-pointer">Chính sách đồng kiểm khi nhận hàng</li>
-                <li className="hover:text-white cursor-pointer">Bảo hành đổi trả 7 ngày lỗi xưởng</li>
-                <li className="hover:text-white cursor-pointer">Chính sách ưu đãi khách sỉ / đại lý</li>
-                <li className="hover:text-white cursor-pointer">Bảo mật thông tin khách hàng</li>
+                <li>Tra cứu đơn bằng mã đơn và số điện thoại</li>
+                <li>Giá bán được tính lại tại máy chủ</li>
+                <li>Tồn kho được giữ khi tạo đơn thành công</li>
+                <li>Thông tin nội bộ nguồn hàng không công khai</li>
               </ul>
             </div>
 
@@ -535,16 +554,14 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             <div className="space-y-2.5">
               <h4 className="text-white font-bold text-xs uppercase tracking-wider">Thanh Toán An Toàn</h4>
               <div className="flex flex-wrap gap-2 text-[11px]">
-                <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+                {config.bankName && config.bankAccountNo && config.bankAccountName && <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
                   <QrCode className="w-3 h-3 text-emerald-400" /> VietQR Napas 247
-                </span>
+                </span>}
                 <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
                   <Truck className="w-3 h-3 text-orange-400" /> COD Tận Nhà
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 mt-2">
-                Được tích hợp trực tiếp từ hệ thống 1688 Sync Hub Pro
-              </p>
+              <p className="text-[10px] text-slate-500 mt-2">Phương thức khả dụng được xác nhận khi thanh toán.</p>
             </div>
           </div>
 
@@ -577,7 +594,6 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       />
 
       {detailProduct && <StoreProductDetailModal
-        isOpen={!!detailProduct}
         product={detailProduct}
         onClose={() => setDetailProduct(null)}
         onAddToCart={handleAddToCart}

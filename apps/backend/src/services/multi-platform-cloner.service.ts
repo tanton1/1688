@@ -287,7 +287,7 @@ export class MultiPlatformClonerService {
       const html = await this.fetchPageHtml(url);
       const extracted = parseHtmlProductMetadata(html);
 
-      if (extracted.title || extracted.images.length > 0) {
+      if (extracted.title && extracted.images.length > 0 && Number(extracted.price) > 0) {
         return this.formatExtractedToPreviewResponse(url, platform, productId, extracted);
       }
     } catch {
@@ -308,6 +308,7 @@ export class MultiPlatformClonerService {
   public async executeClone(request: CloneExecuteRequest): Promise<WebProduct> {
     const preview = await this.previewProduct(request.url, request.platform);
     if (preview.isDemo) throw new Error("DEMO_DATA_CANNOT_BE_IMPORTED");
+    if (preview.extractionStatus !== "LIVE") throw new Error("EXTRACTION_NOT_VERIFIED");
 
     const titleVI = request.customTitle || preview.translatedTitleVI;
     const titleEN = preview.translatedTitleEN || titleVI;
@@ -317,19 +318,15 @@ export class MultiPlatformClonerService {
 
     // Tạo variants hoàn chỉnh
     const variants: WebProductVariant[] = preview.variants.map((v, idx) => {
-      let vCostVND = preview.estimatedCostVND;
+      let vCostVND = preview.currency === "CNY" ? preview.estimatedCostVND : 0;
       if (typeof v.originalPrice === "number" && v.originalPrice > 0) {
-        if (preview.currency === "USD") {
-          vCostVND = Math.round(v.originalPrice * 25400);
-        } else if (preview.currency === "CNY") {
+        if (preview.currency === "CNY") {
           vCostVND = this.pricingService.calculate(v.originalPrice).totalCostVND;
-        } else {
-          vCostVND = Math.round(v.originalPrice * 0.7);
         }
       }
 
       return {
-        id: `v_${Date.now()}_${idx}`,
+        id: crypto.randomUUID(),
         sourceVariantId: v.skuId,
         sourceSkuId: v.skuId,
         colorName: v.nameVI || v.name,
@@ -339,7 +336,7 @@ export class MultiPlatformClonerService {
         stockQuantity: v.stock ?? 0,
         sourcePrice: v.originalPrice,
         imageUrl: v.imageUrl || preview.primaryImage,
-        sourceAvailable: true,
+        sourceAvailable: (v.stock ?? 0) > 0,
         selectedForSale: true
       };
     });
@@ -372,10 +369,10 @@ export class MultiPlatformClonerService {
       sourceCurrency: preview.currency,
       titleVI,
       titleEN,
-      shortDescVI: `Sản phẩm ${titleVI} được clone tự động từ ${preview.sourcePlatform}`,
-      fullDescVI: `## Mô Tả Chi Tiết Sản Phẩm\n\n**${titleVI}**\n\nNguồn gốc: ${preview.sourcePlatform} (${preview.supplierName})\n\n- Chất lượng cao cấp, thiết kế hiện đại.\n- Hàng có sẵn, hỗ trợ giao hàng toàn quốc.`,
-      shortDescEN: `High-quality ${titleEN} imported from ${preview.sourcePlatform}`,
-      fullDescEN: `## Detailed Description\n\n**${titleEN}**\n\nSource: ${preview.sourcePlatform}\n\n- Superior quality and authentic design.\n- Worldwide standard specs.`,
+      shortDescVI: `Bản nháp được trích xuất từ ${preview.sourcePlatform}; cần kiểm tra trước khi đăng bán.`,
+      fullDescVI: `## Mô Tả Sản Phẩm\n\n**${titleVI}**\n\nNguồn dữ liệu: ${preview.sourcePlatform}${preview.supplierName ? ` (${preview.supplierName})` : ""}.\n\nVui lòng xác minh thuộc tính, tồn kho và chính sách bán hàng trước khi xuất bản.`,
+      shortDescEN: `Draft extracted from ${preview.sourcePlatform}; review before publishing.`,
+      fullDescEN: `## Product Description\n\n**${titleEN}**\n\nData source: ${preview.sourcePlatform}.\n\nVerify attributes, stock, and store policies before publishing.`,
       displayLanguage: "VI",
       categoryName,
       primaryImage: preview.primaryImage,
@@ -498,18 +495,26 @@ export class MultiPlatformClonerService {
    * Tìm kiếm xưởng sản xuất gốc 1688 bằng hình ảnh (Visual Sourcing)
    */
   public async find1688SuppliersByImage(request: VisualSourcingRequest): Promise<VisualSourcingResponse> {
-    let targetTitle = request.title || "Sản phẩm tìm kiếm xưởng 1688";
-    let targetImage = request.imageUrl || "https://images.unsplash.com/photo-1598532163257-ae3c6b2524b6?w=800&auto=format&fit=crop";
-    let sellingPriceVND = request.currentSellingPriceVND || 250000;
+    let targetTitle = request.title || "Truy vấn bằng hình ảnh";
+    let targetImage = request.imageUrl || "";
+    let sellingPriceVND = Number(request.currentSellingPriceVND) || 0;
 
     // Nếu truyền productId, lấy thông tin sản phẩm từ memory/supabase
     if (request.productId) {
-      const existing = inMemoryProducts.get(request.productId);
+      let existing = inMemoryProducts.get(request.productId);
+      if (!existing && supabaseService.isConfigured()) {
+        existing = (await supabaseService.getProductById(request.productId)) || undefined;
+      }
+      if (!existing) throw new Error("VISUAL_SOURCING_PRODUCT_NOT_FOUND");
       if (existing) {
         targetTitle = existing.titleVI;
         targetImage = existing.primaryImage || targetImage;
         sellingPriceVND = existing.minPriceVND || sellingPriceVND;
       }
+    }
+
+    if (!/^https?:\/\//i.test(targetImage) || sellingPriceVND <= 0) {
+      throw new Error("VISUAL_SOURCING_INPUT_INVALID");
     }
 
     const matches = await aiGatewayService.reverseVisual1688Search({
@@ -520,6 +525,7 @@ export class MultiPlatformClonerService {
 
     return {
       success: true,
+      mode: "DEMO",
       queryTitle: targetTitle,
       queryImage: targetImage,
       matches
@@ -573,7 +579,7 @@ export class MultiPlatformClonerService {
     productId: string,
     data: any
   ): ClonePreviewResponse {
-    const rawTitle = data.title || "Shopify Product";
+    const rawTitle = typeof data.title === "string" ? data.title.trim() : "";
     const rawImages: string[] = (Array.isArray(data.images) ? data.images : [])
       .map((img: any) => {
         let clean = (typeof img === "string" ? img : img?.src || "").trim();
@@ -582,29 +588,39 @@ export class MultiPlatformClonerService {
       })
       .filter(Boolean);
 
-    const primaryImage = rawImages[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+    const primaryImage = rawImages[0] || "";
     const galleryImages = rawImages.slice(1);
 
     const rawVariants: any[] = Array.isArray(data.variants) ? data.variants : [];
 
     // Chuẩn hóa đơn vị cents sang USD nếu cần (ví dụ: 2295 -> 22.95)
     const normalizePrice = (p: number) => {
-      if (typeof p !== "number" || isNaN(p)) return 22.95;
+      if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) return 0;
       return p >= 100 ? Math.round((p / 100) * 100) / 100 : p;
     };
 
-    const minPrice = rawVariants.length > 0
-      ? Math.min(...rawVariants.map(v => normalizePrice(v.price)))
-      : (data.price ? normalizePrice(data.price) : 22.95);
+    const variantPrices = rawVariants.map(v => normalizePrice(v.price)).filter(price => price > 0);
+    const minPrice = variantPrices.length > 0
+      ? Math.min(...variantPrices)
+      : normalizePrice(data.price);
 
-    const maxPrice = rawVariants.length > 0
-      ? Math.max(...rawVariants.map(v => normalizePrice(v.price)))
+    const maxPrice = variantPrices.length > 0
+      ? Math.max(...variantPrices)
       : minPrice;
 
-    const currency: "USD" | "VND" | "CNY" = "USD";
-    const costVND = Math.round(minPrice * 25400);
-    const sellingVND = Math.round(costVND * 1.4);
-    const margin = Math.max(20, Math.round(((sellingVND - costVND) / sellingVND) * 100));
+    if (rawTitle.length < 3 || !primaryImage || minPrice <= 0) {
+      throw new Error("EXTRACTION_FAILED: Shopify JSON thiếu tiêu đề, ảnh hoặc giá xác thực");
+    }
+
+    const declaredCurrency = String(data.currency || data.price_currency || "").trim().toUpperCase();
+    const hasVerifiedCurrency = declaredCurrency === "USD" || declaredCurrency === "VND" || declaredCurrency === "CNY";
+    const currency: "USD" | "VND" | "CNY" = hasVerifiedCurrency ? declaredCurrency as "USD" | "VND" | "CNY" : "USD";
+    const priceEstimate = currency === "CNY"
+      ? this.pricingService.calculate(minPrice)
+      : null;
+    const costVND = priceEstimate?.totalCostVND || 0;
+    const sellingVND = priceEstimate?.finalSellingPriceVND || (currency === "VND" ? minPrice : 0);
+    const margin = costVND > 0 && sellingVND > 0 ? Math.round(((sellingVND - costVND) / sellingVND) * 100) : 0;
 
     // Map variant image by featured_image or image_id
     const imageMap = new Map<number, string>();
@@ -633,8 +649,8 @@ export class MultiPlatformClonerService {
 
     const variants: ClonedVariantPreview[] = rawVariants.map((v, idx) => {
       const vPrice = normalizePrice(v.price);
-      const vCostVND = Math.round(vPrice * 25400);
-      const vSellingVND = Math.round(vCostVND * 1.4);
+      const variantEstimate = currency === "CNY" ? this.pricingService.calculate(vPrice) : null;
+      const vSellingVND = variantEstimate?.finalSellingPriceVND || (currency === "VND" ? vPrice : 0);
       let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
       if (!img && v.image_id && imageMap.has(v.image_id)) {
         img = imageMap.get(v.image_id);
@@ -651,7 +667,7 @@ export class MultiPlatformClonerService {
         option3: v.option3,
         originalPrice: vPrice,
         priceVND: vSellingVND,
-        stock: 100,
+        stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
         imageUrl: img
       };
     });
@@ -668,7 +684,7 @@ export class MultiPlatformClonerService {
       originalTitle: rawTitle,
       translatedTitleVI: rawTitle,
       translatedTitleEN: rawTitle,
-      supplierName: data.vendor || "Macorner",
+      supplierName: data.vendor || new URL(sourceUrl).hostname,
       currency,
       originalPriceMin: minPrice,
       originalPriceMax: maxPrice,
@@ -685,7 +701,7 @@ export class MultiPlatformClonerService {
           nameVI: "Phiên Bản Tiêu Chuẩn",
           originalPrice: minPrice,
           priceVND: sellingVND,
-          stock: 100,
+          stock: 0,
           imageUrl: primaryImage
         }
       ],
@@ -693,15 +709,16 @@ export class MultiPlatformClonerService {
       categorySuggested: "Quà tặng & Phụ kiện",
       rawAttributes: [
         { key: "Nguồn gốc", value: platform },
-        { key: "Thương hiệu", value: data.vendor || "Macorner" },
+        ...(data.vendor ? [{ key: "Thương hiệu", value: data.vendor }] : []),
         ...(rawOptions.map((o: any) => ({ key: o.name, value: o.values.join(", ") })))
       ],
-      qualityScorePreview: 92,
-      extractionStatus: "LIVE",
+      qualityScorePreview: [rawTitle, primaryImage, minPrice > 0, hasVerifiedCurrency, variants.length > 0]
+        .filter(Boolean).length * 20,
+      extractionStatus: hasVerifiedCurrency && sellingVND > 0 ? "LIVE" : "UNVERIFIED",
       isDemo: false,
-      confidence: 0.9,
+      confidence: hasVerifiedCurrency ? 0.9 : 0.65,
       provenance: ["Shopify product JSON endpoint"],
-      warnings: []
+      warnings: hasVerifiedCurrency ? [] : ["Nguồn không công bố đơn vị tiền tệ; cần xác minh trước khi nhập"]
     };
   }
 
@@ -713,25 +730,22 @@ export class MultiPlatformClonerService {
       const calc = this.pricingService.calculate(preset.originalPriceMin);
       costVND = calc.totalCostVND;
       sellingVND = calc.finalSellingPriceVND;
-    } else if (preset.currency === "USD") {
-      costVND = Math.round(preset.originalPriceMin * 25400);
-      sellingVND = Math.round(costVND * 1.4);
-    } else {
-      // VND
-      costVND = Math.round(preset.originalPriceMin * 0.7);
+    } else if (preset.currency === "VND") {
       sellingVND = preset.originalPriceMin;
     }
 
-    const margin = Math.round(((sellingVND - costVND) / sellingVND) * 100);
+    const margin = costVND > 0 && sellingVND > 0
+      ? Math.round(((sellingVND - costVND) / sellingVND) * 100)
+      : 0;
 
     const variants: ClonedVariantPreview[] = preset.variants.map(v => {
       let vPriceVND = sellingVND;
       if (preset.currency === "CNY") {
         vPriceVND = this.pricingService.calculate(v.originalPrice).finalSellingPriceVND;
-      } else if (preset.currency === "USD") {
-        vPriceVND = Math.round(v.originalPrice * 25400 * 1.4);
-      } else {
+      } else if (preset.currency === "VND") {
         vPriceVND = v.originalPrice;
+      } else {
+        vPriceVND = 0;
       }
       return {
         skuId: v.skuId,
@@ -764,7 +778,7 @@ export class MultiPlatformClonerService {
       variants,
       categorySuggested: preset.categoryName,
       rawAttributes: preset.attributes,
-      qualityScorePreview: 88,
+      qualityScorePreview: 0,
       extractionStatus: "DEMO",
       isDemo: true,
       confidence: 0,
@@ -779,32 +793,26 @@ export class MultiPlatformClonerService {
     productId: string,
     extracted: any
   ): ClonePreviewResponse {
-    const rawTitle = extracted.title || "Sản phẩm E-commerce Đa Nền Tảng";
-    const primaryImage = extracted.images[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop";
+    const rawTitle = typeof extracted.title === "string" ? extracted.title.trim() : "";
+    const primaryImage = extracted.images[0] || "";
     const galleryImages = extracted.images.slice(1);
     const detailImages = extracted.detailImages || [];
 
-    let currency: "CNY" | "USD" | "VND" = extracted.currency || (platform === "ALIEXPRESS" ? "USD" : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND"));
-    const rawPrice = extracted.price || 150;
+    const hasDeclaredCurrency = extracted.currency === "CNY" || extracted.currency === "USD" || extracted.currency === "VND";
+    const currency: "CNY" | "USD" | "VND" = extracted.currency || (platform === "ALIEXPRESS" ? "USD" : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND"));
+    const rawPrice = Number(extracted.price) || 0;
     const priceMin = extracted.priceMin || rawPrice;
     const priceMax = extracted.priceMax || rawPrice;
 
-    let costVND = 0;
-    let sellingVND = 0;
-
-    if (currency === "CNY") {
-      const calc = this.pricingService.calculate(priceMin);
-      costVND = calc.totalCostVND;
-      sellingVND = calc.finalSellingPriceVND;
-    } else if (currency === "USD") {
-      costVND = Math.round(priceMin * 25400);
-      sellingVND = Math.round(costVND * 1.4);
-    } else {
-      costVND = Math.round(priceMin * 0.7);
-      sellingVND = priceMin;
+    if (rawTitle.length < 3 || !primaryImage || priceMin <= 0) {
+      throw new Error("EXTRACTION_FAILED: metadata công khai thiếu tiêu đề, ảnh hoặc giá xác thực");
     }
 
-    const margin = Math.max(20, Math.round(((sellingVND - costVND) / sellingVND) * 100));
+    // HTML công khai không đủ để xác định giá vốn, tỷ giá hay giá bán mục tiêu.
+    // Giữ nguyên giá/currency nguồn, nhưng không dựng số VND để tránh tạo cảm giác đã xác minh.
+    const costVND = 0;
+    const sellingVND = 0;
+    const margin = 0;
 
     // Dịch thuật tự động nếu là tiếng Trung hoặc tiếng Anh
     let titleVI = rawTitle;
@@ -821,19 +829,7 @@ export class MultiPlatformClonerService {
       variants = extracted.variants.map((v: any, idx: number) => {
         let vPrice = typeof v.price === "number" ? v.price : rawPrice;
         if (vPrice > 1000 && currency === "USD") vPrice = vPrice / 100;
-        let vCostVND = costVND;
-        let vSellingVND = sellingVND;
-        if (currency === "CNY") {
-          const c = this.pricingService.calculate(vPrice);
-          vCostVND = c.totalCostVND;
-          vSellingVND = c.finalSellingPriceVND;
-        } else if (currency === "USD") {
-          vCostVND = Math.round(vPrice * 25400);
-          vSellingVND = Math.round(vCostVND * 1.4);
-        } else {
-          vCostVND = Math.round(vPrice * 0.7);
-          vSellingVND = vPrice;
-        }
+        const vSellingVND = 0;
         let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : primaryImage);
         if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
 
@@ -846,7 +842,7 @@ export class MultiPlatformClonerService {
           option3: v.option3,
           originalPrice: vPrice,
           priceVND: vSellingVND,
-          stock: 100,
+          stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
           imageUrl: img
         };
       });
@@ -858,7 +854,7 @@ export class MultiPlatformClonerService {
           nameVI: "Phiên Bản Tiêu Chuẩn",
           originalPrice: rawPrice,
           priceVND: sellingVND,
-          stock: 100,
+          stock: 0,
           imageUrl: primaryImage
         }
       ];
@@ -871,7 +867,7 @@ export class MultiPlatformClonerService {
       originalTitle: rawTitle,
       translatedTitleVI: titleVI,
       translatedTitleEN: titleEN,
-      supplierName: extracted.brand || `${platform} Seller`,
+      supplierName: extracted.brand || new URL(sourceUrl).hostname,
       currency,
       originalPriceMin: priceMin,
       originalPriceMax: priceMax,
@@ -886,14 +882,19 @@ export class MultiPlatformClonerService {
       categorySuggested: "Thời trang & Phụ kiện",
       rawAttributes: [
         { key: "Nguồn gốc", value: platform },
-        { key: "Thương hiệu", value: extracted.brand || "OEM" }
+        ...(extracted.brand ? [{ key: "Thương hiệu", value: extracted.brand }] : [])
       ],
-      qualityScorePreview: 85,
+      qualityScorePreview: [rawTitle, primaryImage, priceMin > 0, hasDeclaredCurrency, variants.length > 0]
+        .filter(Boolean).length * 20,
       extractionStatus: "UNVERIFIED",
       isDemo: false,
       confidence: 0.55,
       provenance: ["Public HTML metadata"],
-      warnings: ["Cần kiểm tra lại giá, tồn kho và biến thể trước khi xuất bản"]
+      warnings: [
+        "Giá vốn, giá bán VND và biên lợi nhuận chưa được tính từ metadata công khai",
+        ...(!hasDeclaredCurrency ? ["Đơn vị tiền tệ đang được suy đoán từ nền tảng và cần xác minh"] : []),
+        "Cần kiểm tra lại giá, tồn kho và biến thể trước khi xuất bản"
+      ]
     };
   }
 

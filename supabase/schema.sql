@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- 1688 LISTING SYNC HUB - SUPABASE POSTGRESQL SCHEMA
--- Dự án: https://jpbrwfctgrufbdkstufq.supabase.co
+-- Chạy trong Supabase SQL Editor của project đích.
 -- ==============================================================================
 
 -- Bật các tiện ích mở rộng nếu cần
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
     shop_name VARCHAR(255) NOT NULL,
     company_name VARCHAR(255),
     shop_url TEXT NOT NULL,
-    rating_score NUMERIC(3, 2) DEFAULT 0.0,
+    rating_score NUMERIC(3, 2),
     reliability_tier VARCHAR(50) DEFAULT 'STANDARD', -- VERIFIED, SUPER_FACTORY, STANDARD
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS products (
     -- Kênh bán lẻ
     store_sync_history JSONB DEFAULT '[]'::jsonb,
 
+    -- Cá nhân hóa/POD cho storefront
+    is_personalized BOOLEAN NOT NULL DEFAULT FALSE,
+    personalization_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+    customizer_template_url TEXT,
+    volume_discount_tiers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    gift_addons JSONB NOT NULL DEFAULT '[]'::jsonb,
+    occasion_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    recipient_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    rating NUMERIC(3,2),
+    review_count INTEGER NOT NULL DEFAULT 0,
+
     status VARCHAR(50) DEFAULT 'DRAFT', -- DRAFT, READY_TO_REVIEW, PUBLISHED, ARCHIVED
     quality_score INTEGER DEFAULT 0,
 
@@ -144,6 +155,15 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS source_platform VARCHAR(50) NOT NU
 ALTER TABLE products ADD COLUMN IF NOT EXISTS source_currency VARCHAR(3) NOT NULL DEFAULT 'CNY';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_media_mirrored BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS mirrored_at TIMESTAMPTZ;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_personalized BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS personalization_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS customizer_template_url TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS volume_discount_tiers JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS gift_addons JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS occasion_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE products ADD COLUMN IF NOT EXISTS recipient_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE products ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS review_count INTEGER NOT NULL DEFAULT 0;
 
 -- 5. BẢNG LIÊN KẾT SẢN PHẨM VỚI NHIỀU NGUỒN (PRODUCT SOURCE LINKS)
 CREATE TABLE IF NOT EXISTS product_source_links (
@@ -263,9 +283,74 @@ CREATE TABLE IF NOT EXISTS customer_orders (
     payment_method VARCHAR(30),
     payment_status VARCHAR(30),
     note TEXT,
+    gift_addons_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    discount_code VARCHAR(40),
+    discount_amount_vnd NUMERIC(14,0) NOT NULL DEFAULT 0,
+    shipping_fee_vnd NUMERIC(14,0) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE customer_orders ADD COLUMN IF NOT EXISTS gift_addons_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE customer_orders ADD COLUMN IF NOT EXISTS discount_code VARCHAR(40);
+ALTER TABLE customer_orders ADD COLUMN IF NOT EXISTS discount_amount_vnd NUMERIC(14,0) NOT NULL DEFAULT 0;
+ALTER TABLE customer_orders ADD COLUMN IF NOT EXISTS shipping_fee_vnd NUMERIC(14,0) NOT NULL DEFAULT 0;
+ALTER TABLE suppliers ALTER COLUMN rating_score DROP DEFAULT;
+
+-- Checkout atomic: khóa tồn kho, kiểm tra lại giá và tạo đơn trong cùng transaction.
+CREATE OR REPLACE FUNCTION create_storefront_order_atomic(p_order JSONB, p_reservations JSONB)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    reservation JSONB;
+    remaining_stock INTEGER;
+    created_id UUID := (p_order->>'id')::UUID;
+BEGIN
+    FOR reservation IN SELECT value FROM jsonb_array_elements(p_reservations)
+    LOOP
+        UPDATE product_variants AS variant
+        SET stock_quantity = variant.stock_quantity - (reservation->>'quantity')::INTEGER,
+            source_available = (variant.stock_quantity - (reservation->>'quantity')::INTEGER) > 0,
+            updated_at = NOW()
+        WHERE variant.product_id = (reservation->>'productId')::UUID
+          AND variant.source_sku_id = reservation->>'sourceSkuId'
+          AND variant.selected_for_sale = TRUE
+          AND variant.source_available = TRUE
+          AND variant.stock_quantity >= (reservation->>'quantity')::INTEGER
+          AND variant.selling_price_vnd = (reservation->>'expectedBasePriceVND')::NUMERIC
+          AND EXISTS (SELECT 1 FROM products p WHERE p.id = variant.product_id AND p.status = 'PUBLISHED')
+        RETURNING variant.stock_quantity INTO remaining_stock;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'STOCK_OR_PRICE_CHANGED';
+        END IF;
+    END LOOP;
+
+    INSERT INTO customer_orders (
+        id, order_number, platform, customer_name, customer_phone, customer_address,
+        items_json, total_amount_vnd, total_cost_vnd, estimated_profit_vnd, status,
+        payment_method, payment_status, note, gift_addons_json, discount_code,
+        discount_amount_vnd, shipping_fee_vnd, created_at, updated_at
+    ) VALUES (
+        created_id, p_order->>'orderNumber', p_order->>'platform', p_order->>'customerName',
+        p_order->>'customerPhone', p_order->>'customerAddress', COALESCE(p_order->'items', '[]'::JSONB),
+        (p_order->>'totalAmountVND')::NUMERIC, (p_order->>'totalCostVND')::NUMERIC,
+        (p_order->>'estimatedProfitVND')::NUMERIC, p_order->>'status', p_order->>'paymentMethod',
+        p_order->>'paymentStatus', NULLIF(p_order->>'note', ''),
+        COALESCE(p_order->'giftAddonsSelected', '[]'::JSONB), NULLIF(p_order->>'discountCode', ''),
+        COALESCE((p_order->>'discountAmountVND')::NUMERIC, 0),
+        COALESCE((p_order->>'shippingFeeVND')::NUMERIC, 0),
+        (p_order->>'createdAt')::TIMESTAMPTZ, (p_order->>'updatedAt')::TIMESTAMPTZ
+    );
+    RETURN created_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION create_storefront_order_atomic(JSONB, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION create_storefront_order_atomic(JSONB, JSONB) TO service_role;
 
 CREATE TABLE IF NOT EXISTS import_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

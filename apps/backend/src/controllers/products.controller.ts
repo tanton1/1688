@@ -6,22 +6,34 @@ import { supabaseService } from "../services/supabase.service.js";
 import { mediaMirrorService } from "../services/media-mirror.service.js";
 
 export class ProductsController {
+  private async findProduct(id: string): Promise<WebProduct | undefined> {
+    if (supabaseService.isConfigured()) {
+      const product = await supabaseService.getProductById(id);
+      if (product) inMemoryProducts.set(id, product);
+      return product || undefined;
+    }
+    return inMemoryProducts.get(id);
+  }
   /**
    * Helper: Đồng bộ / nạp sản phẩm từ Supabase vào bộ nhớ nếu cần
    */
-  private async hydrateFromSupabase(): Promise<void> {
-    if (!supabaseService.isConfigured()) return;
+  private async hydrateFromSupabase(): Promise<boolean> {
+    if (!supabaseService.isConfigured()) return true;
     try {
-      const dbProducts = await supabaseService.getProducts();
-      if (dbProducts && dbProducts.items && dbProducts.items.length > 0) {
-        for (const p of dbProducts.items) {
-          if (p.id && !inMemoryProducts.has(p.id)) {
-            inMemoryProducts.set(p.id, p);
-          }
-        }
-      }
+      const loaded: WebProduct[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await supabaseService.getProducts({ page, pageSize: 100 });
+        if (!result) throw new Error("PERSISTENCE_FAILED");
+        loaded.push(...result.items); total = result.total; page++;
+      } while (loaded.length < total);
+      inMemoryProducts.clear();
+      for (const product of loaded) if (product.id) inMemoryProducts.set(product.id, product);
+      return true;
     } catch (err) {
       console.error("[hydrateFromSupabase error]", err);
+      return false;
     }
   }
 
@@ -29,12 +41,12 @@ export class ProductsController {
    * Danh sách sản phẩm có phân trang, tìm kiếm và lọc
    */
   public async listProducts(req: Request, res: Response): Promise<void> {
-    const { status, category, search, minQuality, sort, page: rawPage, pageSize: rawPageSize } = req.query as Record<string, string>;
+    const { status, category, search, minQuality, maxQuality, media, sort, page: rawPage, pageSize: rawPageSize } = req.query as Record<string, string>;
     const page = Math.max(1, Number.parseInt(rawPage || "1", 10) || 1);
     const pageSize = Math.min(100, Math.max(1, Number.parseInt(rawPageSize || "50", 10) || 50));
 
     if (supabaseService.isConfigured()) {
-      const result = await supabaseService.getProducts({ status, category, search, minQuality: minQuality ? Number(minQuality) : undefined, sort, page, pageSize });
+      const result = await supabaseService.getProducts({ status, category, search, minQuality: minQuality ? Number(minQuality) : undefined, maxQuality: maxQuality ? Number(maxQuality) : undefined, media, sort, page, pageSize });
       if (!result) { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
       res.json({ ...result, page, pageSize });
       return;
@@ -74,6 +86,12 @@ export class ProductsController {
         items = items.filter(p => (p.qualityScore || 0) >= qNum);
       }
     }
+    if (maxQuality) {
+      const qNum = parseInt(maxQuality, 10);
+      if (!isNaN(qNum)) items = items.filter(p => (p.qualityScore || 0) <= qNum);
+    }
+    if (media === "VIDEO_ONLY") items = items.filter(product => Boolean(product.videoUrl));
+    if (media === "NO_VIDEO") items = items.filter(product => !product.videoUrl);
 
     // 5. Sắp xếp
     if (sort === "PRICE_ASC") {
@@ -82,6 +100,8 @@ export class ProductsController {
       items.sort((a, b) => b.minPriceVND - a.minPriceVND);
     } else if (sort === "QUALITY_DESC") {
       items.sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0));
+    } else if (sort === "UPDATED_ASC") {
+      items.sort((a, b) => new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime());
     } else {
       // Mặc định mới nhất
       items.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
@@ -96,20 +116,13 @@ export class ProductsController {
    */
   public async getProductById(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    let product = inMemoryProducts.get(id);
+    const storedProduct = await this.findProduct(id);
 
-    if (!product && supabaseService.isConfigured()) {
-      const dbProduct = await supabaseService.getProductById(id);
-      if (dbProduct) {
-        inMemoryProducts.set(id, dbProduct);
-        product = dbProduct;
-      }
-    }
-
-    if (!product) {
+    if (!storedProduct) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
       return;
     }
+    const product = structuredClone(storedProduct);
     res.json(product);
   }
 
@@ -118,18 +131,22 @@ export class ProductsController {
    */
   public async updateProduct(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    let product = inMemoryProducts.get(id);
+    const storedProduct = await this.findProduct(id);
 
-    if (!product && supabaseService.isConfigured()) {
-      product = (await supabaseService.getProductById(id)) || undefined;
-    }
-
-    if (!product) {
+    if (!storedProduct) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
       return;
     }
+    const product = structuredClone(storedProduct);
 
     const updates = req.body as Partial<WebProduct>;
+    if (updates.status === "PUBLISHED") {
+      res.status(409).json({
+        error: "PUBLISH_ENDPOINT_REQUIRED",
+        message: "Dùng thao tác Đăng bán để hệ thống thực thi quality gate"
+      });
+      return;
+    }
     const currentVersion = product.version || 1;
     if (updates.version !== undefined && updates.version !== currentVersion) {
       res.status(409).json({ error: "VERSION_CONFLICT", message: "Sản phẩm đã được cập nhật ở phiên khác", currentVersion });
@@ -137,6 +154,7 @@ export class ProductsController {
     }
 
     if (updates.titleVI) product.titleVI = updates.titleVI;
+    if (updates.slug !== undefined) product.slug = updates.slug;
     if (updates.titleEN !== undefined) product.titleEN = updates.titleEN;
     if (updates.shortDescVI !== undefined) product.shortDescVI = updates.shortDescVI;
     if (updates.shortDescEN !== undefined) product.shortDescEN = updates.shortDescEN;
@@ -157,6 +175,21 @@ export class ProductsController {
     if (updates.focusKeywords !== undefined) product.focusKeywords = updates.focusKeywords;
     if (updates.imagesSEO !== undefined) product.imagesSEO = updates.imagesSEO;
     if (updates.faqs !== undefined) product.faqs = updates.faqs;
+    if (updates.attributes !== undefined) product.attributes = updates.attributes;
+    if (updates.priceTiers !== undefined) product.priceTiers = updates.priceTiers;
+    if (updates.seo !== undefined) product.seo = updates.seo;
+    if (updates.storeSyncHistory !== undefined) product.storeSyncHistory = updates.storeSyncHistory;
+    if (updates.warrantyPolicy !== undefined) product.warrantyPolicy = updates.warrantyPolicy;
+    if (updates.shippingPolicy !== undefined) product.shippingPolicy = updates.shippingPolicy;
+    if (updates.isPersonalized !== undefined) product.isPersonalized = updates.isPersonalized;
+    if (updates.personalizationFields !== undefined) product.personalizationFields = updates.personalizationFields;
+    if (updates.customizerMockupTemplateUrl !== undefined) product.customizerMockupTemplateUrl = updates.customizerMockupTemplateUrl;
+    if (updates.volumeDiscountTiers !== undefined) product.volumeDiscountTiers = updates.volumeDiscountTiers;
+    if (updates.giftAddons !== undefined) product.giftAddons = updates.giftAddons;
+    if (updates.occasionTags !== undefined) product.occasionTags = updates.occasionTags;
+    if (updates.recipientTags !== undefined) product.recipientTags = updates.recipientTags;
+    if (updates.rating !== undefined) product.rating = updates.rating;
+    if (updates.reviewCount !== undefined) product.reviewCount = updates.reviewCount;
 
     if (Array.isArray(updates.variants)) {
       product.variants = updates.variants;
@@ -210,14 +243,12 @@ export class ProductsController {
    */
   public async updateFieldLocks(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    let product = inMemoryProducts.get(id);
-    if (!product && supabaseService.isConfigured()) {
-      product = (await supabaseService.getProductById(id)) || undefined;
-    }
-    if (!product) {
+    const storedProduct = await this.findProduct(id);
+    if (!storedProduct) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
       return;
     }
+    const product = structuredClone(storedProduct);
 
     const { isTitleLocked, isDescLocked, isImagesLocked, isPriceAutoSync, isStockAutoSync } = req.body;
     if (typeof isTitleLocked === "boolean") product.isTitleLocked = isTitleLocked;
@@ -227,21 +258,23 @@ export class ProductsController {
     if (typeof isStockAutoSync === "boolean") product.isStockAutoSync = isStockAutoSync;
 
     product.updatedAt = new Date().toISOString();
-    inMemoryProducts.set(id, product);
-
     if (supabaseService.isConfigured()) {
       try {
-        await supabaseService.updateWebProduct(id, {
+        const persisted = await supabaseService.updateWebProduct(id, {
           isTitleLocked: product.isTitleLocked,
           isDescLocked: product.isDescLocked,
           isImagesLocked: product.isImagesLocked,
           isPriceAutoSync: product.isPriceAutoSync,
           isStockAutoSync: product.isStockAutoSync
         });
+        if (!persisted) { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
       } catch (err) {
         console.error("[updateFieldLocks Supabase error]", err);
+        res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
       }
     }
+
+    inMemoryProducts.set(id, product);
 
     res.json({ success: true, product });
   }
@@ -251,14 +284,12 @@ export class ProductsController {
    */
   public async publishProduct(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    let product = inMemoryProducts.get(id);
-    if (!product && supabaseService.isConfigured()) {
-      product = (await supabaseService.getProductById(id)) || undefined;
-    }
-    if (!product) {
+    const storedProduct = await this.findProduct(id);
+    if (!storedProduct) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
       return;
     }
+    const product = structuredClone(storedProduct);
 
     const qualityResult = evaluateProductQuality(product);
     if (!qualityResult.canPublish) {
@@ -270,21 +301,23 @@ export class ProductsController {
       });
       return;
     }
+    const previousStatus = product.status;
     product.status = "PUBLISHED";
     product.updatedAt = new Date().toISOString();
-    inMemoryProducts.set(id, product);
-
     if (supabaseService.isConfigured()) {
       try {
-        await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
+        const persisted = await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
+        if (!persisted) throw new Error("PERSISTENCE_FAILED");
       } catch (err) {
         console.error("[publishProduct Supabase error]", err);
-        product.status = "DRAFT";
+        product.status = previousStatus;
         inMemoryProducts.set(id, product);
         res.status(503).json({ error: "PERSISTENCE_FAILED" });
         return;
       }
     }
+
+    inMemoryProducts.set(id, product);
 
     res.json({ success: true, product });
   }
@@ -301,24 +334,18 @@ export class ProductsController {
 
     let updatedCount = 0;
     for (const id of ids) {
-      let p = inMemoryProducts.get(id);
-      if (!p && supabaseService.isConfigured()) {
-        p = (await supabaseService.getProductById(id)) || undefined;
-      }
-      if (p) {
+      const storedProduct = await this.findProduct(id);
+      if (storedProduct) {
+        const p = structuredClone(storedProduct);
         const qualityResult = evaluateProductQuality(p);
         if (!qualityResult.canPublish) continue;
         p.status = "PUBLISHED";
         p.updatedAt = new Date().toISOString();
-        inMemoryProducts.set(id, p);
         if (supabaseService.isConfigured()) {
           const persisted = await supabaseService.updateWebProduct(id, { status: "PUBLISHED" });
-          if (!persisted) {
-            p.status = "DRAFT";
-            inMemoryProducts.set(id, p);
-            continue;
-          }
+          if (!persisted) continue;
         }
+        inMemoryProducts.set(id, p);
         updatedCount++;
       }
     }
@@ -331,19 +358,19 @@ export class ProductsController {
    */
   public async deleteProduct(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    const exists = inMemoryProducts.has(id);
-
-    if (exists) {
-      inMemoryProducts.delete(id);
-    }
+    const exists = Boolean(await this.findProduct(id));
 
     if (supabaseService.isConfigured()) {
       try {
-        await supabaseService.deleteWebProduct(id);
+        const deleted = await supabaseService.deleteWebProduct(id);
+        if (!deleted) { res.status(404).json({ error: "NOT_FOUND" }); return; }
       } catch (err) {
         console.error("[deleteProduct Supabase error]", err);
+        res.status(503).json({ error: "PERSISTENCE_FAILED" }); return;
       }
     }
+
+    inMemoryProducts.delete(id);
 
     if (!exists && !supabaseService.isConfigured()) {
       res.status(404).json({ error: "Không tìm thấy sản phẩm" });
@@ -387,13 +414,17 @@ export class ProductsController {
    * Thống kê số liệu tổng quan (Dashboard KPIs)
    */
   public async getDashboardStats(req: Request, res: Response): Promise<void> {
-    await this.hydrateFromSupabase();
+    if (!(await this.hydrateFromSupabase())) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" });
+      return;
+    }
 
     const products = Array.from(inMemoryProducts.values());
     const totalProducts = products.length;
     const publishedCount = products.filter(p => p.status === "PUBLISHED").length;
     const draftCount = products.filter(p => p.status === "DRAFT").length;
     const totalStock = products.reduce((acc, p) => acc + (p.variants || []).reduce((s, v) => s + (v.stockQuantity || 0), 0), 0);
+    const totalVariants = products.reduce((acc, p) => acc + (p.variants || []).length, 0);
     const avgQuality = totalProducts > 0
       ? Math.round(products.reduce((acc, p) => acc + (p.qualityScore || 0), 0) / totalProducts)
       : 0;
@@ -410,6 +441,7 @@ export class ProductsController {
       publishedCount,
       draftCount,
       totalStock,
+      totalVariants,
       avgQuality,
       categoryCount,
       supplierCount: new Set(products.map(p => p.supplierName)).size
@@ -451,14 +483,7 @@ export class ProductsController {
    */
   public async mirrorImages(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    let product = inMemoryProducts.get(id);
-
-    if (!product && supabaseService.isConfigured()) {
-      const dbProd = await supabaseService.getProductById(id);
-      if (dbProd) {
-        product = dbProd;
-      }
-    }
+    const product = await this.findProduct(id);
 
     if (!product) {
       res.status(404).json({ success: false, error: "Không tìm thấy sản phẩm" });
@@ -467,11 +492,14 @@ export class ProductsController {
 
     try {
       const { product: mirroredProduct, stats } = await mediaMirrorService.mirrorProductAllImages(product);
-      inMemoryProducts.set(id, mirroredProduct);
 
       if (supabaseService.isConfigured()) {
-        await supabaseService.saveWebProduct(mirroredProduct);
+        if (!(await supabaseService.saveWebProduct(mirroredProduct))) {
+          res.status(503).json({ success: false, error: "PERSISTENCE_FAILED" });
+          return;
+        }
       }
+      inMemoryProducts.set(id, mirroredProduct);
 
       res.json({
         success: true,

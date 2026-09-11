@@ -38,7 +38,7 @@ export class MediaMirrorService {
       const res = await safeFetch(fetchUrl, {
         timeoutMs: ENV.OUTBOUND_TIMEOUT_MS,
         maxBytes: Math.min(ENV.OUTBOUND_MAX_BYTES, 10 * 1024 * 1024),
-        allowedContentTypes: ["image/"],
+        allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"],
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           "Referer": fetchUrl.includes("alicdn") ? "https://detail.1688.com/" : (fetchUrl.includes("shopify") ? "https://shopify.com/" : ""),

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { ProductTemplate } from "@hub1688/shared-types";
 import { supabaseService } from "../services/supabase.service.js";
+import crypto from "node:crypto";
 
 // In-memory store initialized with 4 rich starter templates
 let templatesStore: ProductTemplate[] = [
@@ -12,55 +13,41 @@ let templatesStore: ProductTemplate[] = [
     targetPlatform: "ALL",
     isDefault: true,
     content: {
-      titlePrefix: "[Quà Tặng Ý Nghĩa]",
-      titleSuffix: "- Khắc Tên Theo Yêu Cầu Cao Cấp",
+      titlePrefix: "[Cá Nhân Hóa]",
+      titleSuffix: "- Tùy Chỉnh Theo Yêu Cầu",
       titleFormula: "{prefix} {title} {suffix}",
-      shortDescVI: "Sản phẩm quà tặng cá nhân hóa cao cấp, tùy chỉnh tên & thông điệp riêng theo yêu cầu. Hoàn thiện tinh xảo, độ bền vượt trội.",
-      shortDescEN: "Personalized premium gift, customized with names and messages. Exquisite finish and superior durability.",
-      fullDescVI: `### 🌟 ĐIỂM NỔI BẬT CỦA SẢN PHẨM
-- **Tùy biến 100% cá nhân hóa**: Dễ dàng tùy chỉnh tên, thông điệp, hình ảnh theo yêu cầu riêng của bạn.
-- **Chất liệu cao cấp**: Chế tác từ vật liệu bền đẹp, màu in UV sắc nét không phai theo thời gian.
-- **Đóng gói sang trọng**: Tặng kèm hộp quà cứng cáp và nơ trang nhã, sẵn sàng làm quà tặng người thân yêu.
+      shortDescVI: "Sản phẩm có trường tùy chỉnh tên hoặc thông điệp. Cần xác minh vật liệu, kỹ thuật hoàn thiện và thời gian sản xuất trước khi đăng bán.",
+      shortDescEN: "Product draft with name or message customization fields. Verify materials, finish, and production time before publishing.",
+      fullDescVI: `### THÔNG TIN CÁ NHÂN HÓA
+- Nội dung tùy chỉnh: [Cần xác minh]
+- Kích thước: [Cần xác minh]
+- Chất liệu: [Cần xác minh]
+- Thời gian hoàn thiện: [Cần xác minh]
 
-### 📐 THÔNG TIN CHI TIẾT
-- **Kích thước**: Đa dạng các size tiêu chuẩn, phù hợp bài trí bàn làm việc, phòng ngủ hoặc phòng khách.
-- **Xuất xứ**: Xưởng sản xuất thủ công tiêu chuẩn xuất khẩu.
-- **Phụ kiện kèm theo**: Hướng dẫn sử dụng & bảo quản chuyên dụng.
-
-### 🛡️ CAM KẾT & CHÍNH SÁCH BẢO HÀNH
-- Đổi mới 100% trong vòng 30 ngày nếu phát hiện lỗi in ấn hoặc lỗi do sản xuất.
-- Kiểm tra hàng trước khi thanh toán.
-- Hỗ trợ thiết kế và xem trước mẫu in hoàn toàn miễn phí.`,
-      attributes: [
-        { key: "Chất liệu", value: "Gỗ tự nhiên / Acrylic chống trầy" },
-        { key: "Loại in ấn", value: "In UV độ phân giải cao, chống nước tuyệt đối" },
-        { key: "Xuất xứ", value: "Việt Nam / Nhập khẩu" },
-        { key: "Dịp tặng phù hợp", value: "Sinh nhật, Lễ tình nhân, Kỷ niệm, Halloween, Giáng Sinh" }
-      ],
-      warrantyPolicy: "Bảo hành 1 đổi 1 trong vòng 30 ngày đối với lỗi in ấn hoặc hư hỏng trong quá trình vận chuyển.",
-      shippingPolicy: "Giao hàng toàn quốc 2-4 ngày. Đóng gói 3 lớp chống sốc chuyên dụng.",
+### LƯU Ý DUYỆT NỘI DUNG
+Chỉ công bố mockup, chính sách bảo hành và thời gian giao hàng sau khi cửa hàng đã xác nhận quy trình thực tế.`,
+      attributes: [],
+      warrantyPolicy: "",
+      shippingPolicy: "",
       focusKeywords: ["quà tặng cá nhân hóa", "quà tặng in tên", "quà tặng độc đáo", "personalized gift"],
-      faqs: [
-        { question: "Tôi có thể xem trước mẫu thiết kế trước khi in không?", answer: "Có, shop sẽ gửi bản xem trước (mockup) qua Zalo/Tin nhắn để quý khách xác nhận trước khi tiến hành in ấn." },
-        { question: "Thời gian hoàn thiện và giao hàng mất bao lâu?", answer: "Thời gian sản xuất thường mất từ 1-2 ngày làm việc, sau đó vận chuyển đến bạn từ 2-3 ngày." }
-      ]
+      faqs: []
     },
     variation: {
       options: [
         { name: "Kích thước (Size)", values: ["Size Vừa (7x9 inch)", "Size Lớn (9x10 inch)"] },
-        { name: "Combo / Đóng gói", values: ["1 PCS (Đơn)", "Combo 2 PCS (Tiết Kiệm 10%)", "Combo 4 PCS (Gia Đình)", "Combo 6 PCS (Đại Gia Đình)"] }
+        { name: "Combo / Đóng gói", values: ["1 PCS (Đơn)", "Combo 2 PCS", "Combo 4 PCS", "Combo 6 PCS"] }
       ],
-      defaultStock: 999,
+      defaultStock: 0,
       skuPattern: "{SKU}-{SIZE}-{COMBO}",
       predefinedVariants: [
-        { name: "Size Vừa (7x9 inch) / 1 PCS (Đơn)", option1: "Size Vừa (7x9 inch)", option2: "1 PCS (Đơn)", priceAdjustmentVND: 0, stock: 999 },
-        { name: "Size Vừa (7x9 inch) / Combo 2 PCS (Tiết Kiệm 10%)", option1: "Size Vừa (7x9 inch)", option2: "Combo 2 PCS (Tiết Kiệm 10%)", priceAdjustmentVND: 120000, stock: 999 },
-        { name: "Size Vừa (7x9 inch) / Combo 4 PCS (Gia Đình)", option1: "Size Vừa (7x9 inch)", option2: "Combo 4 PCS (Gia Đình)", priceAdjustmentVND: 320000, stock: 999 },
-        { name: "Size Vừa (7x9 inch) / Combo 6 PCS (Đại Gia Đình)", option1: "Size Vừa (7x9 inch)", option2: "Combo 6 PCS (Đại Gia Đình)", priceAdjustmentVND: 500000, stock: 999 },
-        { name: "Size Lớn (9x10 inch) / 1 PCS (Đơn)", option1: "Size Lớn (9x10 inch)", option2: "1 PCS (Đơn)", priceAdjustmentVND: 45000, stock: 999 },
-        { name: "Size Lớn (9x10 inch) / Combo 2 PCS (Tiết Kiệm 10%)", option1: "Size Lớn (9x10 inch)", option2: "Combo 2 PCS (Tiết Kiệm 10%)", priceAdjustmentVND: 180000, stock: 999 },
-        { name: "Size Lớn (9x10 inch) / Combo 4 PCS (Gia Đình)", option1: "Size Lớn (9x10 inch)", option2: "Combo 4 PCS (Gia Đình)", priceAdjustmentVND: 420000, stock: 999 },
-        { name: "Size Lớn (9x10 inch) / Combo 6 PCS (Đại Gia Đình)", option1: "Size Lớn (9x10 inch)", option2: "Combo 6 PCS (Đại Gia Đình)", priceAdjustmentVND: 650000, stock: 999 }
+        { name: "Size Vừa (7x9 inch) / 1 PCS (Đơn)", option1: "Size Vừa (7x9 inch)", option2: "1 PCS (Đơn)", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Vừa (7x9 inch) / Combo 2 PCS", option1: "Size Vừa (7x9 inch)", option2: "Combo 2 PCS", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Vừa (7x9 inch) / Combo 4 PCS", option1: "Size Vừa (7x9 inch)", option2: "Combo 4 PCS", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Vừa (7x9 inch) / Combo 6 PCS", option1: "Size Vừa (7x9 inch)", option2: "Combo 6 PCS", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Lớn (9x10 inch) / 1 PCS (Đơn)", option1: "Size Lớn (9x10 inch)", option2: "1 PCS (Đơn)", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Lớn (9x10 inch) / Combo 2 PCS", option1: "Size Lớn (9x10 inch)", option2: "Combo 2 PCS", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Lớn (9x10 inch) / Combo 4 PCS", option1: "Size Lớn (9x10 inch)", option2: "Combo 4 PCS", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size Lớn (9x10 inch) / Combo 6 PCS", option1: "Size Lớn (9x10 inch)", option2: "Combo 6 PCS", priceAdjustmentVND: 0, stock: 0 }
       ]
     },
     createdAt: new Date().toISOString(),
@@ -68,40 +55,29 @@ let templatesStore: ProductTemplate[] = [
   },
   {
     id: "tpl-fashion-unisex",
-    name: "Thời Trang Unisex Hot Trend",
-    description: "Mẫu đăng bán quần áo, áo thun Oversize Unisex chuẩn size Việt Nam S đến 2XL",
+    name: "Khung Thời Trang Unisex",
+    description: "Khung phân loại quần áo unisex; số đo, chất liệu và màu sắc cần được xác minh theo sản phẩm",
     categoryName: "Thời Trang & May Mặc",
     targetPlatform: "ALL",
     isDefault: false,
     content: {
-      titlePrefix: "[Cao Cấp]",
-      titleSuffix: "- Vải Cotton 100% Form Rộng Unisex Hot Trend",
+      titlePrefix: "[Unisex]",
+      titleSuffix: "",
       titleFormula: "{prefix} {title} {suffix}",
-      shortDescVI: "Áo thun phong cách Streetwear Unisex form rộng thoải mái, chất vải Cotton 2 chiều dày 250gsm thoáng mát, thấm hút mồ hôi cực tốt.",
-      fullDescVI: `### 👕 THÔNG TIN SẢN PHẨM
-- **Chất liệu**: 100% Cotton định lượng 250gsm, mềm mịn, không xù lông sau nhiều lần giặt.
-- **Form dáng**: Oversize Unisex chuẩn Hàn Quốc, phù hợp cho cả nam và nữ.
-- **Kỹ thuật in/thêu**: Công nghệ in PET cao cấp bền màu, không bong tróc khi giặt máy.
+      shortDescVI: "Khung nội dung thời trang unisex. Cần bổ sung chất liệu, số đo và hướng dẫn bảo quản từ dữ liệu đã xác minh.",
+      fullDescVI: `### THÔNG TIN SẢN PHẨM
+- Chất liệu: [Cần xác minh]
+- Kiểu dáng: [Cần xác minh]
+- Kỹ thuật in/thêu: [Cần xác minh]
 
-### 📏 BẢNG SIZE CHUẨN
-- Size S: 40 - 52kg (Cao 1m50 - 1m62)
-- Size M: 53 - 65kg (Cao 1m60 - 1m70)
-- Size L: 66 - 76kg (Cao 1m68 - 1m77)
-- Size XL: 77 - 88kg (Cao 1m75 - 1m85)
-- Size 2XL: 89 - 100kg (Cao 1m80 - 1m92)
+### BẢNG KÍCH THƯỚC
+Đối chiếu và điền số đo thực tế cho từng phân loại trước khi đăng bán.
 
-### 🧺 HƯỚNG DẪN BẢO QUẢN
-- Lộn trái áo khi giặt và phơi để giữ hình in bền đẹp nhất.
-- Không ngâm lâu trong xà phòng có độ tẩy rửa mạnh.
-- Ủi ở nhiệt độ trung bình, tránh ủi trực tiếp lên hình in.`,
-      attributes: [
-        { key: "Chất liệu", value: "100% Cotton 2 chiều cao cấp" },
-        { key: "Phong cách", value: "Streetwear, Casual Unisex" },
-        { key: "Mùa thích hợp", value: "Bốn mùa" },
-        { key: "Xuất xứ", value: "Việt Nam xuất khẩu" }
-      ],
-      warrantyPolicy: "Đổi size miễn phí trong 7 ngày nếu không vừa vặn. Đổi mới lập tức do lỗi đường may từ xưởng.",
-      shippingPolicy: "Đóng hộp carton bảo vệ form áo, giao nhanh 1-3 ngày toàn quốc.",
+### HƯỚNG DẪN BẢO QUẢN
+Chỉ sử dụng hướng dẫn do nhà sản xuất cung cấp.`,
+      attributes: [],
+      warrantyPolicy: "",
+      shippingPolicy: "",
       focusKeywords: ["áo thun unisex", "áo phông form rộng", "áo oversize cotton", "thời trang streetwear"]
     },
     variation: {
@@ -109,19 +85,19 @@ let templatesStore: ProductTemplate[] = [
         { name: "Kích thước (Size)", values: ["Size S", "Size M", "Size L", "Size XL", "Size 2XL"] },
         { name: "Màu sắc (Color)", values: ["Đen Basic", "Trắng Tinh Khôi", "Xám Khói", "Nâu Be Vintage"] }
       ],
-      defaultStock: 200,
+      defaultStock: 0,
       skuPattern: "{SKU}-{SIZE}-{COLOR}",
       predefinedVariants: [
-        { name: "Size S / Đen Basic", option1: "Size S", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size M / Đen Basic", option1: "Size M", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size L / Đen Basic", option1: "Size L", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size XL / Đen Basic", option1: "Size XL", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size 2XL / Đen Basic", option1: "Size 2XL", option2: "Đen Basic", priceAdjustmentVND: 10000, stock: 200 },
-        { name: "Size S / Trắng Tinh Khôi", option1: "Size S", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size M / Trắng Tinh Khôi", option1: "Size M", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size L / Trắng Tinh Khôi", option1: "Size L", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size XL / Trắng Tinh Khôi", option1: "Size XL", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 200 },
-        { name: "Size 2XL / Trắng Tinh Khôi", option1: "Size 2XL", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 10000, stock: 200 }
+        { name: "Size S / Đen Basic", option1: "Size S", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size M / Đen Basic", option1: "Size M", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size L / Đen Basic", option1: "Size L", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size XL / Đen Basic", option1: "Size XL", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size 2XL / Đen Basic", option1: "Size 2XL", option2: "Đen Basic", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size S / Trắng Tinh Khôi", option1: "Size S", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size M / Trắng Tinh Khôi", option1: "Size M", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size L / Trắng Tinh Khôi", option1: "Size L", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size XL / Trắng Tinh Khôi", option1: "Size XL", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Size 2XL / Trắng Tinh Khôi", option1: "Size 2XL", option2: "Trắng Tinh Khôi", priceAdjustmentVND: 0, stock: 0 }
       ]
     },
     createdAt: new Date().toISOString(),
@@ -130,43 +106,38 @@ let templatesStore: ProductTemplate[] = [
   {
     id: "tpl-smart-home",
     name: "Đồ Gia Dụng Thông Minh & Đời Sống",
-    description: "Mẫu gia dụng thông minh, cam kết bảo hành 12 tháng, đổi trả 1 đổi 1",
+    description: "Khung nội dung gia dụng; thông số điện, vật liệu và bảo hành cần xác minh theo sản phẩm",
     categoryName: "Gia Dụng & Đời Sống",
     targetPlatform: "ALL",
     isDefault: false,
     content: {
-      titlePrefix: "[Chính Hãng]",
-      titleSuffix: "- Bảo Hành 12 Tháng Lỗi 1 Đổi 1 Toàn Quốc",
+      titlePrefix: "[Gia Dụng]",
+      titleSuffix: "",
       titleFormula: "{prefix} {title} {suffix}",
-      shortDescVI: "Thiết bị tiện ích thông minh thế hệ mới, tiết kiệm thời gian, tối ưu không gian sống cho gia đình hiện đại.",
-      fullDescVI: `### 🏡 GIẢI PHÁP TIỆN ÍCH CHO GIA ĐÌNH HIỆN ĐẠI
-- **Thiết kế tinh gọn**: Tiết kiệm diện tích, nâng tầm thẩm mỹ căn bếp và không gian nhà bạn.
-- **Tiết kiệm năng lượng**: Động cơ thế hệ mới êm ái, bền bỉ và tiết kiệm điện năng tối đa.
-- **Dễ dàng sử dụng**: Thao tác một chạm trực quan, người lớn tuổi và trẻ nhỏ đều thao tác thuận tiện.
+      shortDescVI: "Khung nội dung sản phẩm gia dụng. Cần bổ sung công dụng, thông số an toàn và điều kiện bảo hành đã được xác minh.",
+      fullDescVI: `### THÔNG TIN SẢN PHẨM
+- Công dụng: [Cần xác minh]
+- Điện áp và công suất: [Cần xác minh]
+- Vật liệu: [Cần xác minh]
+- Phụ kiện đi kèm: [Cần xác minh]
 
-### 🛡️ CAM KẾT VÀ BẢO HÀNH
-- Sản phẩm chính hãng 100%, nguyên seal đóng gói.
-- Bảo hành điện tử chính hãng 12 tháng trên toàn quốc.
-- Hỗ trợ kỹ thuật và giải đáp thắc mắc 24/7.`,
-      attributes: [
-        { key: "Điện áp", value: "220V - 50Hz" },
-        { key: "Chất liệu", value: "Nhựa ABS nguyên sinh & Inox 304 không gỉ" },
-        { key: "Bảo hành", value: "12 tháng chính hãng" }
-      ],
-      warrantyPolicy: "Bảo hành chính hãng 12 tháng. 1 đổi 1 trong 30 ngày nếu có lỗi từ nhà sản xuất.",
-      shippingPolicy: "Đóng thùng bọt xốp 2 lớp chống va đập, bảo hiểm toàn diện khi vận chuyển.",
+### AN TOÀN VÀ BẢO HÀNH
+Chỉ công bố hướng dẫn an toàn và chính sách bảo hành từ tài liệu chính thức.`,
+      attributes: [],
+      warrantyPolicy: "",
+      shippingPolicy: "",
       focusKeywords: ["gia dụng thông minh", "thiết bị gia đình", "đồ dùng nhà bếp tiện ích"]
     },
     variation: {
       options: [
         { name: "Phiên bản (Model)", values: ["Bản Tiêu Chuẩn", "Bản Nâng Cấp (Kèm Phụ Kiện)", "Bản Cao Cấp Full Box"] }
       ],
-      defaultStock: 150,
+      defaultStock: 0,
       skuPattern: "{SKU}-{MODEL}",
       predefinedVariants: [
-        { name: "Bản Tiêu Chuẩn", option1: "Bản Tiêu Chuẩn", priceAdjustmentVND: 0, stock: 150 },
-        { name: "Bản Nâng Cấp (Kèm Phụ Kiện)", option1: "Bản Nâng Cấp (Kèm Phụ Kiện)", priceAdjustmentVND: 80000, stock: 150 },
-        { name: "Bản Cao Cấp Full Box", option1: "Bản Cao Cấp Full Box", priceAdjustmentVND: 180000, stock: 150 }
+        { name: "Bản Tiêu Chuẩn", option1: "Bản Tiêu Chuẩn", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Bản Nâng Cấp (Kèm Phụ Kiện)", option1: "Bản Nâng Cấp (Kèm Phụ Kiện)", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Bản Cao Cấp Full Box", option1: "Bản Cao Cấp Full Box", priceAdjustmentVND: 0, stock: 0 }
       ]
     },
     createdAt: new Date().toISOString(),
@@ -180,37 +151,37 @@ let templatesStore: ProductTemplate[] = [
     targetPlatform: "ALL",
     isDefault: false,
     content: {
-      titlePrefix: "[Công Nghệ Mới]",
-      titleSuffix: "- Tương Thích Mọi Thiết Bị - Kháng Nước IP68",
+      titlePrefix: "[Phụ Kiện Công Nghệ]",
+      titleSuffix: "",
       titleFormula: "{prefix} {title} {suffix}",
-      shortDescVI: "Phụ kiện công nghệ cao cấp, độ tương thích hoàn hảo, chống nước chuẩn IP68 và độ bền vượt trội.",
-      fullDescVI: `### ⚡ CÔNG NGHỆ ĐỘT PHÁ
-- **Chất liệu gia công cao cấp**: Chống trầy xước, chịu lực va đập vượt trội.
-- **Tiêu chuẩn kháng nước IP68**: An tâm sử dụng đi mưa, vận động thể thao hoặc bơi lội nhẹ.
-- **Bảo hành 6 tháng**: Đổi mới lập tức nếu phát sinh lỗi kỹ thuật từ nhà sản xuất.`,
-      attributes: [
-        { key: "Chống nước", value: "IP68" },
-        { key: "Tương thích", value: "iOS / Android / Universal" },
-        { key: "Vật liệu hoàn thiện", value: "Hợp kim nhôm & Kính cường lực" }
-      ],
-      warrantyPolicy: "Bảo hành 6 tháng 1 đổi 1.",
-      shippingPolicy: "Đóng gói túi bóng khí và hộp carton cứng cáp, đồng kiểm khi nhận hàng.",
-      focusKeywords: ["phụ kiện công nghệ", "smartwatch", "chống nước IP68"]
+      shortDescVI: "Khung nội dung phụ kiện công nghệ. Cần xác minh thiết bị tương thích, tiêu chuẩn bảo vệ và vật liệu trước khi đăng bán.",
+      fullDescVI: `### THÔNG TIN KỸ THUẬT
+- Thiết bị tương thích: [Cần xác minh]
+- Tiêu chuẩn chống nước/bụi: [Cần xác minh]
+- Vật liệu hoàn thiện: [Cần xác minh]
+- Phụ kiện đi kèm: [Cần xác minh]
+
+### LƯU Ý
+Không tự suy đoán chứng nhận, khả năng chống nước hoặc thời hạn bảo hành.`,
+      attributes: [],
+      warrantyPolicy: "",
+      shippingPolicy: "",
+      focusKeywords: ["phụ kiện công nghệ", "smartwatch"]
     },
     variation: {
       options: [
         { name: "Màu khung máy", values: ["Đen Nhám (Space Black)", "Bạc Ánh Kim (Silver)", "Vàng Hồng (Rose Gold)"] },
         { name: "Loại Dây Đeo", values: ["Dây Silicon Thể Thao", "Dây Thép Milanese Chống Gỉ", "Dây Da Bò Cao Cấp"] }
       ],
-      defaultStock: 100,
+      defaultStock: 0,
       skuPattern: "{SKU}-{COLOR}-{STRAP}",
       predefinedVariants: [
-        { name: "Đen Nhám / Dây Silicon", option1: "Đen Nhám (Space Black)", option2: "Dây Silicon Thể Thao", priceAdjustmentVND: 0, stock: 100 },
-        { name: "Đen Nhám / Dây Thép Milanese", option1: "Đen Nhám (Space Black)", option2: "Dây Thép Milanese Chống Gỉ", priceAdjustmentVND: 50000, stock: 100 },
-        { name: "Đen Nhám / Dây Da Bò", option1: "Đen Nhám (Space Black)", option2: "Dây Da Bò Cao Cấp", priceAdjustmentVND: 80000, stock: 100 },
-        { name: "Bạc Ánh Kim / Dây Silicon", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Silicon Thể Thao", priceAdjustmentVND: 0, stock: 100 },
-        { name: "Bạc Ánh Kim / Dây Thép Milanese", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Thép Milanese Chống Gỉ", priceAdjustmentVND: 50000, stock: 100 },
-        { name: "Bạc Ánh Kim / Dây Da Bò", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Da Bò Cao Cấp", priceAdjustmentVND: 80000, stock: 100 }
+        { name: "Đen Nhám / Dây Silicon", option1: "Đen Nhám (Space Black)", option2: "Dây Silicon Thể Thao", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Đen Nhám / Dây Thép Milanese", option1: "Đen Nhám (Space Black)", option2: "Dây Thép Milanese Chống Gỉ", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Đen Nhám / Dây Da Bò", option1: "Đen Nhám (Space Black)", option2: "Dây Da Bò Cao Cấp", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Bạc Ánh Kim / Dây Silicon", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Silicon Thể Thao", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Bạc Ánh Kim / Dây Thép Milanese", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Thép Milanese Chống Gỉ", priceAdjustmentVND: 0, stock: 0 },
+        { name: "Bạc Ánh Kim / Dây Da Bò", option1: "Bạc Ánh Kim (Silver)", option2: "Dây Da Bò Cao Cấp", priceAdjustmentVND: 0, stock: 0 }
       ]
     },
     createdAt: new Date().toISOString(),
@@ -219,6 +190,12 @@ let templatesStore: ProductTemplate[] = [
 ];
 
 const DEFAULT_TEMPLATES: ProductTemplate[] = JSON.parse(JSON.stringify(templatesStore));
+
+const normalizeTemplateVariation = (variation: ProductTemplate["variation"]): ProductTemplate["variation"] => ({
+  ...variation,
+  defaultStock: 0,
+  predefinedVariants: variation.predefinedVariants?.map(variant => ({ ...variant, stock: 0 }))
+});
 
 export class TemplatesController {
   // GET /api/v1/templates
@@ -287,7 +264,7 @@ export class TemplatesController {
         return;
       }
 
-      const id = payload.id || `tpl-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const id = payload.id || `tpl-${crypto.randomUUID()}`;
       const now = new Date().toISOString();
 
       if (payload.isDefault) {
@@ -303,7 +280,7 @@ export class TemplatesController {
         targetPlatform: payload.targetPlatform || "ALL",
         isDefault: Boolean(payload.isDefault),
         content: payload.content || {},
-        variation: payload.variation || { options: [] },
+        variation: normalizeTemplateVariation(payload.variation || { options: [] }),
         createdAt: now,
         updatedAt: now
       };
@@ -340,7 +317,9 @@ export class TemplatesController {
       const updated: ProductTemplate = {
         ...existing,
         ...payload,
+        ...(payload.variation ? { variation: normalizeTemplateVariation(payload.variation) } : {}),
         id: existing.id, // preserve id
+        createdAt: existing.createdAt,
         updatedAt: new Date().toISOString()
       };
 

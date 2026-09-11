@@ -171,12 +171,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     });
 
     if (applyVariationOption && tpl.variation?.predefinedVariants && tpl.variation.predefinedVariants.length > 0) {
-      const baseCost = variants[0]?.costPriceVND || 50000;
-      const baseSell = variants[0]?.sellingPriceVND || 100000;
+      const baseCost = variants[0]?.costPriceVND ?? 0;
+      const baseSell = variants[0]?.sellingPriceVND ?? 0;
       const primaryImg = formData.primaryImage;
 
       const newVariants: WebProductVariant[] = tpl.variation.predefinedVariants.map((pv, idx) => {
         const priceAdj = pv.priceAdjustmentVND || 0;
+        // Template chỉ mô tả cấu trúc biến thể; tồn kho phải đến từ nguồn đã xác minh.
+        const stockQuantity = 0;
         return {
           sourceSkuId: `${formData.sourceProductId || "VAR"}-${idx + 1}`,
           sizeName: pv.option1,
@@ -185,11 +187,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             [tpl.variation.options[0]?.name || "Option 1"]: pv.option1 || "",
             ...(pv.option2 ? { [tpl.variation.options[1]?.name || "Option 2"]: pv.option2 } : {})
           },
-          costPriceVND: baseCost + priceAdj,
+          costPriceVND: baseCost,
           sellingPriceVND: baseSell + priceAdj,
-          stockQuantity: pv.stock || tpl.variation.defaultStock || 999,
+          stockQuantity,
           imageUrl: primaryImg,
-          sourceAvailable: true,
+          sourceAvailable: stockQuantity > 0,
           selectedForSale: true
         };
       });
@@ -226,13 +228,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               values: Array.from(new Set(variants.map(v => v.sizeName || v.colorName || "Mặc định").filter(Boolean)))
             }
           ],
-          defaultStock: 999,
+          defaultStock: 0,
           predefinedVariants: variants.map(v => ({
             name: `${v.sizeName || ""} ${v.colorName || ""}`.trim() || "Tiêu Chuẩn",
             option1: v.sizeName,
             option2: v.colorName,
             priceAdjustmentVND: Math.max(0, v.sellingPriceVND - (variants[0]?.sellingPriceVND || 0)),
-            stock: v.stockQuantity
+            stock: 0
           }))
         }
       };
@@ -1959,25 +1961,25 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       id: "AIDA",
                       name: "Công Thức AIDA",
                       tag: "Attention - Interest - Desire - Action",
-                      desc: "Gây chú ý, khơi gợi tò mò, khao khát sở hữu và chốt đơn ngay."
+                      desc: "Sắp xếp thông tin theo luồng chú ý, quan tâm, cân nhắc và hành động."
                     },
                     {
                       id: "PAS",
                       name: "Công Thức PAS",
                       tag: "Problem - Agitate - Solution",
-                      desc: "Xoáy sâu nỗi đau mua hàng kém chất lượng và trao giải pháp triệt để."
+                      desc: "Nêu vấn đề của người mua và giải pháp dựa trên dữ liệu sản phẩm."
                     },
                     {
                       id: "STORYTELLING",
                       name: "Kể Chuyện Cảm Xúc",
                       tag: "Brand Story & Heritage",
-                      desc: "Truyền tải câu chuyện xưởng may, nguồn gốc sợi vải và sự nâng niu."
+                      desc: "Tạo khung câu chuyện; chỉ dùng nguồn gốc và quy trình đã xác minh."
                     },
                     {
                       id: "SOCIAL_ADS",
-                      name: "Quảng Cáo Viral",
+                      name: "Nội Dung Mạng Xã Hội",
                       tag: "TikTok / FB Ads Hook",
-                      desc: "Bắt trend ngắn gọn, từ khóa giật tít, thôi thúc đặt hàng nhận freeship."
+                      desc: "Tóm tắt ngắn gọn từ thông tin hiện có, không tự tạo ưu đãi."
                     }
                   ].map(formula => (
                     <button
@@ -2160,7 +2162,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               )}
 
               {!isLoadingVisual && visualMatches && visualMatches.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-4">
+                  {visualMatches.some(match => match.isDemo) && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="note">
+                      Chế độ Demo — kết quả xưởng, giá và độ tương đồng là dữ liệu mô phỏng; không dùng để đặt hàng.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {visualMatches.map((m, idx) => (
                     <div
                       key={idx}
@@ -2169,7 +2177,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                            Khớp {m.similarityScore}%
+                            {m.isDemo ? "DEMO" : `Khớp ${m.similarityScore}%`}
                           </span>
                           <span className="text-[11px] text-slate-500 font-medium">
                             Tỷ lệ mua lại: <strong className="text-emerald-600">{m.repurchaseRate}%</strong>
@@ -2218,6 +2226,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
             </div>

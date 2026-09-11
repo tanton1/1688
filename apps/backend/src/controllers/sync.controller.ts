@@ -24,9 +24,9 @@ export class SyncController {
       return;
     }
 
-    const currentProduct = Array.from(inMemoryProducts.values()).find(
-      p => p.sourceProductId === rawLatestProduct.offerId
-    );
+    const currentProduct = supabaseService.isConfigured()
+      ? await supabaseService.getProductBySourceId(rawLatestProduct.offerId)
+      : Array.from(inMemoryProducts.values()).find(p => p.sourceProductId === rawLatestProduct.offerId);
 
     if (!currentProduct) {
       res.status(404).json({ error: "Sản phẩm nguồn chưa được import về web" });
@@ -35,6 +35,10 @@ export class SyncController {
 
     const diffSummary = diffSyncService.detectDifferences(currentProduct, rawLatestProduct);
     if (diffSummary.changes.length > 0) {
+      if (supabaseService.isConfigured() && !(await supabaseService.saveDiffLog(diffSummary, rawLatestProduct))) {
+        res.status(503).json({ error: "PERSISTENCE_FAILED" });
+        return;
+      }
       inMemoryDiffLogs.push(diffSummary);
       pendingSnapshots.set(diffSummary.webProductId, rawLatestProduct);
     }
@@ -50,6 +54,16 @@ export class SyncController {
    * Lấy danh sách biến thể / giá chờ duyệt
    */
   public async getDiffLogs(req: Request, res: Response): Promise<void> {
+    if (supabaseService.isConfigured()) {
+      const persisted = await supabaseService.listPendingDiffLogs();
+      if (!persisted) {
+        res.status(503).json({ error: "PERSISTENCE_FAILED" });
+        return;
+      }
+      inMemoryDiffLogs.splice(0, inMemoryDiffLogs.length, ...persisted.map(item => item.summary));
+      pendingSnapshots.clear();
+      for (const item of persisted) pendingSnapshots.set(item.summary.webProductId, item.snapshot);
+    }
     res.json({ logs: inMemoryDiffLogs });
   }
 
@@ -58,7 +72,9 @@ export class SyncController {
    */
   public async resolveDiff(req: Request, res: Response): Promise<void> {
     const { webProductId, action } = req.body as { webProductId: string; action: "APPLY" | "IGNORE" };
-    const product = inMemoryProducts.get(webProductId);
+    const product = supabaseService.isConfigured()
+      ? await supabaseService.getProductById(webProductId)
+      : inMemoryProducts.get(webProductId);
 
     if (!product) {
       res.status(404).json({ error: "Product not found" });
@@ -78,7 +94,7 @@ export class SyncController {
         return;
       }
       const bySku = new Map(Object.values(snapshot.skuMap).map(item => [item.skuId, item]));
-      product.variants = product.variants.map(variant => {
+      const updatedProduct = { ...product, variants: product.variants.map(variant => {
         const source = bySku.get(variant.sourceSkuId);
         if (!source) return { ...variant, sourceAvailable: false, stockQuantity: 0 };
         const priced = pricingService.calculate(source.priceCNY);
@@ -90,18 +106,24 @@ export class SyncController {
           stockQuantity: source.stock ?? 0,
           sourceAvailable: (source.stock ?? 0) > 0
         };
-      });
-      product.minPriceVND = Math.min(...product.variants.map(variant => variant.sellingPriceVND));
-      product.maxPriceVND = Math.max(...product.variants.map(variant => variant.sellingPriceVND));
-      product.updatedAt = new Date().toISOString();
+      }) };
+      const prices = updatedProduct.variants.map(variant => variant.sellingPriceVND);
+      updatedProduct.minPriceVND = prices.length ? Math.min(...prices) : 0;
+      updatedProduct.maxPriceVND = prices.length ? Math.max(...prices) : 0;
+      updatedProduct.updatedAt = new Date().toISOString();
       if (supabaseService.isConfigured()) {
-        const persisted = await supabaseService.updateWebProduct(webProductId, product);
+        const persisted = await supabaseService.updateWebProduct(webProductId, updatedProduct);
         if (!persisted) {
           res.status(503).json({ error: "PERSISTENCE_FAILED" });
           return;
         }
       }
-      inMemoryProducts.set(webProductId, product);
+      inMemoryProducts.set(webProductId, updatedProduct);
+    }
+
+    if (supabaseService.isConfigured() && !(await supabaseService.resolveDiffLog(webProductId, action === "APPLY" ? "APPLIED" : "IGNORED"))) {
+      res.status(503).json({ error: "PERSISTENCE_FAILED" });
+      return;
     }
 
     inMemoryDiffLogs.splice(index, 1);

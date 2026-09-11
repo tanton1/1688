@@ -26,7 +26,7 @@ export const ENV = {
   OUTBOUND_MAX_BYTES: asPositiveInt(process.env.OUTBOUND_MAX_BYTES, 5 * 1024 * 1024),
   
   // Supabase Configuration
-  SUPABASE_URL: process.env.SUPABASE_URL || "https://jpbrwfctgrufbdkstufq.supabase.co",
+  SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   SUPABASE_STORAGE_BUCKET: process.env.SUPABASE_STORAGE_BUCKET || "product-media",
@@ -34,5 +34,15 @@ export const ENV = {
   // AI & Pricing Defaults
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
-  DEFAULT_EXCHANGE_RATE: parseFloat(process.env.DEFAULT_EXCHANGE_RATE || "3800")
+  DEFAULT_EXCHANGE_RATE: parseFloat(process.env.DEFAULT_EXCHANGE_RATE || "3800"),
+  WOOCOMMERCE_STORE_URL: process.env.WOOCOMMERCE_STORE_URL || "",
+  WOOCOMMERCE_CONSUMER_KEY: process.env.WOOCOMMERCE_CONSUMER_KEY || "",
+  WOOCOMMERCE_CONSUMER_SECRET: process.env.WOOCOMMERCE_CONSUMER_SECRET || "",
+  SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN || "",
+  SHOPIFY_ACCESS_TOKEN: process.env.SHOPIFY_ACCESS_TOKEN || "",
+  SHOPIFY_API_VERSION: process.env.SHOPIFY_API_VERSION || "2025-01",
+  SHOPIFY_STORE_CURRENCY: (process.env.SHOPIFY_STORE_CURRENCY || "VND").toUpperCase() === "USD" ? "USD" as const : "VND" as const,
+  SHOPIFY_VND_PER_USD: Number.parseFloat(process.env.SHOPIFY_VND_PER_USD || "0"),
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || ""
 };

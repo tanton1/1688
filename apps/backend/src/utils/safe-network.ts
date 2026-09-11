@@ -76,14 +76,8 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
   let currentUrl = rawUrl;
   for (let redirect = 0; redirect <= maxRedirects; redirect++) {
     const safeUrl = await assertSafePublicUrl(currentUrl);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
-    try {
-      response = await fetch(safeUrl, { ...fetchOptions, redirect: "manual", signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
+    response = await fetch(safeUrl, { ...fetchOptions, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location || redirect === maxRedirects) throw new UnsafeUrlError("Quá nhiều chuyển hướng");

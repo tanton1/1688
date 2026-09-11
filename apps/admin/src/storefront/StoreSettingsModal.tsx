@@ -9,9 +9,12 @@ import {
   Sparkles,
   Save,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Trash2,
+  Tag
 } from "lucide-react";
-import { StorefrontConfig } from "@hub1688/shared-types";
+import { StorefrontConfig, StorefrontDiscountRule } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 
@@ -27,17 +30,19 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   onShowToast
 }) => {
   const [formData, setFormData] = useState<StorefrontConfig>({
-    storeName: "1688 SYNC STORE",
-    tagline: "Hàng xưởng sỉ cao cấp - Giá tận gốc",
-    hotline: "0988.888.888",
-    zaloUrl: "https://zalo.me",
-    address: "Hà Nội, Việt Nam",
+    storeName: "1688 STORE",
+    tagline: "Cửa hàng trực tuyến",
+    hotline: "",
+    zaloUrl: "",
+    address: "",
     freeShipThresholdVND: 500000,
-    bankName: "MBBank (Ngân Hàng Quân Đội)",
-    bankAccountNo: "888899991688",
-    bankAccountName: "CHU CUA HANG 1688",
-    bannerTitle: "Khám Phá Nguồn Hàng Xưởng Sỉ Cao Cấp",
-    bannerSubtitle: "Sản phẩm được tuyển chọn và kiểm định chất lượng nghiêm ngặt từ các xưởng sản xuất uy tín."
+    shippingFeeVND: 30000,
+    discountRules: [],
+    bankName: "",
+    bankAccountNo: "",
+    bankAccountName: "",
+    bannerTitle: "Khám phá sản phẩm mới",
+    bannerSubtitle: "Giá và tồn kho được xác nhận trực tiếp khi đặt hàng."
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +54,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
       setIsLoading(true);
       AdminApi.getStoreInfo()
         .then(res => {
-          if (res.config) setFormData(res.config);
+          if (res.config) setFormData({ ...res.config, discountRules: res.config.discountRules || [] });
         })
         .catch(err => {
           console.warn("Could not fetch store info:", err);
@@ -59,6 +64,32 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const updateDiscountRule = (index: number, updates: Partial<StorefrontDiscountRule>) => {
+    setFormData(current => ({
+      ...current,
+      discountRules: (current.discountRules || []).map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, ...updates } : rule
+      )
+    }));
+  };
+
+  const addDiscountRule = () => {
+    setFormData(current => ({
+      ...current,
+      discountRules: [
+        ...(current.discountRules || []),
+        { code: "", type: "PERCENT", value: 10, active: true }
+      ]
+    }));
+  };
+
+  const removeDiscountRule = (index: number) => {
+    setFormData(current => ({
+      ...current,
+      discountRules: (current.discountRules || []).filter((_, ruleIndex) => ruleIndex !== index)
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,7 +155,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                   value={formData.hotline}
                   onChange={(e) => setFormData({ ...formData, hotline: e.target.value })}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
-                  required
                 />
               </div>
             </div>
@@ -183,7 +213,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
                   placeholder="MBBank, VCB, Techcombank..."
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
-                  required
                 />
               </div>
 
@@ -195,7 +224,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, bankAccountNo: e.target.value })}
                   placeholder="Ví dụ: 888899991688"
                   className="w-full text-xs font-mono px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
-                  required
                 />
               </div>
 
@@ -207,7 +235,6 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, bankAccountName: e.target.value })}
                   placeholder="NGUYEN VAN A"
                   className="w-full text-xs uppercase px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
-                  required
                 />
               </div>
             </div>
@@ -220,7 +247,8 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
               3. Chính Sách Giao Hàng & Freeship
             </h4>
 
-            <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Ngưỡng Đơn Hàng Được Miễn Phí Vận Chuyển (VNĐ)
               </label>
@@ -231,16 +259,109 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Mặc định 500.000đ. Đơn hàng đạt từ mức này trở lên sẽ được miễn phí vận chuyển.
+                Nhập 0 để tắt miễn phí vận chuyển tự động theo giá trị đơn.
               </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Phí Vận Chuyển Tiêu Chuẩn (VNĐ)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={formData.shippingFeeVND}
+                  onChange={(e) => setFormData({ ...formData, shippingFeeVND: Number(e.target.value) || 0 })}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-orange-500 outline-hidden"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Phí này được dùng thống nhất ở giỏ hàng, thanh toán và máy chủ.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Section 4: Banner */}
+          {/* Section 4: Discount rules */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-violet-600" />
+                4. Mã Ưu Đãi
+              </h4>
+              <button
+                type="button"
+                onClick={addDiscountRule}
+                className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm mã
+              </button>
+            </div>
+            {(formData.discountRules || []).length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-[11px] text-slate-500">
+                Chưa có mã ưu đãi đang cấu hình. Storefront sẽ không quảng bá hoặc chấp nhận mã mặc định.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(formData.discountRules || []).map((rule, index) => (
+                  <div key={`${index}-${rule.code}`} className="grid grid-cols-12 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                    <input
+                      aria-label={`Mã ưu đãi ${index + 1}`}
+                      value={rule.code}
+                      onChange={(e) => updateDiscountRule(index, { code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })}
+                      placeholder="Mã"
+                      required
+                      className="col-span-12 sm:col-span-3 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold uppercase"
+                    />
+                    <select
+                      aria-label={`Loại ưu đãi ${index + 1}`}
+                      value={rule.type}
+                      onChange={(e) => updateDiscountRule(index, { type: e.target.value as StorefrontDiscountRule["type"], value: e.target.value === "FREE_SHIPPING" ? 0 : (rule.value || 10) })}
+                      className="col-span-7 sm:col-span-3 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
+                    >
+                      <option value="PERCENT">Giảm %</option>
+                      <option value="FIXED">Giảm tiền</option>
+                      <option value="FREE_SHIPPING">Miễn phí ship</option>
+                    </select>
+                    <input
+                      aria-label={`Giá trị ưu đãi ${index + 1}`}
+                      type="number"
+                      min={rule.type === "FREE_SHIPPING" ? 0 : 1}
+                      max={rule.type === "PERCENT" ? 100 : undefined}
+                      disabled={rule.type === "FREE_SHIPPING"}
+                      value={rule.value}
+                      onChange={(e) => updateDiscountRule(index, { value: Number(e.target.value) || 0 })}
+                      className="col-span-5 sm:col-span-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs disabled:bg-slate-100"
+                    />
+                    <input
+                      aria-label={`Nhãn ưu đãi ${index + 1}`}
+                      value={rule.label || ""}
+                      onChange={(e) => updateDiscountRule(index, { label: e.target.value })}
+                      placeholder="Nhãn hiển thị"
+                      className="col-span-8 sm:col-span-2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs"
+                    />
+                    <label className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1 text-[10px] text-slate-600">
+                      <input type="checkbox" checked={rule.active} onChange={(e) => updateDiscountRule(index, { active: e.target.checked })} />
+                      Bật
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeDiscountRule(index)}
+                      aria-label={`Xóa mã ưu đãi ${index + 1}`}
+                      className="col-span-2 sm:col-span-1 flex items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 5: Banner */}
           <div className="space-y-3 pt-2">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              4. Nội Dung Banner Khuyến Mãi Đầu Trang
+              5. Nội Dung Banner Đầu Trang
             </h4>
 
             <div>

@@ -3,13 +3,11 @@ import {
   ShoppingBag,
   Search,
   Phone,
-  Layers,
   ArrowLeft,
   Truck,
   PackageCheck,
   Sparkles,
   ExternalLink,
-  ShieldCheck,
   Heart
 } from "lucide-react";
 import { StorefrontConfig } from "@hub1688/shared-types";
@@ -44,7 +42,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
           <span>
             Miễn phí giao hàng toàn quốc đơn từ{" "}
             <strong className="text-amber-100 underline decoration-amber-300">
-              {config.freeShipThresholdVND ? `${config.freeShipThresholdVND.toLocaleString("vi-VN")}đ` : "500.000đ"}
+              {config.freeShipThresholdVND ? `${config.freeShipThresholdVND.toLocaleString("vi-VN")}đ` : "theo chính sách cửa hàng"}
             </strong>
           </span>
         </div>
@@ -52,19 +50,19 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
         <div className="mx-auto md:mx-0 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-200 shrink-0" />
           <span className="tracking-wide">
-            Cá Nhân Hóa Tên & Ảnh Trực Tiếp • Xem Trước Bản Vẽ 100% Thực Tế
+            Giá và tồn kho được xác nhận khi đặt hàng
           </span>
         </div>
 
-        <div className="hidden md:flex items-center gap-3 text-orange-100">
+        {config.hotline && <div className="hidden md:flex items-center gap-3 text-orange-100">
           <a
-            href={`tel:${config.hotline || "0988.888.888"}`}
+            href={`tel:${config.hotline}`}
             className="hover:text-white flex items-center gap-1 font-bold transition-colors"
           >
             <Phone className="w-3 h-3 text-amber-300" />
-            <span>Hotline: {config.hotline || "0988.888.888"}</span>
+            <span>Hotline: {config.hotline}</span>
           </a>
-        </div>
+        </div>}
       </div>
 
       {/* Main Navigation Bar */}
@@ -130,14 +128,14 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
           {/* Right Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
             {/* Quick Hotline Call on Mobile */}
-            <a
-              href={`tel:${config.hotline || "0988.888.888"}`}
+            {config.hotline && <a
+              href={`tel:${config.hotline}`}
               className="md:hidden p-2 text-stone-600 hover:text-orange-600 rounded-xl hover:bg-orange-50 transition-colors"
               title="Gọi Hotline tư vấn"
               aria-label="Gọi hotline"
             >
               <Phone className="w-4 h-4 text-orange-600" />
-            </a>
+            </a>}
 
             {/* Order Tracker */}
             <button

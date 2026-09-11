@@ -173,11 +173,12 @@ export class StoreConnectorsService {
    */
   public exportCSV(
     products: WebProduct[],
-    platform: "SHOPEE" | "TIKTOK_SHOP" | "SHOPIFY" | "WOOCOMMERCE" | "HARAVAN"
+    platform: "SHOPEE" | "TIKTOK_SHOP" | "SHOPIFY" | "WOOCOMMERCE" | "HARAVAN",
+    shopifyConfig?: Pick<ShopifyConfig, "currency" | "exchangeRateVNDToUSD">
   ): string {
     switch (platform) {
       case "SHOPIFY":
-        return buildShopifyCSV(products);
+        return buildShopifyCSV(products, shopifyConfig || { currency: "VND" });
       case "WOOCOMMERCE":
         return buildWooCommerceCSV(products);
       case "HARAVAN":

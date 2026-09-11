@@ -8,6 +8,13 @@ import {
 import { applyGlossary, normalizeSizeProp } from "./text-cleaner.js";
 import { calculateSellingPrice } from "./pricing-calculator.js";
 
+const calculateVerifiedPrice = (priceCNY: number, pricingRule: PricingRuleConfig) => {
+  if (!Number.isFinite(priceCNY) || priceCNY <= 0) {
+    return { totalCostVND: 0, finalSellingPriceVND: 0 };
+  }
+  return calculateSellingPrice(priceCNY, pricingRule);
+};
+
 /**
  * Sinh các tổ hợp biến thể (Cartesian Product) từ các thuộc tính 1688
  */
@@ -19,30 +26,31 @@ export function generateCartesianCombinations(
 ): WebProductVariant[] {
   // 1. Trường hợp sản phẩm đơn (không phân loại SKU)
   if (!skuProps || skuProps.length === 0) {
-    const singleSkuItem = Object.values(skuMap || {})[0] || {
+    const singleSkuItem = Object.values(skuMap || {})[0];
+    const safeSingleSkuItem = singleSkuItem || {
       skuId: "SINGLE_DEFAULT",
       priceCNY: 0,
-      stock: 999,
+      stock: 0,
       attributes: {}
     };
 
-    const pricing = calculateSellingPrice(singleSkuItem.priceCNY, pricingRule);
+    const pricing = calculateVerifiedPrice(safeSingleSkuItem.priceCNY, pricingRule);
 
     return [
       {
-        sourceSkuId: singleSkuItem.skuId,
+        sourceSkuId: safeSingleSkuItem.skuId,
         colorName: "Mặc định",
         sizeName: "",
         costPriceVND: pricing.totalCostVND,
         sellingPriceVND: pricing.finalSellingPriceVND,
-        stockQuantity: singleSkuItem.stock,
-        sourceAvailable: true,
-        selectedForSale: true
+        stockQuantity: safeSingleSkuItem.stock,
+        sourceAvailable: safeSingleSkuItem.stock > 0,
+        selectedForSale: Boolean(singleSkuItem)
       }
     ];
   }
 
-  const defaultPriceCNY = Object.values(skuMap || {})[0]?.priceCNY || 30;
+  const defaultPriceCNY = Object.values(skuMap || {}).find(item => item.priceCNY > 0)?.priceCNY ?? 0;
 
   // 2. Trường hợp sản phẩm 1 thuộc tính (Rất phổ biến ở Bộ sản phẩm, Combo, Quy cách, Var custom đơn)
   if (skuProps.length === 1) {
@@ -55,11 +63,11 @@ export function generateCartesianCombinations(
       const matchingSku = findMatchingSkuItem(skuMap, val.valueCN, undefined, val.valueId);
       const rawPrice = matchingSku?.priceCNY ?? defaultPriceCNY;
       const priceCNY = rawPrice > 0 ? rawPrice : defaultPriceCNY;
-      const stock = matchingSku?.stock && matchingSku.stock > 0 ? matchingSku.stock : 150;
+      const stock = matchingSku?.stock ?? 0;
       const skuId = matchingSku?.skuId || matchingSku?.specId || `SKU_${val.valueId || idx}`;
       const imageUrl = val.imageUrl || matchingSku?.imageUrl;
 
-      const pricing = calculateSellingPrice(priceCNY, pricingRule);
+      const pricing = calculateVerifiedPrice(priceCNY, pricingRule);
       const translatedName = val.valueCN === "Mặc định" ? "Mặc định" : applyGlossary(val.valueCN, customGlossary);
 
       return {
@@ -72,7 +80,7 @@ export function generateCartesianCombinations(
         stockQuantity: stock,
         imageUrl,
         sourceAvailable: stock > 0,
-        selectedForSale: true
+        selectedForSale: Boolean(matchingSku)
       };
     });
   }
@@ -111,11 +119,11 @@ export function generateCartesianCombinations(
 
       const rawPrice = matchingSku?.priceCNY ?? defaultPriceCNY;
       const priceCNY = rawPrice > 0 ? rawPrice : defaultPriceCNY;
-      const stock = matchingSku?.stock && matchingSku.stock > 0 ? matchingSku.stock : 150;
+      const stock = matchingSku?.stock ?? 0;
       const skuId = matchingSku?.skuId || matchingSku?.specId || `SKU_${v1.valueId}_${v2.valueId}`;
       const imageUrl = v1.imageUrl || matchingSku?.imageUrl;
 
-      const pricing = calculateSellingPrice(priceCNY, pricingRule);
+      const pricing = calculateVerifiedPrice(priceCNY, pricingRule);
 
       const translatedPrimary = v1.valueCN === "Mặc định" ? "Mặc định" : applyGlossary(v1.valueCN, customGlossary);
       
@@ -138,7 +146,7 @@ export function generateCartesianCombinations(
         stockQuantity: stock,
         imageUrl,
         sourceAvailable: stock > 0,
-        selectedForSale: true
+        selectedForSale: Boolean(matchingSku)
       });
     }
   }
@@ -200,5 +208,5 @@ function findMatchingSkuItem(
     if (singleMatch) return singleMatch;
   }
 
-  return items[0];
+  return undefined;
 }

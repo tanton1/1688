@@ -337,6 +337,7 @@ export interface VisualSourcingRequest {
 }
 
 export interface VisualSourcingMatch {
+  isDemo?: boolean;
   offerId: string;
   sourceUrl: string;
   titleCN: string;
@@ -355,6 +356,7 @@ export interface VisualSourcingMatch {
 
 export interface VisualSourcingResponse {
   success: boolean;
+  mode?: "LIVE" | "DEMO";
   queryTitle?: string;
   queryImage?: string;
   matches: VisualSourcingMatch[];

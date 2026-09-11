@@ -89,7 +89,7 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-orange-100">
                   <span className="text-slate-500">Ngân hàng:</span>
-                  <span className="font-bold text-slate-800">{config.bankName || "MBBank"}</span>
+                  <span className="font-bold text-slate-800">{config.bankName}</span>
                 </div>
 
                 <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-orange-100">
@@ -153,7 +153,7 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
                 <p className="text-slate-600 leading-relaxed">
                   Tổng tiền cần thanh toán cho bưu tá là:{" "}
                   <strong className="text-orange-600">{order.totalAmountVND.toLocaleString("vi-VN")}đ</strong>.
-                  Quý khách vui lòng kiểm tra sản phẩm kỹ trước khi thanh toán.
+                  Vui lòng đối chiếu mã đơn và số tiền trước khi thanh toán.
                 </p>
               </div>
             </div>

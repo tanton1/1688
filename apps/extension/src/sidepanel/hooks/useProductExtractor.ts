@@ -64,7 +64,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
             }).filter(Boolean);
 
             const normalizePrice = (p: number) => {
-              if (typeof p !== "number" || isNaN(p)) return 22.95;
+              if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) return 0;
               return p >= 100 ? Math.round((p / 100) * 100) / 100 : p;
             };
 
@@ -97,14 +97,20 @@ async function extractCommerceProductFromDom(): Promise<any> {
               }
             }
 
-            const prices = rawVariants.map((v: any) => normalizePrice(v.price));
+            const prices = rawVariants.map((v: any) => normalizePrice(v.price)).filter((price: number) => price > 0);
             const priceMin = prices.length > 0 ? Math.min(...prices) : normalizePrice(shopifyData.price);
             const priceMax = prices.length > 0 ? Math.max(...prices) : priceMin;
+            const productImages = cleanImages.length > 0 ? cleanImages : [shopifyData.featured_image].filter(Boolean);
+
+            if (!shopifyData.title?.trim() || productImages.length === 0 || priceMin <= 0) {
+              return { error: "EXTRACTION_FAILED: Shopify JSON thiếu tiêu đề, ảnh hoặc giá xác thực" };
+            }
 
             return {
               url,
+              sourceProductId: String(shopifyData.id || shopifyData.handle || cleanPath),
               title: shopifyData.title,
-              images: cleanImages.length > 0 ? cleanImages : [shopifyData.featured_image].filter(Boolean),
+              images: productImages,
               detailImages,
               price: priceMin,
               priceMin,
@@ -240,12 +246,18 @@ async function extractCommerceProductFromDom(): Promise<any> {
       }
     });
 
+    if (!title || title.length < 3 || images.length === 0 || price <= 0) {
+      return { error: "EXTRACTION_FAILED: DOM thiếu tiêu đề, ảnh hoặc giá xác thực" };
+    }
+
+    const pathId = pathname.split("/").filter(Boolean).pop() || window.location.hostname;
     return {
       url,
+      sourceProductId: String(schemaProduct?.sku || pathId).slice(0, 128),
       title,
       images: images.slice(0, 15),
       detailImages: domDetailImages,
-      price: price || 22.95,
+      price,
       currency: currency || "USD",
       shopName,
       description: schemaProduct?.description || ogDesc || "",
@@ -281,11 +293,12 @@ export function useProductExtractor() {
         body: JSON.stringify({ url: cleanUrl })
       });
       const prevData = await prevRes.json();
-      if (prevData?.success && prevData?.preview) {
+      if (prevData?.success && prevData?.preview?.extractionStatus === "LIVE" && !prevData.preview.isDemo) {
         setProduct(convertClonePreviewToRawProduct(prevData.preview, cleanUrl));
         setError(null);
       } else {
-        setError(prevData?.error || "Không thể bóc tách sản phẩm từ URL này. Vui lòng kiểm tra lại link.");
+        setProduct(null);
+        setError(prevData?.error || "EXTRACTION_UNVERIFIED: Dữ liệu từ URL chưa đủ tin cậy để nhập.");
       }
     } catch (e: any) {
       setError(`Lỗi kết nối máy chủ: ${e.message}`);
@@ -353,7 +366,7 @@ export function useProductExtractor() {
                 func: extractCommerceProductFromDom
               });
               const domData = results?.[0]?.result;
-              if (domData && domData.title && domData.title.length > 2) {
+              if (domData && !domData.error && domData.title?.length > 2 && domData.images?.length > 0 && Number(domData.price) > 0) {
                 console.log("[Sidepanel] Bóc tách thành công qua DOM injection:", domData);
                 const domProd = convertDomDataToRawProduct(domData, tabUrl);
                 setProduct(domProd);
@@ -374,7 +387,7 @@ export function useProductExtractor() {
               body: JSON.stringify({ url: tabUrl })
             });
             const prevData = await prevRes.json();
-            if (prevData?.success && prevData?.preview && prevData.preview.originalTitle) {
+            if (prevData?.success && prevData?.preview?.extractionStatus === "LIVE" && !prevData.preview.isDemo && prevData.preview.originalTitle) {
               console.log("[Sidepanel] Bóc tách thành công qua Backend Preview:", prevData.preview);
               setProduct(convertClonePreviewToRawProduct(prevData.preview, tabUrl));
               setError(null);
@@ -437,42 +450,55 @@ export function useProductExtractor() {
 
 function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
   const currency = domData.currency || "USD";
-  const originalPrice = domData.price || 22.95;
+  const originalPrice = Number(domData.price) || 0;
   const originalMin = domData.priceMin || originalPrice;
   const originalMax = domData.priceMax || originalPrice;
+  const images = Array.isArray(domData.images) ? domData.images.filter(Boolean) : [];
+  if (!domData.title?.trim() || images.length === 0 || originalMin <= 0) {
+    throw new Error("EXTRACTION_FAILED: DOM thiếu tiêu đề, ảnh hoặc giá xác thực");
+  }
+  const parsedUrl = new URL(url);
+  const pathId = parsedUrl.pathname.split("/").filter(Boolean).pop() || parsedUrl.hostname;
+  const sourceProductId = String(domData.sourceProductId || pathId).slice(0, 128);
+  const supplierName = domData.shopName || parsedUrl.hostname;
+  const verifiedVariants = Array.isArray(domData.variants)
+    ? domData.variants.filter((variant: any) => (variant.id || variant.sku) && (Number(variant.price) > 0 || originalPrice > 0))
+    : [];
 
   // Nếu domData đã có mảng variants bóc tách được từ Shopify hoặc DOM
-  if (Array.isArray(domData.variants) && domData.variants.length > 0) {
+  if (verifiedVariants.length > 0) {
     const previewLike = {
-      sourceProductId: `dom_${Date.now()}`,
+      sourceProductId,
       originalTitle: domData.title,
       sourcePlatform: "GENERIC_WEB",
-      supplierName: domData.shopName || "Macorner",
+      supplierName,
       currency,
       originalPriceMin: originalMin,
       originalPriceMax: originalMax,
-      primaryImage: domData.images?.[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
-      galleryImages: domData.images?.slice(1) || [],
+      primaryImage: images[0],
+      galleryImages: images.slice(1),
       detailImages: domData.detailImages || [],
       rawOptions: domData.options,
+      extractionStatus: "LIVE",
+      isDemo: false,
       rawAttributes: [
-        { key: "Nguồn xuất xứ", value: domData.shopName || "Website E-commerce" },
+        { key: "Nguồn xuất xứ", value: supplierName },
         { key: "Phương thức scan", value: "Tự động trích xuất DOM thời gian thực" }
       ],
-      variants: domData.variants.map((v: any, idx: number) => {
-        let vPrice = typeof v.price === "number" ? v.price : originalPrice;
+      variants: verifiedVariants.map((v: any) => {
+        let vPrice = Number(v.price) > 0 ? Number(v.price) : originalPrice;
         if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
         let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
         if (img && img.startsWith("//")) img = "https:" + img;
 
         return {
-          skuId: String(v.id || v.sku || `SKU-${idx}`),
-          name: v.title || `Biến thể ${idx + 1}`,
+          skuId: String(v.id || v.sku),
+          name: v.title || [v.option1, v.option2, v.option3].filter(Boolean).join(" / ") || String(v.id || v.sku),
           option1: v.option1,
           option2: v.option2,
           option3: v.option3,
           originalPrice: vPrice,
-          stock: 100,
+          stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
           imageUrl: img
         };
       })
@@ -488,29 +514,28 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
     : originalPrice;
 
   return {
-    offerId: `dom_${Date.now()}`,
+    offerId: sourceProductId,
     sourceUrl: url,
-    title: domData.title || "Sản phẩm Web",
+    title: domData.title,
     sourcePlatform: "GENERIC_WEB",
     originalCurrency: currency,
     originalPriceMin: originalPrice,
     originalPriceMax: originalPrice,
     shop: {
-      shopId: `shop_${Date.now()}`,
-      shopName: domData.shopName || "Macorner",
-      shopUrl: url,
-      ratingScore: 4.9
+      shopId: `shop_${sourceProductId}`,
+      shopName: supplierName,
+      shopUrl: parsedUrl.origin
     },
     moq: 1,
     prices: {
-      minPriceCNY: minCNY || 30,
-      maxPriceCNY: minCNY || 30,
+      minPriceCNY: minCNY,
+      maxPriceCNY: minCNY,
       currency: "CNY"
     },
-    images: domData.images?.length > 0 ? domData.images : ["https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800"],
+    images,
     descriptionImages: domData.detailImages || [],
     attributes: [
-      { nameCN: "Nguồn xuất xứ", valueCN: domData.shopName || "Website E-commerce" },
+      { nameCN: "Nguồn xuất xứ", valueCN: supplierName },
       { nameCN: "Phương thức scan", valueCN: "Tự động trích xuất DOM thời gian thực" }
     ],
     skuProps: [
@@ -522,10 +547,10 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
     ],
     skuMap: {
       val_default: {
-        skuId: `sku_${Date.now()}`,
+        skuId: `sku_${sourceProductId}_default`,
         attributes: { "Phân loại": "Tiêu chuẩn (Default)" },
-        priceCNY: minCNY || 30,
-        stock: 100
+        priceCNY: minCNY,
+        stock: 0
       }
     },
     extractedAt: new Date().toISOString()
@@ -533,8 +558,21 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
 }
 
 function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Product {
+  if (preview?.isDemo || preview?.extractionStatus !== "LIVE") {
+    throw new Error("EXTRACTION_UNVERIFIED: Chỉ dữ liệu LIVE mới được chuyển sang luồng nhập hàng");
+  }
+  const sourceProductId = String(preview.sourceProductId || "").trim();
+  const title = String(preview.originalTitle || preview.translatedTitleVI || "").trim();
+  const images = [
+    preview.primaryImage,
+    ...(preview.galleryImages?.length ? preview.galleryImages : (preview.detailImages || []).slice(0, 8))
+  ].filter(Boolean);
+  if (!sourceProductId || title.length < 3 || images.length === 0 || Number(preview.originalPriceMin) <= 0) {
+    throw new Error("EXTRACTION_FAILED: Preview thiếu ID, tiêu đề, ảnh hoặc giá xác thực");
+  }
+
   const toCny = (p: number) => {
-    if (typeof p !== "number" || isNaN(p)) return 30;
+    if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) return 0;
     return preview.currency === "VND"
       ? Math.round((p / 3800) * 10) / 10
       : preview.currency === "USD"
@@ -704,111 +742,46 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
     }
   }
 
+  if (Object.keys(skuMap).length === 0) {
+    const defaultSkuId = `sku_${sourceProductId}_default`;
+    skuProps = [{
+      propId: "prop_variants",
+      propNameCN: "Phân loại",
+      values: [{ valueId: defaultSkuId, valueCN: "Tiêu chuẩn" }]
+    }];
+    skuMap[defaultSkuId] = {
+      skuId: defaultSkuId,
+      attributes: { "Phân loại": "Tiêu chuẩn" },
+      priceCNY: minCNY,
+      stock: 0,
+      imageUrl: images[0]
+    };
+  }
+
   return {
-    offerId: preview.sourceProductId || `hub_${Date.now()}`,
+    offerId: sourceProductId,
     sourceUrl: url,
-    title: preview.originalTitle || preview.translatedTitleVI,
+    title,
     sourcePlatform: preview.sourcePlatform,
     originalCurrency: preview.currency,
     originalPriceMin: preview.originalPriceMin,
     originalPriceMax: preview.originalPriceMax,
     shop: {
-      shopId: `shop_${preview.sourceProductId || "clone"}`,
-      shopName: preview.supplierName || `${preview.sourcePlatform} Shop`,
-      shopUrl: url,
-      ratingScore: 4.9
+      shopId: `shop_${sourceProductId}`,
+      shopName: preview.supplierName || new URL(url).hostname,
+      shopUrl: new URL(url).origin
     },
     moq: 1,
     prices: {
-      minPriceCNY: minCNY || 30,
-      maxPriceCNY: maxCNY || 45,
+      minPriceCNY: minCNY,
+      maxPriceCNY: maxCNY || minCNY,
       currency: "CNY"
     },
-    images: [
-      preview.primaryImage,
-      ...(preview.galleryImages?.length ? preview.galleryImages : (preview.detailImages || []).slice(0, 8))
-    ].filter(Boolean),
+    images,
     descriptionImages: preview.detailImages || [],
     attributes: (preview.rawAttributes || preview.attributes || []).map((a: any) => ({ nameCN: a.key, valueCN: a.value })),
     skuProps,
     skuMap,
-    extractedAt: new Date().toISOString()
-  };
-}
-
-function getMock1688Product(): Raw1688Product {
-  return {
-    offerId: "83647282933",
-    sourceUrl: "https://detail.1688.com/offer/83647282933.html",
-    title: "2026新款跨境爆款女士高腰弹力速干无缝瑜伽健身裤厂家直销一件代发",
-    shop: {
-      shopId: "shop_83647282933",
-      shopName: "义乌市尚品服饰源头实力工厂",
-      shopUrl: "https://shop123.1688.com",
-      ratingScore: 4.9
-    },
-    moq: 2,
-    prices: {
-      minPriceCNY: 32.0,
-      maxPriceCNY: 45.0,
-      currency: "CNY"
-    },
-    images: [
-      "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&auto=format&fit=crop&q=80"
-    ],
-    attributes: [
-      { nameCN: "材质/面料", valueCN: "锦纶/氨纶 (Nylon/Spandex)" },
-      { nameCN: "适用场景", valueCN: "瑜伽 / 跑步 / 健身训练" },
-      { nameCN: "版型", valueCN: "高腰紧身提臀" }
-    ],
-    skuProps: [
-      {
-        propId: "prop_color",
-        propNameCN: "颜色",
-        values: [
-          { valueId: "col_black", valueCN: "黑色" },
-          { valueId: "col_pink", valueCN: "粉色" },
-          { valueId: "col_white", valueCN: "白色" }
-        ]
-      },
-      {
-        propId: "prop_size",
-        propNameCN: "尺码",
-        values: [
-          { valueId: "size_s", valueCN: "S" },
-          { valueId: "size_m", valueCN: "M" },
-          { valueId: "size_l", valueCN: "L" },
-          { valueId: "size_xl", valueCN: "XL" }
-        ]
-      }
-    ],
-    skuMap: {
-      "col_black_size_s": {
-        skuId: "1688_4388991",
-        attributes: { "颜色": "黑色", "尺码": "S" },
-        priceCNY: 32.0,
-        stock: 120
-      },
-      "col_black_size_m": {
-        skuId: "1688_4388992",
-        attributes: { "颜色": "黑色", "尺码": "M" },
-        priceCNY: 32.0,
-        stock: 243
-      },
-      "col_pink_size_m": {
-        skuId: "1688_4388993",
-        attributes: { "颜色": "粉色", "尺码": "M" },
-        priceCNY: 34.0,
-        stock: 92
-      },
-      "col_pink_size_l": {
-        skuId: "1688_4388994",
-        attributes: { "颜色": "粉色", "尺码": "L" },
-        priceCNY: 34.0,
-        stock: 76
-      }
-    },
     extractedAt: new Date().toISOString()
   };
 }
