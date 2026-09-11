@@ -17,6 +17,31 @@ import {
   CustomerOrder
 } from "@hub1688/shared-types";
 
+export interface AISEOContentDraft {
+  focusKeyword: string;
+  secondaryKeywords: string[];
+  title: string;
+  shortDescription: string;
+  fullDescriptionHtml: string;
+  metaTitle: string;
+  metaDescription: string;
+  slug: string;
+  faqs: Array<{ question: string; answer: string }>;
+}
+
+export interface AIGeneratedProductCopy {
+  style: string;
+  headline: string;
+  hook: string;
+  body: string;
+  bodyHtml: string;
+  bodyText: string;
+  callToAction: string;
+  hashtags: string[];
+  fullText: string;
+  seo: AISEOContentDraft;
+}
+
 // Lấy API URL từ localStorage hoặc fallback về window.location.origin hoặc localhost
 export function getApiBaseUrl(): string {
   const configuredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -70,7 +95,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
         clearAccessToken();
         window.dispatchEvent(new Event("hub1688:auth-expired"));
       }
-      throw new Error(errBody.message || errBody.error || `Lỗi HTTP ${res.status}: ${res.statusText}`);
+      const blockerText = Array.isArray(errBody.blockers) && errBody.blockers.length > 0
+        ? `: ${errBody.blockers.map((item: unknown) => typeof item === "string" ? item : JSON.stringify(item)).join("; ")}`
+        : "";
+      throw new Error(`${errBody.message || errBody.error || `Lỗi HTTP ${res.status}: ${res.statusText}`}${blockerText}`);
     }
 
     return await res.json();
@@ -302,20 +330,22 @@ export const AdminApi = {
   },
 
   // 20. AI Marketing Copywriter
-  async generateAICopy(productId: string, style?: string, language?: string): Promise<{
+  async generateAICopy(productId: string, options?: {
+    style?: string;
+    language?: "VI" | "EN";
+    focusKeyword?: string;
+    secondaryKeywords?: string[];
+    tone?: "TRUSTWORTHY" | "CONVERSION" | "PREMIUM" | "FRIENDLY";
+  }): Promise<{
     success: boolean;
     style: string;
     language: string;
-    copy: {
-      headline: string;
-      bodyHtml: string;
-      bodyText: string;
-      callToAction: string;
-    };
+    mode?: "DEMO" | "LIVE";
+    copy: AIGeneratedProductCopy;
   }> {
     return request("/api/v1/ai/generate-copy", {
       method: "POST",
-      body: JSON.stringify({ productId, style, language })
+      body: JSON.stringify({ productId, ...options })
     });
   },
 

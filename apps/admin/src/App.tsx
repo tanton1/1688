@@ -187,10 +187,28 @@ export const App: React.FC = () => {
     try {
       const result = await AdminApi.updateProduct(updated.id!, updated);
       setProducts(prev => prev.map(p => (p.id === updated.id ? result.product : p)));
+      setSelectedProduct(current => current?.id === updated.id ? result.product : current);
       void refreshDashboardStats();
       showToast("Đã lưu thông tin sản phẩm và ma trận SKU thành công!");
+      return result.product;
     } catch (err: any) {
       showToast(err.message || "Lỗi khi lưu sản phẩm", "error");
+      throw err;
+    }
+  };
+
+  const handlePublishFromEditor = async (updated: WebProduct): Promise<WebProduct> => {
+    try {
+      const saved = await AdminApi.updateProduct(updated.id!, { ...updated, status: "DRAFT" });
+      const published = await AdminApi.publishProduct(saved.product.id!);
+      setProducts(prev => prev.map(product => product.id === published.product.id ? published.product : product));
+      setSelectedProduct(published.product);
+      void refreshDashboardStats();
+      showToast("Đã lưu và đăng sản phẩm lên storefront thành công!");
+      return published.product;
+    } catch (err: any) {
+      showToast(err.message || "Không thể đăng sản phẩm lên storefront", "error");
+      throw err;
     }
   };
 
@@ -535,6 +553,11 @@ export const App: React.FC = () => {
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
         onSave={handleSaveProduct}
+        onPublish={handlePublishFromEditor}
+        onOpenStorefront={(p) => {
+          setSelectedProduct(null);
+          openStorefront(p.id);
+        }}
         onOpenConnectors={(p) => {
           setConnectorsProduct(p);
           setShowConnectorsModal(true);

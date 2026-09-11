@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant, ProductImageSEO, ProductFAQItem, AICopywritingStyle, VisualSourcingMatch, ProductTemplate } from "@hub1688/shared-types";
-import { AdminApi } from "../services/api";
+import { AdminApi, type AIGeneratedProductCopy } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import {
   generateSlug,
@@ -11,7 +11,7 @@ import {
   generateProductFAQs,
   generateProductJsonLd,
   auditListingSEO,
-  generateMarketingCopy
+  evaluateProductQuality
 } from "@hub1688/shared-utils";
 import {
   X,
@@ -54,7 +54,9 @@ import {
 interface ProductDetailModalProps {
   product: WebProduct;
   onClose: () => void;
-  onSave: (updatedProduct: WebProduct) => void;
+  onSave: (updatedProduct: WebProduct) => Promise<WebProduct | void> | WebProduct | void;
+  onPublish?: (updatedProduct: WebProduct) => Promise<WebProduct>;
+  onOpenStorefront?: (product: WebProduct) => void;
   onOpenConnectors?: (product: WebProduct) => void;
   onOpenBannerStudio?: (product: WebProduct, initialImage?: string, mode?: "TRANSLATE" | "FRAME") => void;
 }
@@ -63,6 +65,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
   onClose,
   onSave,
+  onPublish,
+  onOpenStorefront,
   onOpenConnectors,
   onOpenBannerStudio
 }) => {
@@ -71,7 +75,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<"content" | "variants" | "media" | "seo" | "quality" | "copywriter" | "sourcing">("content");
   const [copyStyle, setCopyStyle] = useState<AICopywritingStyle>("AIDA");
   const [copyLang, setCopyLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
-  const [generatedCopy, setGeneratedCopy] = useState<any>(null);
+  const [generatedCopy, setGeneratedCopy] = useState<AIGeneratedProductCopy | null>(null);
+  const [seoFocusKeyword, setSeoFocusKeyword] = useState(product.focusKeywords?.[0] || extractSEOKeywords(product.titleVI, product.categoryName, "VI")[0] || product.titleVI);
+  const [seoTone, setSeoTone] = useState<"TRUSTWORTHY" | "CONVERSION" | "PREMIUM" | "FRIENDLY">("TRUSTWORTHY");
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [editLang, setEditLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
   const [visualMatches, setVisualMatches] = useState<VisualSourcingMatch[] | null>(null);
@@ -96,6 +104,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const [variants, setVariants] = useState<WebProductVariant[]>([...product.variants]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [variantSearch, setVariantSearch] = useState("");
   const [customVideoInput, setCustomVideoInput] = useState("");
   const [serpDevice, setSerpDevice] = useState<"desktop" | "mobile">("desktop");
   const [newKeywordInput, setNewKeywordInput] = useState("");
@@ -272,6 +282,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return auditListingSEO(formData);
   }, [formData]);
 
+  const qualityAudit = useMemo(() => evaluateProductQuality({ ...formData, variants }), [formData, variants]);
+
   // Cập nhật trường thông tin cơ bản
   const handleFieldChange = (field: keyof WebProduct, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -390,10 +402,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }));
   };
 
-  const handleSave = () => {
-    setIsSaving(true);
-    const updated: WebProduct = {
+  const buildUpdatedProduct = (status: WebProduct["status"] = formData.status): WebProduct => ({
       ...formData,
+      status,
+      qualityScore: qualityAudit.totalScore,
       displayLanguage: editLang,
       variants,
       seo: {
@@ -407,12 +419,99 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         seoScore: seoAudit.score
       },
       updatedAt: new Date().toISOString()
-    };
-    onSave(updated);
-    setTimeout(() => {
+  });
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const updated = buildUpdatedProduct();
+      const saved = await onSave(updated);
+      if (saved) setFormData(saved);
+      setTemplateToast("Đã lưu bản nháp và toàn bộ thay đổi sản phẩm.");
+      setTimeout(() => setTemplateToast(null), 3000);
+    } finally {
       setIsSaving(false);
-      onClose();
-    }, 400);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!onPublish) return;
+    setIsPublishing(true);
+    try {
+      const published = await onPublish(buildUpdatedProduct("DRAFT"));
+      setFormData(published);
+      setTemplateToast("Đã đăng sản phẩm lên storefront. Khách hàng có thể xem ngay.");
+      setTimeout(() => setTemplateToast(null), 3500);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleGenerateAISEO = async () => {
+    if (!formData.id) return;
+    const keyword = seoFocusKeyword.trim();
+    if (!keyword) {
+      setAiGenerationError("Hãy nhập từ khóa chính trước khi tạo nội dung.");
+      return;
+    }
+
+    setIsGeneratingAI(true);
+    setAiGenerationError(null);
+    try {
+      const secondaryKeywords = (formData.focusKeywords || []).filter(item => item.toLowerCase() !== keyword.toLowerCase());
+      const response = await AdminApi.generateAICopy(formData.id, {
+        style: copyStyle,
+        language: copyLang,
+        focusKeyword: keyword,
+        secondaryKeywords,
+        tone: seoTone
+      });
+      setGeneratedCopy(response.copy);
+    } catch (error: any) {
+      setAiGenerationError(error?.message || "Không thể tạo nội dung AI lúc này.");
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const applyAISEODraft = (scope: "title" | "description" | "meta" | "all") => {
+    const seo = generatedCopy?.seo;
+    if (!seo) return;
+    setFormData(prev => {
+      const next = { ...prev };
+      if (scope === "title" || scope === "all") {
+        if (copyLang === "VI") next.titleVI = seo.title;
+        else next.titleEN = seo.title;
+      }
+      if (scope === "description" || scope === "all") {
+        if (copyLang === "VI") {
+          next.shortDescVI = seo.shortDescription;
+          next.fullDescVI = seo.fullDescriptionHtml;
+        } else {
+          next.shortDescEN = seo.shortDescription;
+          next.fullDescEN = seo.fullDescriptionHtml;
+        }
+      }
+      if (scope === "meta" || scope === "all") {
+        next.metaTitle = seo.metaTitle;
+        next.metaDescription = seo.metaDescription;
+        next.slug = seo.slug;
+        next.focusKeywords = Array.from(new Set([seo.focusKeyword, ...seo.secondaryKeywords]));
+        next.faqs = seo.faqs;
+      }
+      if (scope === "all") {
+        next.imagesSEO = generateImageAltTags(
+          seo.title,
+          next.primaryImage,
+          next.galleryImages,
+          next.detailImages || [],
+          variants
+        );
+      }
+      return next;
+    });
+    setTemplateToast(scope === "all" ? "Đã áp dụng toàn bộ bản nháp AI. Hãy rà soát rồi lưu." : "Đã áp dụng phần nội dung đã chọn.");
+    setTimeout(() => setTemplateToast(null), 3000);
   };
 
   const mediaCount =
@@ -421,45 +520,68 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     (formData.detailImages?.length || 0) +
     (formData.videoUrl ? 1 : 0);
 
+  const activeVariantCount = variants.filter(variant => variant.selectedForSale).length;
+  const variantImageCount = variants.filter(variant => Boolean(variant.imageUrl)).length;
+  const variantImageCoverage = variants.length > 0 ? Math.round((variantImageCount / variants.length) * 100) : 0;
+  const visibleVariants = useMemo(() => {
+    const query = variantSearch.trim().toLowerCase();
+    return variants.map((variant, index) => ({ variant, index })).filter(({ variant }) => {
+      if (!query) return true;
+      return [variant.sourceSkuId, variant.colorName, variant.colorNameEN, variant.sizeName, variant.sizeNameEN, ...Object.values(variant.specDetails || {})]
+        .filter(Boolean)
+        .some(value => String(value).toLowerCase().includes(query));
+    });
+  }, [variants, variantSearch]);
+
   const jsonLdCode = useMemo(() => {
     return JSON.stringify(generateProductJsonLd(formData), null, 2);
   }, [formData]);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="bg-[#f8fafc] sm:rounded-2xl shadow-2xl max-w-[1440px] w-full h-[100dvh] sm:h-auto sm:max-h-[94vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="font-mono text-xs bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded shrink-0">
-              {formData.skuCode}
-            </span>
-            <h2 id="product-dialog-title" className="text-sm font-bold text-slate-900 truncate max-w-md">
-              {editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI)}
-            </h2>
-            {formData.videoUrl && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md shrink-0">
-                <Video className="w-3 h-3" /> Có Video
-              </span>
-            )}
-            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ${
-              seoAudit.score >= 80 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-            }`}>
-              <Globe className="w-3 h-3" /> SEO {seoAudit.score}/100
-            </span>
-            <a
-              href={formData.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:underline shrink-0"
+        <div className="border-b border-slate-200 bg-white">
+          <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-6">
+            <div className="flex min-w-0 items-start gap-3">
+              <img
+                src={formData.primaryImage}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-slate-100 object-cover"
+              />
+              <div className="min-w-0">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                    {formData.skuCode}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${formData.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    {formData.status === "PUBLISHED" ? "Đang hiển thị trên web" : "Bản nháp nội bộ"}
+                  </span>
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                    Storefront riêng · React/Vite
+                  </span>
+                </div>
+                <h2 id="product-dialog-title" className="max-w-3xl truncate text-sm font-extrabold leading-5 text-slate-950 sm:text-base">
+                  {editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI)}
+                </h2>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Chỉnh nội dung, media, biến thể và SEO trước khi xuất bản cho khách hàng.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              aria-label="Đóng trình biên tập sản phẩm"
+              className="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
-              Mở 1688 gốc <ExternalLink className="w-3 h-3" />
-            </a>
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Language Switcher */}
-            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg border border-slate-300">
+          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+              <div className="flex shrink-0 items-center bg-white p-0.5 rounded-lg border border-slate-300">
               <button
                 type="button"
                 onClick={() => setEditLang("VI")}
@@ -486,17 +608,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
             </div>
 
-            <button
-              onClick={() => handleFieldChange("status", formData.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED")}
-              className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${
-                formData.status === "PUBLISHED"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
-                  : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
-              }`}
-            >
-              {formData.status === "PUBLISHED" ? "✓ Đang Bán" : "Chế Độ Bản Nháp"}
-            </button>
-
             {onOpenConnectors && (
               <button
                 type="button"
@@ -505,12 +616,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 title="Đẩy sản phẩm lên WooCommerce, Shopify hoặc xuất CSV"
               >
                 <Share2 className="w-3.5 h-3.5 text-orange-600" />
-                <span>Đẩy Lên Web Bán Hàng</span>
+                <span>Kênh bán khác</span>
               </button>
             )}
 
             {onOpenBannerStudio && (
-              <>
                 <button
                   type="button"
                   onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "TRANSLATE")}
@@ -518,22 +628,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   title="Dịch bảng size (尺码表), thay thế tem mác tiếng Trung sang Tiếng Việt/Tiếng Anh"
                 >
                   <Languages className="w-3.5 h-3.5 text-orange-600" />
-                  <span>Dịch Chữ Trên Ảnh</span>
+                  <span>Dịch chữ trên ảnh</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "FRAME")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-xs transition-colors"
-                  title="Tạo khung viền khuyến mại Shopee Mall, Flash Sale cho ảnh đại diện"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-pink-600" />
-                  <span>Khung Viền Promo</span>
-                </button>
-              </>
             )}
 
-            {/* Template Actions */}
             <button
               type="button"
               onClick={handleOpenApplyTemplate}
@@ -541,39 +639,42 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               title="Áp dụng mẫu nội dung & biến thể chuẩn cho sản phẩm này"
             >
               <LayoutTemplate className="w-3.5 h-3.5 text-indigo-600" />
-              <span>⚡ Áp Dụng Template</span>
+              <span>Áp dụng template</span>
             </button>
-
             <button
               type="button"
-              onClick={() => {
-                setTemplateSaveName(formData.titleVI.slice(0, 30));
-                setShowSaveTemplateModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-xs transition-colors"
-              title="Lưu nội dung và biến thể sản phẩm này thành mẫu tái sử dụng"
+              onClick={() => { setTemplateSaveName(formData.titleVI.slice(0, 30)); setShowSaveTemplateModal(true); }}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+              title="Lưu cấu trúc sản phẩm này thành mẫu tái sử dụng"
             >
-              <Save className="w-3.5 h-3.5 text-slate-500" />
-              <span>Lưu Mẫu</span>
+              <Save className="h-3.5 w-3.5" /> Lưu mẫu
             </button>
+            <a href={formData.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-white hover:text-orange-700">
+              Nguồn gốc <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            </div>
 
-
+            <div className="flex shrink-0 items-center gap-2">
+              {formData.status === "PUBLISHED" && onOpenStorefront && (
+                <button type="button" onClick={() => onOpenStorefront(formData)} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
+                  <ExternalLink className="h-3.5 w-3.5" /> Xem trên web
+                </button>
+              )}
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-lg shadow-xs transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-xs transition-colors hover:bg-slate-100 disabled:opacity-60"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>{isSaving ? "Đang lưu..." : "Lưu Thay Đổi"}</span>
+              <span>{isSaving ? "Đang lưu..." : "Lưu bản nháp"}</span>
             </button>
-
-            <button
-              onClick={onClose}
-              aria-label="Đóng trình biên tập sản phẩm"
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60"
-            >
-              <X className="w-5 h-5" />
-            </button>
+              {onPublish && (
+                <button onClick={handlePublish} disabled={isPublishing || isSaving} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-orange-600/20 transition-colors hover:bg-orange-700 disabled:opacity-60">
+                  <Globe className="h-3.5 w-3.5" />
+                  {isPublishing ? "Đang đăng..." : formData.status === "PUBLISHED" ? "Cập nhật storefront" : "Đăng lên storefront"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -617,7 +718,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB: TỐI ƯU SEO & SERP */}
           <button
-            onClick={() => setActiveTab("seo")}
+            onClick={() => { setActiveTab("seo"); setCopyLang(editLang); }}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "seo"
                 ? "border-emerald-600 text-emerald-600"
@@ -658,7 +759,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             }`}
           >
             <Award className="w-3.5 h-3.5" />
-            Chất Lượng Listing ({formData.qualityScore}/100)
+            Chất Lượng Listing ({qualityAudit.totalScore}/100)
           </button>
 
           {/* TAB: VISUAL SOURCING 1688 */}
@@ -684,8 +785,38 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
         </div>
 
+        {/* Operational product snapshot */}
+        <div className="grid grid-cols-2 gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Giá bán</div>
+            <div className="mt-0.5 text-xs font-extrabold text-slate-900">
+              {formData.minPriceVND.toLocaleString("vi-VN")}đ{formData.maxPriceVND > formData.minPriceVND ? ` – ${formData.maxPriceVND.toLocaleString("vi-VN")}đ` : ""}
+            </div>
+          </div>
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Phân loại bán</div>
+            <div className="mt-0.5 text-xs font-extrabold text-slate-900">{activeVariantCount}/{variants.length} SKU</div>
+          </div>
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Ảnh biến thể</div>
+            <div className={`mt-0.5 text-xs font-extrabold ${variantImageCoverage === 100 ? "text-emerald-700" : "text-amber-700"}`}>{variantImageCount}/{variants.length} · {variantImageCoverage}%</div>
+          </div>
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Media</div>
+            <div className="mt-0.5 text-xs font-extrabold text-slate-900">{mediaCount} tài nguyên</div>
+          </div>
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">SEO</div>
+            <div className={`mt-0.5 text-xs font-extrabold ${seoAudit.score >= 80 ? "text-emerald-700" : "text-amber-700"}`}>{seoAudit.score}/100</div>
+          </div>
+          <div className="bg-white px-4 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Chất lượng</div>
+            <div className={`mt-0.5 text-xs font-extrabold ${qualityAudit.canPublish ? "text-emerald-700" : "text-amber-700"}`}>{qualityAudit.totalScore}/100</div>
+          </div>
+        </div>
+
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* TAB 1: NỘI DUNG & THÔNG SỐ */}
           {activeTab === "content" && (
             <div className="space-y-5">
@@ -1017,18 +1148,27 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* TAB 2: MA TRẬN SKU & BIẾN THỂ */}
           {activeTab === "variants" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-500">
-                  Tùy chỉnh giá bán, tồn kho và chọn lọc các biến thể cho phép bán trên website ({editLang === "VI" ? "Tiếng Việt" : "English"}).
-                </p>
-                <span className="text-xs font-bold text-orange-600">
-                  {variants.filter(v => v.selectedForSale).length}/{variants.length} phân loại được kích hoạt bán
-                </span>
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-950">Ma trận biến thể đồng bộ</h3>
+                  <p className="mt-1 text-xs text-slate-500">Ảnh, giá, tồn kho và trạng thái bán được quản lý theo từng SKU; ảnh biến thể sẽ đổi tương ứng trên storefront.</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+                  <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">{activeVariantCount}/{variants.length} đang bán</span>
+                  <span className={`rounded-full px-3 py-1.5 ${variantImageCoverage === 100 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{variantImageCount}/{variants.length} có ảnh</span>
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="variant-search" className="sr-only">Tìm biến thể</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input id="variant-search" value={variantSearch} onChange={event => setVariantSearch(event.target.value)} placeholder="Tìm theo màu, kích thước hoặc mã SKU…" className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15" />
+                  </div>
+                </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600">
+              <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+                <table className="min-w-[920px] w-full text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 shadow-xs">
                     <tr>
                       <th className="p-3 w-12 text-center">Bán</th>
                       <th className="p-3">Phân Loại ({editLang === "VI" ? "Màu / Size" : "Color / Size"})</th>
@@ -1040,7 +1180,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {variants.map((v, idx) => {
+                    {visibleVariants.map(({ variant: v, index: idx }) => {
                       const margin = v.sellingPriceVND > 0
                         ? Math.round(((v.sellingPriceVND - v.costPriceVND) / v.sellingPriceVND) * 100)
                         : 0;
@@ -1112,6 +1252,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                         </tr>
                       );
                     })}
+                    {visibleVariants.length === 0 && (
+                      <tr><td colSpan={7} className="p-8 text-center text-xs text-slate-500">Không tìm thấy biến thể phù hợp.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1433,6 +1576,135 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* TAB 4: TỐI ƯU SEO & SERP */}
           {activeTab === "seo" && (
             <div className="space-y-6">
+              {/* AI SEO workspace */}
+              <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-white shadow-xl shadow-slate-900/10">
+                <div className="grid gap-0 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                  <div className="border-b border-white/10 p-5 lg:border-b-0 lg:border-r">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-500 text-white">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-extrabold">AI SEO Workspace</h3>
+                          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Xử lý tại backend</span>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          Tạo mới tiêu đề, mô tả ngắn, mô tả HTML, meta, URL, FAQ và ALT ảnh từ dữ liệu sản phẩm đã xác minh.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 space-y-4">
+                      <div>
+                        <label className="mb-1.5 block text-[11px] font-bold text-slate-300">Từ khóa chính <span className="text-orange-400">*</span></label>
+                        <input
+                          value={seoFocusKeyword}
+                          onChange={event => setSeoFocusKeyword(event.target.value)}
+                          placeholder="Ví dụ: quà tặng cá nhân hóa cho mẹ"
+                          className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-xs text-white outline-hidden placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1.5 block text-[11px] font-bold text-slate-300">Ngôn ngữ</label>
+                          <select value={copyLang} onChange={event => setCopyLang(event.target.value as "VI" | "EN")} className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-xs text-white outline-hidden focus:border-orange-400">
+                            <option value="VI">Tiếng Việt</option>
+                            <option value="EN">English</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-[11px] font-bold text-slate-300">Giọng văn</label>
+                          <select value={seoTone} onChange={event => setSeoTone(event.target.value as typeof seoTone)} className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-xs text-white outline-hidden focus:border-orange-400">
+                            <option value="TRUSTWORTHY">Tin cậy, rõ ràng</option>
+                            <option value="CONVERSION">Thuyết phục mua hàng</option>
+                            <option value="PREMIUM">Cao cấp</option>
+                            <option value="FRIENDLY">Thân thiện</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-300">Từ khóa phụ đang dùng</label>
+                          <button type="button" onClick={() => setSeoFocusKeyword(formData.focusKeywords?.[0] || "")} className="text-[10px] font-bold text-orange-300 hover:text-orange-200">Lấy từ SEO hiện tại</button>
+                        </div>
+                        <div className="flex min-h-9 flex-wrap gap-1.5 rounded-xl border border-white/10 bg-white/5 p-2">
+                          {(formData.focusKeywords || []).slice(0, 8).map(keyword => (
+                            <span key={keyword} className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-slate-300">{keyword}</span>
+                          ))}
+                          {(formData.focusKeywords || []).length === 0 && <span className="px-1 py-1 text-[10px] text-slate-500">Chưa có — AI sẽ đề xuất.</span>}
+                        </div>
+                      </div>
+
+                      {aiGenerationError && (
+                        <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-[11px] text-rose-200">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {aiGenerationError}
+                        </div>
+                      )}
+
+                      <button type="button" onClick={handleGenerateAISEO} disabled={isGeneratingAI} className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-xs font-extrabold text-white shadow-lg shadow-orange-950/30 transition-colors hover:bg-orange-400 disabled:cursor-wait disabled:opacity-60">
+                        <Sparkles className={`h-4 w-4 ${isGeneratingAI ? "animate-pulse" : ""}`} />
+                        {isGeneratingAI ? "AI đang phân tích và viết nội dung…" : "Tạo bộ nội dung SEO mới"}
+                      </button>
+                      <p className="text-[10px] leading-4 text-slate-500">AI không tự ghi đè. Bạn luôn được xem trước và chọn phần muốn áp dụng.</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 text-slate-900">
+                    {!generatedCopy?.seo ? (
+                      <div className="grid min-h-[360px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                        <div className="max-w-sm">
+                          <Search className="mx-auto h-8 w-8 text-slate-300" />
+                          <h4 className="mt-3 text-sm font-bold text-slate-800">Bản nháp sẽ xuất hiện ở đây</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Nhập từ khóa chính để AI viết nội dung mới dựa trên tiêu đề, thuộc tính, giá và danh mục hiện có.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-600">Bản nháp AI · Chưa lưu</div>
+                            <h4 className="mt-1 text-sm font-extrabold text-slate-950">Xem trước thay đổi</h4>
+                          </div>
+                          <button type="button" onClick={() => applyAISEODraft("all")} className="rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-700">Áp dụng toàn bộ</button>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tiêu đề sản phẩm</span>
+                            <button type="button" onClick={() => applyAISEODraft("title")} className="text-[10px] font-bold text-orange-600 hover:underline">Áp dụng</button>
+                          </div>
+                          <p className="mt-1.5 text-sm font-extrabold leading-5 text-slate-950">{generatedCopy.seo.title}</p>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mô tả bán hàng</span>
+                            <button type="button" onClick={() => applyAISEODraft("description")} className="text-[10px] font-bold text-orange-600 hover:underline">Áp dụng</button>
+                          </div>
+                          <p className="mt-1.5 text-xs leading-5 text-slate-600">{generatedCopy.seo.shortDescription}</p>
+                          <div className="prose prose-sm mt-3 max-h-40 max-w-none overflow-y-auto rounded-lg bg-slate-50 p-3 text-xs" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(generatedCopy.seo.fullDescriptionHtml, { USE_PROFILES: { html: true } }) }} />
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Google Search & cấu trúc SEO</span>
+                            <button type="button" onClick={() => applyAISEODraft("meta")} className="text-[10px] font-bold text-orange-600 hover:underline">Áp dụng</button>
+                          </div>
+                          <p className="mt-2 text-sm font-medium text-[#1a0dab]">{generatedCopy.seo.metaTitle}</p>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-600">{generatedCopy.seo.metaDescription}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {[generatedCopy.seo.focusKeyword, ...generatedCopy.seo.secondaryKeywords].slice(0, 8).map(keyword => <span key={keyword} className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">{keyword}</span>)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+
               {/* Header Tối Ưu SEO & Nút Tự Động Hóa */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl">
                 <div className="flex items-center gap-3">
@@ -1443,7 +1715,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       Điểm Chuẩn SEO E-Commerce Google
                       <span className="text-[10px] px-2 py-0.5 bg-emerald-200/80 text-emerald-800 rounded-full font-extrabold">
-                        {seoAudit.score >= 85 ? "Rất Tốt (Top 1% SERP)" : "Cần Tối Ưu Thêm"}
+                        {seoAudit.score >= 85 ? "Nội dung đã tối ưu tốt" : "Cần tối ưu thêm"}
                       </span>
                     </h3>
                     <p className="text-[11px] text-slate-600 mt-0.5">
@@ -1460,7 +1732,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     title="Tự động áp dụng từ khóa, Meta description và thẻ ALT ảnh"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    AI Tối Ưu Toàn Diện
+                    Tự điền SEO nhanh
                   </button>
 
                   <button
@@ -1523,17 +1795,21 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       {formData.metaTitle || formData.titleVI}
                     </h5>
 
-                    {/* Rich Snippets Stars & Price */}
-                    <div className="flex items-center gap-2 text-xs text-amber-600">
-                      <div className="flex items-center text-amber-500 font-bold">
-                        ★★★★★ <span className="ml-1 text-slate-700 font-semibold">4.9 (128 đánh giá)</span>
-                      </div>
-                      <span className="text-slate-300">·</span>
+                    {/* Rich Snippets Price & verified rating */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-amber-600">
+                      {Number(formData.rating) > 0 && Number(formData.reviewCount) > 0 && (
+                        <>
+                          <div className="flex items-center text-amber-500 font-bold">
+                            ★ <span className="ml-1 text-slate-700 font-semibold">{formData.rating} ({formData.reviewCount} đánh giá)</span>
+                          </div>
+                          <span className="text-slate-300">·</span>
+                        </>
+                      )}
                       <span className="font-extrabold text-emerald-700">
                         {formData.minPriceVND.toLocaleString("vi-VN")} đ
                       </span>
                       <span className="text-slate-300">·</span>
-                      <span className="text-slate-500 font-medium">Còn hàng (InStock)</span>
+                      <span className="text-slate-500 font-medium">{variants.some(variant => variant.selectedForSale && variant.stockQuantity > 0) ? "Còn hàng (InStock)" : "Hết hàng (OutOfStock)"}</span>
                     </div>
 
                     {/* Meta Description */}
@@ -1840,7 +2116,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center gap-4 bg-orange-50/60 border border-orange-200 p-4 rounded-xl">
                 <div className="w-16 h-16 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl font-black">
-                  {formData.qualityScore}
+                  {qualityAudit.totalScore}
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
@@ -1849,6 +2125,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   <p className="text-xs text-slate-600 mt-0.5">
                     Đánh giá theo các tiêu chuẩn e-commerce và SEO để đảm bảo tỷ lệ chuyển đổi cao khi chạy quảng cáo hoặc bán trên sàn.
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${qualityAudit.canPublish ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {qualityAudit.canPublish ? "Đủ điều kiện đăng storefront" : "Chưa đủ điều kiện đăng"}
+                    </span>
+                    {qualityAudit.blockers.map(blocker => <span key={blocker} className="rounded-full bg-rose-100 px-2 py-1 text-[10px] font-semibold text-rose-700">{blocker}</span>)}
+                  </div>
                 </div>
               </div>
 
@@ -2012,14 +2294,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <div className="mt-4 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => {
-                      const res = generateMarketingCopy(formData, copyStyle, copyLang);
-                      setGeneratedCopy(res);
-                    }}
-                    className="px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-pink-500/30 flex items-center gap-2 transition-all"
+                    onClick={handleGenerateAISEO}
+                    disabled={isGeneratingAI}
+                    className="px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-pink-500/30 flex items-center gap-2 transition-all disabled:cursor-wait disabled:opacity-60"
                   >
                     <Sparkles className="w-4 h-4" />
-                    Sinh Bài Viết Bán Hàng Ngay
+                    {isGeneratingAI ? "AI đang viết…" : "Sinh bài viết bằng AI"}
                   </button>
                 </div>
               </div>

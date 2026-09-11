@@ -289,6 +289,9 @@ export const aiGenerateCopySchema = z.object({
   productId: id,
   style: z.enum(["AIDA", "PAS", "STORYTELLING", "SOCIAL_ADS"]).optional(),
   language: z.enum(["VI", "EN"]).optional(),
+  focusKeyword: optionalText(160),
+  secondaryKeywords: z.array(text(160)).max(12).optional(),
+  tone: z.enum(["TRUSTWORTHY", "CONVERSION", "PREMIUM", "FRIENDLY"]).optional(),
   model: optionalText(100)
 }).strict();
 export const aiTranslateImageSchema = z.object({ imageUrl: httpUrl, model: optionalText(100) }).strict();

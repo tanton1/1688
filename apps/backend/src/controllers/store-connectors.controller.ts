@@ -265,10 +265,13 @@ export class StoreConnectorsController {
    * Tạo bài viết bán hàng AI Copywriting (AIDA, PAS, Storytelling, Social Ads) bằng ChatGPT/Gemini
    */
   public async generateAICopy(req: Request, res: Response): Promise<void> {
-    const { productId, style, language, model } = req.body as {
+    const { productId, style, language, focusKeyword, secondaryKeywords, tone, model } = req.body as {
       productId: string;
       style?: AICopywritingStyle;
       language?: "VI" | "EN";
+      focusKeyword?: string;
+      secondaryKeywords?: string[];
+      tone?: "TRUSTWORTHY" | "CONVERSION" | "PREMIUM" | "FRIENDLY";
       model?: string;
     };
 
@@ -290,6 +293,9 @@ export class StoreConnectorsController {
         product,
         style: style || "AIDA",
         language: language || "VI",
+        focusKeyword,
+        secondaryKeywords,
+        tone,
         model: model || headerModel
       });
 

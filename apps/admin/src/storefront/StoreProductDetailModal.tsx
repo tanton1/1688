@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
@@ -88,6 +89,35 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     const parts = [v.colorName, v.sizeName].filter(Boolean);
     return parts.length > 0 ? parts.join(" - ") : (v.sourceSkuId || "Phân loại chuẩn");
   };
+
+  const colorOptions = useMemo(() => {
+    const options = new Map<string, { label: string; imageUrl?: string }>();
+    validVariants.forEach(variant => {
+      const label = variant.colorName?.trim();
+      if (label && !options.has(label)) options.set(label, { label, imageUrl: variant.imageUrl });
+    });
+    return Array.from(options.values());
+  }, [product.variants]);
+
+  const sizeOptions = useMemo(() => Array.from(new Set(
+    validVariants.map(variant => variant.sizeName?.trim()).filter(Boolean) as string[]
+  )), [product.variants]);
+
+  const selectVariantOption = (field: "colorName" | "sizeName", value: string) => {
+    const counterpart = field === "colorName" ? "sizeName" : "colorName";
+    const preferredCounterpart = selectedVariant?.[counterpart]?.trim();
+    const exact = validVariants.find(variant =>
+      variant[field]?.trim() === value && (!preferredCounterpart || variant[counterpart]?.trim() === preferredCounterpart)
+    );
+    const fallback = validVariants.find(variant => variant[field]?.trim() === value);
+    const next = exact || fallback;
+    if (next) handleSelectVariant(next);
+  };
+
+  const descriptionHtml = useMemo(() => DOMPurify.sanitize(
+    product.fullDescVI || product.shortDescVI || "Chưa có mô tả chi tiết cho sản phẩm này.",
+    { ALLOWED_TAGS: ["h2", "h3", "h4", "p", "ul", "ol", "li", "strong", "em", "br", "a"], ALLOWED_ATTR: ["href", "target", "rel"] }
+  ), [product.fullDescVI, product.shortDescVI]);
 
   const handleSelectVariant = (variant: WebProductVariant) => {
     setSelectedVariant(variant);
@@ -282,6 +312,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 {product.titleVI}
               </h1>
 
+              {product.shortDescVI && (
+                <p className="mt-2 text-xs leading-5 text-stone-600">{product.shortDescVI}</p>
+              )}
+
               {/* Price Display */}
               <div className="mt-2.5 flex items-baseline gap-2.5 p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
                 <span className="text-2xl sm:text-3xl font-black text-orange-600 tracking-tight">
@@ -325,46 +359,57 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 </div>
               )}
 
-              {/* Variant Selector */}
+              {/* Structured variant selector */}
               {validVariants.length > 1 && (
-                <div className="mt-3.5">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-stone-900">
-                      Quy cách / Phân loại:
-                    </span>
-                    <span className="text-xs text-orange-600 font-bold">
-                      {getVariantDisplayName(selectedVariant)}
-                    </span>
+                <div className="mt-4 space-y-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-stone-900">Chọn phân loại</span>
+                    <span className="truncate text-[11px] font-bold text-orange-700">{getVariantDisplayName(selectedVariant)}</span>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pr-1">
-                    {validVariants.map((v, idx) => {
-                      const isSelected = selectedVariant?.sourceSkuId === v.sourceSkuId;
-                      const displayName = getVariantDisplayName(v);
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleSelectVariant(v)}
-                          className={`flex items-center gap-1.5 p-1.5 pr-2.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
-                            isSelected
-                              ? "border-orange-500 bg-orange-50 text-orange-700 shadow-xs ring-2 ring-orange-400/20 font-bold"
-                              : "border-stone-200 hover:border-stone-300 text-stone-700 bg-white"
-                          }`}
-                        >
-                          {v.imageUrl && (
-                            <img
-                              src={v.imageUrl}
-                              alt={displayName}
-                              className="w-6 h-6 rounded-lg object-cover border border-stone-200"
-                            />
-                          )}
-                          <span>{displayName}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-orange-600 ml-0.5" />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {colorOptions.length > 0 && (
+                    <div>
+                      <span className="mb-2 block text-[11px] font-semibold text-stone-500">Màu sắc / Mẫu ({colorOptions.length})</span>
+                      <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto pr-1">
+                        {colorOptions.map(option => {
+                          const selected = selectedVariant?.colorName?.trim() === option.label;
+                          return (
+                            <button key={option.label} type="button" onClick={() => selectVariantOption("colorName", option.label)} className={`flex min-w-0 items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-left text-[11px] font-semibold transition-all ${selected ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-400/15" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"}`}>
+                              {option.imageUrl && <img src={option.imageUrl} alt={option.label} className="h-9 w-9 shrink-0 rounded-lg border border-stone-200 object-cover" />}
+                              <span className="max-w-32 truncate">{option.label}</span>
+                              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-orange-600" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {sizeOptions.length > 0 && (
+                    <div>
+                      <span className="mb-2 block text-[11px] font-semibold text-stone-500">Kích thước / Quy cách ({sizeOptions.length})</span>
+                      <div className="flex flex-wrap gap-2">
+                        {sizeOptions.map(size => {
+                          const selected = selectedVariant?.sizeName?.trim() === size;
+                          const available = validVariants.some(variant => variant.sizeName?.trim() === size && (!selectedVariant?.colorName || variant.colorName === selectedVariant.colorName) && (variant.stockQuantity ?? 0) > 0);
+                          return (
+                            <button key={size} type="button" onClick={() => selectVariantOption("sizeName", size)} className={`min-w-11 rounded-lg border px-3 py-2 text-[11px] font-bold transition-all ${selected ? "border-orange-500 bg-orange-600 text-white shadow-sm" : available ? "border-stone-300 bg-white text-stone-700 hover:border-orange-400" : "border-stone-200 bg-stone-100 text-stone-400"}`}>
+                              {size}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {colorOptions.length === 0 && sizeOptions.length === 0 && (
+                    <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                      {validVariants.map(variant => {
+                        const selected = selectedVariant?.sourceSkuId === variant.sourceSkuId;
+                        return <button key={variant.sourceSkuId} type="button" onClick={() => handleSelectVariant(variant)} className={`rounded-lg border px-3 py-2 text-[11px] font-semibold ${selected ? "border-orange-500 bg-orange-50 text-orange-700" : "border-stone-200 bg-white text-stone-700"}`}>{getVariantDisplayName(variant)}</button>;
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -528,10 +573,18 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
           {/* Tab contents */}
           {activeTab === "desc" && (
-            <div className="text-xs text-stone-700 leading-relaxed space-y-3 max-h-60 sm:max-h-72 overflow-y-auto pr-2 whitespace-pre-line">
-              {product.fullDescVI ||
-                product.shortDescVI ||
-                "Chưa có mô tả chi tiết cho sản phẩm này."}
+            <div className="max-h-[28rem] space-y-5 overflow-y-auto pr-2">
+              <div className="prose prose-sm max-w-none whitespace-pre-line text-xs leading-6 text-stone-700" dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
+              {(product.detailImages || []).length > 0 && (
+                <div className="space-y-3 border-t border-stone-200 pt-5">
+                  <h3 className="text-xs font-extrabold text-stone-900">Hình ảnh chi tiết sản phẩm</h3>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {(product.detailImages || []).map((image, index) => (
+                      <img key={`${image}-${index}`} src={image} alt={`${product.titleVI} - chi tiết ${index + 1}`} loading="lazy" className="w-full rounded-xl border border-stone-200 bg-white object-contain" />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
