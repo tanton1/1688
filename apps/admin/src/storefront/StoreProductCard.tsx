@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { WebProduct } from "@hub1688/shared-types";
-import { ShoppingBag, Eye, Video, Sparkles, Star } from "lucide-react";
+import { ShoppingBag, Eye, Video, Sparkles, Star, ImageOff } from "lucide-react";
 
 interface StoreProductCardProps {
   product: WebProduct;
@@ -8,149 +8,74 @@ interface StoreProductCardProps {
   onQuickAdd: (product: WebProduct) => void;
 }
 
-export const StoreProductCard: React.FC<StoreProductCardProps> = ({
-  product,
-  onSelect,
-  onQuickAdd
-}) => {
+export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onSelect, onQuickAdd }) => {
+  const [imageFailed, setImageFailed] = useState(false);
   const minPrice = product.minPriceVND || 0;
   const maxPrice = product.maxPriceVND || minPrice;
   const firstDiscountTier = [...(product.volumeDiscountTiers || [])]
     .filter(tier => tier.discountPercent > 0)
     .sort((left, right) => left.minQty - right.minQty)[0];
   const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
-
-  const totalStock = (product.variants || []).reduce(
-    (acc, v) => acc + (v.stockQuantity || 0),
-    0
-  );
+  const totalStock = (product.variants || []).reduce((acc, variant) => acc + (variant.stockQuantity || 0), 0);
   const isOutOfStock = totalStock <= 0;
+
+  const openDetails = () => onSelect(product);
 
   return (
     <article
-      onClick={() => onSelect(product)}
-      className="group bg-white rounded-2xl sm:rounded-3xl border border-stone-200/90 hover:border-orange-500/80 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col h-full relative cursor-pointer select-none"
+      tabIndex={0}
+      role="group"
+      data-state={isOutOfStock ? "disabled" : "default"}
+      aria-label={`${product.titleVI}${isOutOfStock ? ", hết hàng" : ""}`}
+      onClick={openDetails}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetails();
+        }
+      }}
+      className="mc-focus-ring group relative flex h-full cursor-pointer select-none flex-col overflow-hidden rounded-[var(--mc-radius-xs)] border border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] transition-[box-shadow,border-color,transform] duration-[var(--mc-motion-instant)] hover:-translate-y-1 hover:border-[var(--mc-color-accent)]/60 hover:shadow-[var(--mc-shadow-lift)] active:translate-y-0 data-[state=disabled]:cursor-not-allowed data-[state=disabled]:opacity-70"
     >
-      {/* Product Image & Floating Badges */}
-      <div className="relative aspect-square overflow-hidden bg-stone-100">
-        {product.primaryImage ? (
-          <img
-            loading="lazy"
-            decoding="async"
-            src={product.primaryImage}
-            alt={product.titleVI}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
+      <div className="relative aspect-square overflow-hidden bg-[var(--mc-color-surface-subtle)]">
+        {product.primaryImage && !imageFailed ? (
+          <img loading="lazy" decoding="async" src={product.primaryImage} alt={product.titleVI} onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-stone-500">Chưa có ảnh</div>
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--mc-color-text-secondary)]" role="img" aria-label="Chưa có ảnh sản phẩm">
+            <ImageOff className="h-6 w-6" aria-hidden="true" />
+            <span className="text-xs font-semibold">Chưa có ảnh</span>
+          </div>
         )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent opacity-0 transition-opacity duration-[var(--mc-motion-instant)] group-hover:opacity-100" aria-hidden="true" />
 
-        {/* Top Badges (Left) */}
-        <div className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 flex flex-col gap-1 items-start z-10">
-          {product.isPersonalized && (
-            <span className="bg-orange-600/95 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm uppercase tracking-wider">
-              <Sparkles className="w-2.5 h-2.5" />
-              <span>Custom</span>
-            </span>
-          )}
-
-          {product.videoUrl && (
-            <span className="bg-purple-600/90 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-              <Video className="w-2.5 h-2.5" />
-              <span className="hidden sm:inline">Video</span>
-            </span>
-          )}
+        <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-1.5">
+          {product.isPersonalized && <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mc-color-accent)] px-2.5 py-1 text-[10px] font-bold text-white"><Sparkles className="h-3 w-3" aria-hidden="true" /> Custom</span>}
+          {product.videoUrl && <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mc-color-surface-base)]/75 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm"><Video className="h-3 w-3" aria-hidden="true" /> Video</span>}
         </div>
-
-        {/* Verified volume discount (Right) */}
-        {firstDiscountTier && (
-          <span className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 bg-rose-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm z-10">
-            Từ {firstDiscountTier.minQty}: -{firstDiscountTier.discountPercent}%
-          </span>
-        )}
-
-        {/* Category Pill */}
-        {product.categoryName && (
-          <span className="absolute bottom-2 left-2 sm:bottom-2.5 sm:left-2.5 bg-stone-900/75 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-lg z-10 truncate max-w-[80%]">
-            {product.categoryName}
-          </span>
-        )}
-
-        {/* Quick View Floating Overlay Button (Desktop) */}
-        <div className="hidden sm:flex absolute inset-0 bg-stone-900/25 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center p-4">
-          <span className="px-4 py-2 bg-white text-stone-900 text-xs font-black rounded-xl shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all flex items-center gap-1.5">
-            <Eye className="w-3.5 h-3.5 text-orange-600" />
-            <span>Tùy Biến & Xem Nhanh</span>
-          </span>
+        {firstDiscountTier && <span className="absolute right-3 top-3 z-10 rounded-full bg-[var(--mc-color-surface-strong)] px-2.5 py-1 text-[10px] font-bold text-[var(--mc-color-accent-strong)] shadow-sm">-{firstDiscountTier.discountPercent}% từ {firstDiscountTier.minQty}</span>}
+        {product.categoryName && <span className="absolute bottom-3 left-3 z-10 max-w-[78%] truncate rounded-full bg-[var(--mc-color-surface-base)]/75 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">{product.categoryName}</span>}
+        <div className="absolute inset-x-0 bottom-0 hidden justify-center p-4 sm:flex">
+          <span className="translate-y-2 rounded-full bg-[var(--mc-color-surface-strong)] px-4 py-2 text-xs font-bold text-[var(--mc-color-text-primary)] opacity-0 shadow-lg transition-all duration-[var(--mc-motion-instant)] group-hover:translate-y-0 group-hover:opacity-100"><Eye className="mr-1.5 inline h-3.5 w-3.5 text-[var(--mc-color-accent)]" aria-hidden="true" />Xem chi tiết</span>
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="p-2.5 sm:p-4 flex flex-col flex-1 justify-between">
+      <div className="flex flex-1 flex-col justify-between p-4">
         <div>
-          {/* Rating stars & review count */}
-          <div className="flex items-center gap-1 text-[10px] sm:text-[11px] font-bold mb-1">
-            {hasReviews ? (
-              <>
-                <Star size={11} className="fill-current text-amber-400" />
-                <span className="text-stone-800 text-[10px] font-extrabold">{product.rating}</span>
-                <span className="text-stone-400 text-[10px]">({product.reviewCount})</span>
-              </>
-            ) : (
-              <span className="text-stone-400 text-[10px]">Chưa có đánh giá</span>
-            )}
+          <div className="mb-2 flex min-h-4 items-center gap-1 text-[11px] font-semibold">
+            {hasReviews ? <><Star className="h-3 w-3 fill-current text-[var(--mc-color-accent)]" aria-hidden="true" /><span>{product.rating}</span><span className="font-normal text-[var(--mc-color-text-secondary)]">({product.reviewCount})</span></> : <span className="font-normal text-[var(--mc-color-text-secondary)]">Chưa có đánh giá</span>}
           </div>
-
-          {/* Title */}
-          <h3
-            className="text-xs sm:text-sm font-bold text-stone-900 group-hover:text-orange-600 line-clamp-2 leading-snug mb-1.5 transition-colors"
-            title={product.titleVI}
-          >
-            {product.titleVI}
-          </h3>
-
-          {/* Volume Discount Tag */}
-          {firstDiscountTier && (
-            <div className="mb-2">
-              <span className="text-[9px] sm:text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 sm:px-2 py-0.5 rounded-md inline-block">
-                Mua từ {firstDiscountTier.minQty}: giảm {firstDiscountTier.discountPercent}%
-              </span>
-            </div>
-          )}
+          <h3 className="line-clamp-2 min-h-[44px] text-sm font-semibold leading-5 tracking-[-0.015em] text-[var(--mc-color-text-primary)] transition-colors group-hover:text-[var(--mc-color-accent-strong)]" title={product.titleVI}>{product.titleVI}</h3>
+          {firstDiscountTier && <p className="mt-2 inline-flex rounded-full bg-[var(--mc-color-surface-muted)]/10 px-2 py-1 text-[10px] font-semibold leading-4 text-[var(--mc-color-accent-strong)]">Mua từ {firstDiscountTier.minQty}: giảm {firstDiscountTier.discountPercent}%</p>}
         </div>
 
-        {/* Price & Quick Add Box */}
-        <div className="pt-2 border-t border-stone-100 flex items-end justify-between gap-1.5">
+        <div className="mt-4 flex items-end justify-between gap-2 border-t border-[var(--mc-color-border-default)]/10 pt-3">
           <div className="min-w-0">
-            <div className="flex items-baseline gap-1 flex-wrap">
-              <span className="text-sm sm:text-base font-black text-orange-600 tracking-tight">
-                {minPrice > 0 ? `${minPrice.toLocaleString("vi-VN")}đ` : "Liên hệ"}
-              </span>
-              {maxPrice > minPrice && (
-                <span className="text-[10px] sm:text-xs font-bold text-orange-500">
-                  ~ {maxPrice.toLocaleString("vi-VN")}đ
-                </span>
-              )}
+            <div className="flex flex-wrap items-baseline gap-1.5">
+              <span className="text-base font-bold tracking-[-0.02em] text-[var(--mc-color-text-primary)]">{minPrice > 0 ? `${minPrice.toLocaleString("vi-VN")}đ` : "Liên hệ"}</span>
+              {maxPrice > minPrice && <span className="text-[11px] font-semibold text-[var(--mc-color-text-secondary)]">– {maxPrice.toLocaleString("vi-VN")}đ</span>}
             </div>
           </div>
-
-          {/* Touch-Friendly Action Button */}
-          <button
-            type="button"
-            disabled={isOutOfStock}
-            onClick={(e) => {
-              e.stopPropagation();
-              onQuickAdd(product);
-            }}
-            className={`min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] p-2 sm:p-2.5 rounded-xl font-bold text-xs transition-all active:scale-90 flex items-center justify-center cursor-pointer shrink-0 ${
-              isOutOfStock
-                ? "bg-stone-100 text-stone-400 cursor-not-allowed"
-                : "bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white border border-orange-200 hover:border-orange-600 shadow-xs"
-            }`}
-            title="Thêm nhanh vào giỏ hàng"
-            aria-label="Thêm nhanh vào giỏ hàng"
-          >
-            <ShoppingBag className="w-4 h-4" />
+          <button type="button" disabled={isOutOfStock} onClick={(event) => { event.stopPropagation(); onQuickAdd(product); }} className="mc-focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--mc-color-accent)]/30 bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)] transition-colors hover:border-[var(--mc-color-accent)] hover:bg-[var(--mc-color-accent)] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-[var(--mc-color-border-default)]/10 disabled:bg-[var(--mc-color-surface-subtle)] disabled:text-[var(--mc-color-text-secondary)]" title={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"} aria-label={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"}>
+            <ShoppingBag className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       </div>

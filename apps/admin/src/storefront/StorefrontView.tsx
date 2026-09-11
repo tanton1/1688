@@ -42,8 +42,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 }) => {
   // Store Config
   const [config, setConfig] = useState<StorefrontConfig>({
-    storeName: "1688 STORE",
-    tagline: "Cửa hàng trực tuyến",
+    storeName: "MACORNER",
+    tagline: "Quà cá nhân hóa cho những người bạn yêu",
     hotline: "",
     freeShipThresholdVND: 500000,
     shippingFeeVND: 30000,
@@ -364,7 +364,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] flex flex-col selection:bg-orange-500 selection:text-white pb-20 md:pb-0">
+    <div className="mc-storefront flex min-h-screen flex-col pb-20 selection:bg-[var(--mc-color-accent)] selection:text-white md:pb-0">
       {/* 1. Header */}
       <StoreHeader
         config={config}
@@ -383,8 +383,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />
 
       {(catalogMode === "DEMO" || loadError) && (
-        <div className={`${catalogMode === "DEMO" ? "bg-amber-50 text-amber-900 border-amber-200" : "bg-rose-50 text-rose-800 border-rose-200"} border-y px-4 py-2.5 text-center text-xs font-semibold`} role="status">
-          {catalogMode === "DEMO" ? "Chế độ Demo — sản phẩm và hoạt động mua hàng bên dưới là dữ liệu mô phỏng." : loadError}
+        <div className={`${catalogMode === "DEMO" ? "bg-[var(--mc-color-surface-muted)] text-[var(--mc-color-text-tertiary)]" : "bg-[var(--mc-color-danger)] text-white"} border-y border-[var(--mc-color-border-default)]/20 px-4 py-2.5 text-center text-xs font-semibold`} role="status">
+          {catalogMode === "DEMO" ? "Bạn đang xem catalog mô phỏng — toàn bộ hành trình mua hàng vẫn hoạt động để bạn trải nghiệm." : loadError}
         </div>
       )}
 
@@ -398,45 +398,53 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       />
 
       {/* 3. Main Catalog Section */}
-      <main ref={catalogRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full space-y-6">
+      <main id="store-catalog" ref={catalogRef} className="mc-content-width mx-auto w-full max-w-7xl flex-1 space-y-8 px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
         {/* Category Filters & Sort */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 pb-4 border-b border-stone-200/80">
+        <div className="flex flex-col gap-4 border-b border-[var(--mc-color-border-default)]/15 pb-5 md:flex-row md:items-end md:justify-between">
           {/* Category Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <div className="min-w-0">
+            <p className="mc-eyebrow">Bộ sưu tập</p>
+            <div className="mc-no-scrollbar mt-2 flex items-center gap-2 overflow-x-auto pb-1">
             <button
+              type="button"
+              aria-pressed={selectedCategory === "ALL"}
               onClick={() => setSelectedCategory("ALL")}
-              className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              className={`mc-focus-ring min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold whitespace-nowrap transition-colors ${
                 selectedCategory === "ALL"
-                  ? "bg-stone-900 text-white shadow-sm"
-                  : "bg-white text-stone-600 hover:bg-orange-50 hover:text-orange-600 border border-stone-200/90"
+                  ? "border-[var(--mc-color-surface-base)] bg-[var(--mc-color-surface-base)] text-white"
+                  : "border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-text-secondary)] hover:border-[var(--mc-color-accent)]/50 hover:text-[var(--mc-color-accent-strong)]"
               }`}
             >
-              Tất Cả Sản Phẩm ({products.length})
+              Tất cả sản phẩm <span className="ml-1 opacity-60">{products.length}</span>
             </button>
 
             {categories.map((cat, idx) => (
               <button
+                type="button"
                 key={idx}
+                aria-pressed={selectedCategory === cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`mc-focus-ring min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold whitespace-nowrap transition-colors ${
                   selectedCategory === cat
-                    ? "bg-orange-600 text-white shadow-md shadow-orange-600/25"
-                    : "bg-white text-stone-600 hover:bg-orange-50 hover:text-orange-600 border border-stone-200/90"
+                    ? "border-[var(--mc-color-accent)] bg-[var(--mc-color-accent)] text-white"
+                    : "border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-text-secondary)] hover:border-[var(--mc-color-accent)]/50 hover:text-[var(--mc-color-accent-strong)]"
                 }`}
               >
                 {cat}
               </button>
             ))}
+            </div>
           </div>
 
           {/* Sort Dropdown */}
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-            <span className="text-xs text-stone-500 font-semibold">Sắp xếp:</span>
+          <div className="flex shrink-0 items-center gap-2 self-end md:self-auto">
+            <label htmlFor="store-sort" className="text-xs font-semibold text-[var(--mc-color-text-secondary)]">Sắp xếp</label>
             <div className="relative">
               <select
+                id="store-sort"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="text-xs font-bold px-3 py-2 bg-white border border-stone-300 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-hidden cursor-pointer"
+                className="mc-focus-ring min-h-10 cursor-pointer rounded-full border border-[var(--mc-color-border-default)]/20 bg-[var(--mc-color-surface-strong)] px-3.5 text-xs font-semibold text-[var(--mc-color-text-primary)]"
               >
                 <option value="NEWEST">Mới Nhất</option>
                 <option value="PRICE_ASC">Giá: Thấp đến Cao</option>
@@ -448,39 +456,30 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
         {/* Product Grid */}
         {isLoading ? (
-          <div className="py-24 text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-slate-500 font-medium">Đang tải sản phẩm từ cửa hàng...</p>
+          <div className="space-y-4 py-24 text-center" aria-live="polite" aria-busy="true">
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[var(--mc-color-accent)] border-t-transparent" role="status" aria-label="Đang tải sản phẩm" />
+            <p className="text-sm font-medium text-[var(--mc-color-text-secondary)]">Đang tải bộ sưu tập...</p>
           </div>
         ) : loadError && products.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-rose-200 p-12 text-center space-y-3 max-w-lg mx-auto shadow-xs" role="alert">
-            <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
-              <RotateCcw className="w-8 h-8" />
+          <div className="mx-auto max-w-lg space-y-4 rounded-[var(--mc-radius-xs)] border border-[var(--mc-color-danger)]/25 bg-[var(--mc-color-surface-strong)] p-12 text-center shadow-[var(--mc-shadow-soft)]" role="alert">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--mc-color-danger)]/10 text-[var(--mc-color-danger)]">
+              <RotateCcw className="h-7 w-7" aria-hidden="true" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Không thể tải cửa hàng</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{loadError}</p>
-            <button onClick={loadStoreData} className="mt-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold">
-              Thử tải lại
-            </button>
+            <h3 className="text-lg font-semibold tracking-tight text-[var(--mc-color-text-primary)]">Không thể tải bộ sưu tập</h3>
+            <p className="text-sm leading-6 text-[var(--mc-color-text-secondary)]">{loadError}</p>
+            <button type="button" onClick={loadStoreData} className="mc-focus-ring mt-2 min-h-11 rounded-full bg-[var(--mc-color-surface-base)] px-5 text-sm font-bold text-white transition-colors hover:bg-[var(--mc-color-accent-strong)]">Thử tải lại</button>
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3 max-w-lg mx-auto shadow-xs">
-            <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-400 flex items-center justify-center mx-auto">
-              <ShoppingBag className="w-8 h-8" />
+          <div className="mx-auto max-w-lg space-y-4 rounded-[var(--mc-radius-xs)] border border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] p-12 text-center shadow-[var(--mc-shadow-soft)]">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)]">
+              <ShoppingBag className="h-7 w-7" aria-hidden="true" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Không tìm thấy sản phẩm nào</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Hiện tại chưa có sản phẩm nào ở danh mục này hoặc đang trong trạng thái bản nháp. Bạn có thể vào Admin để xuất bản sản phẩm sang trạng thái Đang Bán (PUBLISHED).
-            </p>
-            <button
-              onClick={onBackToAdmin}
-              className="mt-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-            >
-              Vào Quản Trị Đăng Sản Phẩm
-            </button>
+            <h3 className="text-lg font-semibold tracking-tight text-[var(--mc-color-text-primary)]">Chưa có thiết kế phù hợp</h3>
+            <p className="text-sm leading-6 text-[var(--mc-color-text-secondary)]">Thử bỏ bớt bộ lọc hoặc tìm một từ khóa khác. Nếu bạn đang quản lý shop, hãy xuất bản sản phẩm để hiển thị tại đây.</p>
+            <button type="button" onClick={onBackToAdmin} className="mc-focus-ring mt-2 min-h-11 rounded-full bg-[var(--mc-color-accent)] px-5 text-sm font-bold text-white transition-colors hover:bg-[var(--mc-color-accent-strong)]">Mở quản trị sản phẩm</button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
             {filteredProducts.map(product => (
               <StoreProductCard
                 key={product.id}
@@ -494,36 +493,34 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       </main>
 
       {/* 4. Footer */}
-      <footer className="bg-slate-900 text-slate-400 text-xs border-t border-slate-800 mt-16 pt-12 pb-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-10 border-b border-slate-800">
+      <footer className="mt-10 border-t border-[var(--mc-color-border-default)] bg-[var(--mc-color-surface-base)] pb-8 pt-12 text-xs text-white/60">
+        <div className="mc-content-width mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-10 border-b border-white/15 pb-10 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
             {/* Brand Col */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center text-white font-bold">
-                  <Layers className="w-4 h-4" />
+            <div className="space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[var(--mc-radius-xs)] bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-accent)]">
+                  <Layers className="h-4 w-4" aria-hidden="true" />
                 </div>
-                <span className="text-white font-extrabold text-sm">{config.storeName}</span>
+                <span className="text-sm font-bold text-white">{config.storeName && config.storeName !== "1688 STORE" ? config.storeName : "MACORNER"}</span>
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-400">
-                {config.tagline || "Cửa hàng trực tuyến"}
-              </p>
-              <div className="pt-1 flex items-center gap-2 text-emerald-400 font-bold text-[11px]">
-                <ShieldCheck className="w-4 h-4" />
+              <p className="max-w-xs text-sm leading-6 text-white/60">{config.tagline && config.tagline !== "Cửa hàng trực tuyến" ? config.tagline : "Quà cá nhân hóa cho những người bạn yêu"}</p>
+              <div className="flex items-start gap-2 text-xs font-semibold text-white/80">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--mc-color-accent)]" aria-hidden="true" />
                 <span>Giá và tồn kho được xác nhận khi đặt hàng</span>
               </div>
             </div>
 
             {/* Contact Col */}
-            <div className="space-y-2.5">
-              <h4 className="text-white font-bold text-xs uppercase tracking-wider">Liên Hệ & Hỗ Trợ</h4>
-              {config.hotline && <p className="flex items-center gap-2 text-[11px]">
-                <Phone className="w-3.5 h-3.5 text-orange-500" />
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-white">Liên hệ & hỗ trợ</h4>
+              {config.hotline && <p className="flex items-center gap-2 text-xs">
+                <Phone className="h-3.5 w-3.5 text-[var(--mc-color-accent)]" aria-hidden="true" />
                 <span>Hotline: <strong className="text-white">{config.hotline}</strong></span>
               </p>}
               {config.address && (
-                <p className="flex items-start gap-2 text-[11px]">
-                  <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0 mt-0.5" />
+                <p className="flex items-start gap-2 text-xs leading-5">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--mc-color-accent)]" aria-hidden="true" />
                   <span>{config.address}</span>
                 </p>
               )}
@@ -532,44 +529,44 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                   href={config.zaloUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-block text-blue-400 hover:underline text-[11px]"
+                  className="mc-focus-ring inline-block rounded text-xs text-[var(--mc-color-accent)] hover:underline"
                 >
-                  Tư vấn Zalo trực tiếp ↗
+                  Tư vấn Zalo trực tiếp <span aria-hidden="true">↗</span>
                 </a>
               )}
             </div>
 
             {/* Policy Col */}
-            <div className="space-y-2">
-              <h4 className="text-white font-bold text-xs uppercase tracking-wider">Thông Tin Mua Hàng</h4>
-              <ul className="space-y-1.5 text-[11px]">
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-white">Thông tin mua hàng</h4>
+              <ul className="space-y-2 text-xs leading-5">
                 <li>Tra cứu đơn bằng mã đơn và số điện thoại</li>
                 <li>Giá bán được tính lại tại máy chủ</li>
                 <li>Tồn kho được giữ khi tạo đơn thành công</li>
-                <li>Thông tin nội bộ nguồn hàng không công khai</li>
+                <li>Thông tin nguồn hàng không công khai</li>
               </ul>
             </div>
 
             {/* Payment Partners Col */}
-            <div className="space-y-2.5">
-              <h4 className="text-white font-bold text-xs uppercase tracking-wider">Thanh Toán An Toàn</h4>
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                {config.bankName && config.bankAccountNo && config.bankAccountName && <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
-                  <QrCode className="w-3 h-3 text-emerald-400" /> VietQR Napas 247
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-white">Thanh toán an toàn</h4>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {config.bankName && config.bankAccountNo && config.bankAccountName && <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white/80">
+                  <QrCode className="h-3 w-3 text-[var(--mc-color-accent)]" aria-hidden="true" /> VietQR
                 </span>}
-                <span className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
-                  <Truck className="w-3 h-3 text-orange-400" /> COD Tận Nhà
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white/80">
+                  <Truck className="h-3 w-3 text-[var(--mc-color-accent)]" aria-hidden="true" /> COD tận nhà
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 mt-2">Phương thức khả dụng được xác nhận khi thanh toán.</p>
+              <p className="mt-2 text-[11px] leading-5 text-white/45">Phương thức khả dụng được xác nhận khi thanh toán.</p>
             </div>
           </div>
 
-          <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 gap-2">
-            <span>© {new Date().getFullYear()} {config.storeName}. All rights reserved.</span>
+          <div className="flex flex-col items-center justify-between gap-2 pt-6 text-[11px] text-white/45 sm:flex-row">
+            <span>© {new Date().getFullYear()} {config.storeName && config.storeName !== "1688 STORE" ? config.storeName : "MACORNER"}. All rights reserved.</span>
             <div className="flex items-center gap-4">
-              <button onClick={onBackToAdmin} className="text-orange-400 hover:underline font-semibold">
-                Quay về Bảng Điều Khiển Admin
+              <button type="button" onClick={onBackToAdmin} className="mc-focus-ring rounded text-[var(--mc-color-accent)] hover:underline">
+                Quay về quản trị
               </button>
             </div>
           </div>

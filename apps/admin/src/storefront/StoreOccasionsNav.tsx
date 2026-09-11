@@ -1,5 +1,5 @@
 import React from "react";
-import { Gift, Heart, Sparkles, RotateCcw } from "lucide-react";
+import { Gift, Heart, RotateCcw } from "lucide-react";
 
 export interface StoreOccasionsNavProps {
   activeOccasion: string;
@@ -10,126 +10,56 @@ export interface StoreOccasionsNavProps {
 }
 
 export const OCCASIONS_LIST = [
-  { id: "all", label: "Tất Cả Dịp", emoji: "✨" },
-  { id: "christmas", label: "Giáng Sinh (Noel)", emoji: "🎄" },
-  { id: "anniversary", label: "Kỷ Niệm & Ngày Cưới", emoji: "💍" },
-  { id: "valentines", label: "Valentine & Tình Yêu", emoji: "💘" },
-  { id: "mothers-day", label: "Ngày Của Mẹ", emoji: "🌸" },
-  { id: "fathers-day", label: "Ngày Của Cha", emoji: "👔" },
-  { id: "birthday", label: "Sinh Nhật", emoji: "🎂" },
-  { id: "memorial", label: "Tưởng Nhớ & Tri Ân", emoji: "🕊️" }
+  { id: "all", label: "Tất cả dịp", emoji: "✦" },
+  { id: "christmas", label: "Giáng sinh", emoji: "✧" },
+  { id: "anniversary", label: "Kỷ niệm", emoji: "♡" },
+  { id: "valentines", label: "Tình yêu", emoji: "♥" },
+  { id: "mothers-day", label: "Tặng mẹ", emoji: "❀" },
+  { id: "fathers-day", label: "Tặng bố", emoji: "⌁" },
+  { id: "birthday", label: "Sinh nhật", emoji: "✳" },
+  { id: "memorial", label: "Tưởng nhớ", emoji: "⊹" }
 ];
 
 export const RECIPIENTS_LIST = [
-  { id: "all", label: "Mọi Người", emoji: "🎁" },
-  { id: "for-mom", label: "Tặng Mẹ", emoji: "👩" },
-  { id: "for-dad", label: "Tặng Bố", emoji: "👨" },
-  { id: "for-besties", label: "Bạn Thân (Soul Sisters)", emoji: "👭" },
-  { id: "for-couples", label: "Cặp Đôi / Vợ Chồng", emoji: "💑" },
-  { id: "for-pet-lovers", label: "Người Yêu Chó Mèo", emoji: "🐾" },
-  { id: "for-grandparents", label: "Ông Bà", emoji: "👵" }
+  { id: "all", label: "Mọi người", emoji: "✦" },
+  { id: "for-mom", label: "Mẹ", emoji: "♡" },
+  { id: "for-dad", label: "Bố", emoji: "◇" },
+  { id: "for-besties", label: "Bạn thân", emoji: "✧" },
+  { id: "for-couples", label: "Cặp đôi", emoji: "♥" },
+  { id: "for-pet-lovers", label: "Yêu thú cưng", emoji: "•" },
+  { id: "for-grandparents", label: "Ông bà", emoji: "❀" }
 ];
 
-export const StoreOccasionsNav: React.FC<StoreOccasionsNavProps> = ({
-  activeOccasion,
-  onSelectOccasion,
-  activeRecipient,
-  onSelectRecipient,
-  totalProductsCount
-}) => {
+export const StoreOccasionsNav: React.FC<StoreOccasionsNavProps> = ({ activeOccasion, onSelectOccasion, activeRecipient, onSelectRecipient, totalProductsCount }) => {
   const isFiltering = activeOccasion !== "all" || activeRecipient !== "all";
+  const reset = () => { onSelectOccasion("all"); onSelectRecipient("all"); };
+  const optionClass = (active: boolean) => `mc-focus-ring inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors active:scale-[.98] ${active ? "border-[var(--mc-color-surface-base)] bg-[var(--mc-color-surface-base)] text-white" : "border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-canvas)] text-[var(--mc-color-text-secondary)] hover:border-[var(--mc-color-accent)]/50 hover:text-[var(--mc-color-accent-strong)]"}`;
 
   return (
-    <div id="store-occasions-section" className="bg-white border-y border-stone-200/80 shadow-xs mb-6 sm:mb-8">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-3.5 space-y-2.5 sm:space-y-3">
-        {/* Row 1: Filter by Occasions */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 pb-2.5 border-b border-stone-100">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 shrink-0 uppercase tracking-wider">
-            <Gift size={15} className="text-orange-600" />
-            <span>Dịp Tặng Quà:</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth">
-            {OCCASIONS_LIST.map((occ) => {
-              const isActive = activeOccasion === occ.id;
-              return (
-                <button
-                  key={occ.id}
-                  type="button"
-                  onClick={() => onSelectOccasion(occ.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 cursor-pointer ${
-                    isActive
-                      ? "bg-orange-600 text-white shadow-md shadow-orange-600/25 ring-2 ring-orange-600/30"
-                      : "bg-stone-100 text-stone-600 hover:bg-orange-50 hover:text-orange-700"
-                  }`}
-                >
-                  <span className="text-sm">{occ.emoji}</span>
-                  <span>{occ.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Row 2: Filter by Recipient */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
-          <div className="flex items-center justify-between sm:justify-start gap-1.5 text-xs font-bold text-stone-800 shrink-0 uppercase tracking-wider">
-            <div className="flex items-center gap-1.5">
-              <Heart size={15} className="text-rose-500" />
-              <span>Người Nhận:</span>
+    <section id="store-occasions-section" className="border-b border-[var(--mc-color-border-default)]/12 bg-[var(--mc-color-surface-strong)]" aria-label="Bộ lọc quà tặng">
+      <div className="mc-content-width mx-auto px-4 py-5 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="mc-eyebrow">Tìm đúng món quà</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-[-0.03em] text-[var(--mc-color-text-primary)]">Chọn theo dịp hoặc người nhận</h2>
             </div>
-
-            {isFiltering && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectOccasion("all");
-                  onSelectRecipient("all");
-                }}
-                className="sm:hidden inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 px-2 py-0.5 rounded-full bg-orange-50"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Đặt lại</span>
-              </button>
-            )}
+            <span className="hidden text-xs text-[var(--mc-color-text-secondary)] sm:block">{totalProductsCount} thiết kế đang có sẵn</span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth">
-            {RECIPIENTS_LIST.map((rec) => {
-              const isActive = activeRecipient === rec.id;
-              return (
-                <button
-                  key={rec.id}
-                  type="button"
-                  onClick={() => onSelectRecipient(rec.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 cursor-pointer ${
-                    isActive
-                      ? "bg-stone-900 text-white shadow-md ring-2 ring-stone-900/30"
-                      : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
-                  }`}
-                >
-                  <span className="text-sm">{rec.emoji}</span>
-                  <span>{rec.label}</span>
-                </button>
-              );
-            })}
-
-            {isFiltering && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectOccasion("all");
-                  onSelectRecipient("all");
-                }}
-                className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700 underline px-3 py-1 shrink-0 ml-auto transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Đặt lại bộ lọc</span>
-              </button>
-            )}
+          <div className="flex items-start gap-3">
+            <div className="flex w-24 shrink-0 items-center gap-1.5 pt-2 text-xs font-bold text-[var(--mc-color-text-primary)]"><Gift className="h-4 w-4 text-[var(--mc-color-accent)]" aria-hidden="true" /><span>Dịp tặng</span></div>
+            <div className="mc-no-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">{OCCASIONS_LIST.map((occasion) => { const active = activeOccasion === occasion.id; return <button key={occasion.id} type="button" aria-pressed={active} onClick={() => onSelectOccasion(occasion.id)} className={optionClass(active)}><span aria-hidden="true">{occasion.emoji}</span>{occasion.label}</button>; })}</div>
           </div>
+
+          <div className="flex items-start gap-3 border-t border-[var(--mc-color-border-default)]/10 pt-4">
+            <div className="flex w-24 shrink-0 items-center gap-1.5 pt-2 text-xs font-bold text-[var(--mc-color-text-primary)]"><Heart className="h-4 w-4 text-[var(--mc-color-accent)]" aria-hidden="true" /><span>Người nhận</span></div>
+            <div className="mc-no-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">{RECIPIENTS_LIST.map((recipient) => { const active = activeRecipient === recipient.id; return <button key={recipient.id} type="button" aria-pressed={active} onClick={() => onSelectRecipient(recipient.id)} className={optionClass(active)}><span aria-hidden="true">{recipient.emoji}</span>{recipient.label}</button>; })}</div>
+          </div>
+
+          {isFiltering && <button type="button" onClick={reset} className="mc-focus-ring inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--mc-color-accent)]/25 px-3 py-1.5 text-xs font-bold text-[var(--mc-color-accent-strong)] transition-colors hover:bg-[var(--mc-color-accent)]/10"><RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />Đặt lại bộ lọc</button>}
         </div>
       </div>
-    </div>
+    </section>
   );
 };

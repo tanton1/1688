@@ -8,7 +8,8 @@ import {
   PackageCheck,
   Sparkles,
   ExternalLink,
-  Heart
+  Heart,
+  X
 } from "lucide-react";
 import { StorefrontConfig } from "@hub1688/shared-types";
 
@@ -22,7 +23,7 @@ interface StoreHeaderProps {
   onBackToAdmin: () => void;
 }
 
-const TRENDING_SEARCHES = ["Biển Mica LED", "Ly Giữ Nhiệt", "Đồ Treo Cây", "Cặp Đôi", "Cún Cưng"];
+const TRENDING_SEARCHES = ["Biển mica LED", "Ly giữ nhiệt", "Đồ treo cây", "Quà cho mẹ", "Cún cưng"];
 
 export const StoreHeader: React.FC<StoreHeaderProps> = ({
   config,
@@ -33,185 +34,93 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
   onOpenTracker,
   onBackToAdmin
 }) => {
+  const storeName = config.storeName && config.storeName !== "1688 STORE" ? config.storeName : "MACORNER";
+  const tagline = config.tagline && config.tagline !== "Cửa hàng trực tuyến" ? config.tagline : "Quà cá nhân hóa cho những người bạn yêu";
+
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-xs">
-      {/* Top Notification Announcement Bar */}
-      <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 text-white text-[11px] sm:text-xs font-semibold py-1.5 px-3 sm:px-6 flex items-center justify-between shadow-inner">
-        <div className="hidden md:flex items-center gap-2">
-          <Truck className="w-3.5 h-3.5 text-amber-200" />
-          <span>
-            Miễn phí giao hàng toàn quốc đơn từ{" "}
-            <strong className="text-amber-100 underline decoration-amber-300">
-              {config.freeShipThresholdVND ? `${config.freeShipThresholdVND.toLocaleString("vi-VN")}đ` : "theo chính sách cửa hàng"}
-            </strong>
-          </span>
+    <header className="sticky top-0 z-30 border-b border-[var(--mc-color-border-default)]/80 bg-[var(--mc-color-surface-base)] text-[var(--mc-color-text-tertiary)]">
+      <div className="bg-[var(--mc-color-surface-muted)] px-4 py-2 text-[11px] font-semibold leading-4 text-[var(--mc-color-text-tertiary)] sm:px-6">
+        <div className="mc-content-width mx-auto flex items-center justify-between gap-3">
+          <div className="hidden items-center gap-2 md:flex">
+            <Truck className="h-3.5 w-3.5 text-[var(--mc-color-accent)]" aria-hidden="true" />
+            <span>
+              Freeship đơn từ{" "}
+              <strong className="text-white">
+                {config.freeShipThresholdVND ? `${config.freeShipThresholdVND.toLocaleString("vi-VN")}đ` : "theo chính sách shop"}
+              </strong>
+            </span>
+          </div>
+          <div className="mx-auto flex items-center gap-1.5 text-center md:mx-0">
+            <Sparkles className="h-3.5 w-3.5 text-[var(--mc-color-accent)]" aria-hidden="true" />
+            <span>Thiết kế riêng · Làm quà thật đặc biệt</span>
+          </div>
+          {config.hotline ? (
+            <a className="hidden items-center gap-1.5 text-[var(--mc-color-text-tertiary)] transition-colors hover:text-[var(--mc-color-accent)] md:flex" href={`tel:${config.hotline}`}>
+              <Phone className="h-3 w-3 text-[var(--mc-color-accent)]" aria-hidden="true" />
+              <span>{config.hotline}</span>
+            </a>
+          ) : <span className="hidden md:block" aria-hidden="true" />}
         </div>
-
-        <div className="mx-auto md:mx-0 flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-amber-200 shrink-0" />
-          <span className="tracking-wide">
-            Giá và tồn kho được xác nhận khi đặt hàng
-          </span>
-        </div>
-
-        {config.hotline && <div className="hidden md:flex items-center gap-3 text-orange-100">
-          <a
-            href={`tel:${config.hotline}`}
-            className="hover:text-white flex items-center gap-1 font-bold transition-colors"
-          >
-            <Phone className="w-3 h-3 text-amber-300" />
-            <span>Hotline: {config.hotline}</span>
-          </a>
-        </div>}
       </div>
 
-      {/* Main Navigation Bar */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
-        <div className="flex items-center justify-between gap-2 sm:gap-4">
-          {/* Brand / Logo */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={onBackToAdmin}
-              className="p-2 -ml-1.5 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors cursor-pointer"
-              title="Quay lại Hub Quản Trị"
-              aria-label="Quay lại Hub Quản Trị"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+      <div className="mc-content-width mx-auto px-4 py-3.5 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3 lg:gap-6">
+          <button type="button" onClick={onBackToAdmin} className="mc-focus-ring -ml-2 rounded-full p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white" title="Quay lại Hub Quản Trị" aria-label="Quay lại Hub Quản Trị">
+            <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+          </button>
 
-            <div
-              className="flex items-center gap-2.5 cursor-pointer select-none group"
-              onClick={() => onSearchChange("")}
-            >
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white shadow-md shadow-orange-500/25 group-hover:scale-105 transition-transform">
-                <Heart className="w-5 h-5 fill-white/20" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-black text-stone-900 text-base sm:text-lg tracking-tight group-hover:text-orange-600 transition-colors">
-                    {config.storeName || "1688 STORE"}
-                  </span>
-                  <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-1.5 py-0.5 rounded-md border border-orange-200">
-                    CRAFT
-                  </span>
-                </div>
-                <p className="text-[10px] text-stone-500 truncate max-w-[180px] sm:max-w-[260px]">
-                  {config.tagline || "Quà Tặng & Đồ Trang Trí Cá Nhân Hóa Độc Bản"}
-                </p>
-              </div>
+          <a href="#store-catalog" className="mc-focus-ring flex min-w-0 shrink-0 items-center gap-2.5 rounded-lg">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[var(--mc-radius-xs)] bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-surface-base)]" aria-hidden="true">
+              <Heart className="h-5 w-5 fill-[var(--mc-color-accent)] text-[var(--mc-color-accent)]" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-[17px] font-bold tracking-[-0.03em] text-white sm:text-[19px]">{storeName}</span>
+                <span className="hidden rounded-full border border-[var(--mc-color-accent)]/50 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-[var(--mc-color-accent)] sm:inline">ATELIER</span>
+              </span>
+              <span className="block max-w-[170px] truncate text-[11px] leading-4 text-white/60 sm:max-w-[220px]">{tagline}</span>
+            </span>
+          </a>
+
+          <nav aria-label="Điều hướng chính" className="hidden items-center gap-5 text-[13px] font-semibold text-white/70 lg:flex">
+            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-catalog">Tất cả quà</a>
+            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-occasions-section">Theo dịp tặng</a>
+            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-catalog">Bán chạy</a>
+          </nav>
+
+          <div className="ml-auto hidden max-w-[390px] flex-1 md:block">
+            <label className="sr-only" htmlFor="store-search-desktop">Tìm sản phẩm</label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" aria-hidden="true" />
+              <input id="store-search-desktop" type="search" value={searchTerm} onChange={(event) => onSearchChange(event.target.value)} placeholder="Tìm món quà dành riêng cho bạn..." className="mc-focus-ring h-10 w-full rounded-[var(--mc-radius-sm)] border border-white/15 bg-white/10 pl-10 pr-10 text-sm text-white placeholder:text-white/45 transition-colors hover:border-white/30 focus:border-[var(--mc-color-accent)] focus:bg-white/15" />
+              {searchTerm && <button type="button" onClick={() => onSearchChange("")} className="mc-focus-ring absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white" aria-label="Xóa tìm kiếm"><X className="h-4 w-4" aria-hidden="true" /></button>}
             </div>
           </div>
 
-          {/* Search Bar on Desktop (hidden on mobile, rendered below) */}
-          <div className="hidden md:flex flex-1 max-w-md lg:max-w-lg mx-2">
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Tìm quà tặng, biển mica LED, ly giữ nhiệt, áo thun..."
-                className="w-full pl-10 pr-9 py-2 text-xs sm:text-sm bg-stone-100 hover:bg-stone-100/80 focus:bg-white border border-transparent focus:border-orange-500 rounded-full outline-hidden transition-all text-stone-800 placeholder-stone-400 focus:ring-3 focus:ring-orange-500/15"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => onSearchChange("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-stone-200"
-                  aria-label="Xóa tìm kiếm"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Right Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
-            {/* Quick Hotline Call on Mobile */}
-            {config.hotline && <a
-              href={`tel:${config.hotline}`}
-              className="md:hidden p-2 text-stone-600 hover:text-orange-600 rounded-xl hover:bg-orange-50 transition-colors"
-              title="Gọi Hotline tư vấn"
-              aria-label="Gọi hotline"
-            >
-              <Phone className="w-4 h-4 text-orange-600" />
-            </a>}
-
-            {/* Order Tracker */}
-            <button
-              onClick={onOpenTracker}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-stone-700 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
-              title="Tra cứu tình trạng đơn hàng"
-            >
-              <PackageCheck className="w-4 h-4 text-orange-500" />
-              <span className="hidden sm:inline">Tra Cứu Đơn</span>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <button type="button" onClick={onOpenTracker} className="mc-focus-ring hidden items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white sm:flex" title="Tra cứu tình trạng đơn hàng">
+              <PackageCheck className="h-4 w-4 text-[var(--mc-color-accent)]" aria-hidden="true" />
+              <span>Tra cứu đơn</span>
             </button>
-
-            {/* Cart Button */}
-            <button
-              onClick={onOpenCart}
-              className="relative flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-orange-500/25 transition-all active:scale-95 cursor-pointer"
-              aria-label={`Mở giỏ hàng, hiện có ${cartCount} sản phẩm`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Giỏ Hàng</span>
-              {cartCount > 0 && (
-                <span className="min-w-[19px] h-[19px] px-1 bg-white text-orange-600 rounded-full text-[11px] font-black flex items-center justify-center shadow-xs animate-in zoom-in">
-                  {cartCount}
-                </span>
-              )}
+            <button type="button" onClick={onOpenCart} className="mc-focus-ring relative flex h-10 items-center gap-2 rounded-full bg-[var(--mc-color-accent)] px-3.5 text-xs font-bold text-white transition-colors hover:bg-[var(--mc-color-accent-strong)] active:translate-y-px sm:px-4" aria-label={`Mở giỏ hàng, hiện có ${cartCount} sản phẩm`}>
+              <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Giỏ hàng</span>
+              {cartCount > 0 && <span className="flex min-h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-black text-[var(--mc-color-accent-strong)]">{cartCount > 99 ? "99+" : cartCount}</span>}
             </button>
-
-            {/* Admin Switcher for Store Manager */}
-            <button
-              onClick={onBackToAdmin}
-              className="hidden lg:flex items-center gap-1 px-2.5 py-2 text-[11px] font-bold text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-              title="Vào bảng quản trị Admin"
-            >
-              <span>Admin</span>
-              <ExternalLink className="w-3 h-3" />
+            <button type="button" onClick={onBackToAdmin} className="mc-focus-ring hidden rounded-md p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white lg:block" title="Vào bảng quản trị Admin" aria-label="Vào bảng quản trị Admin">
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        {/* Mobile Search Row & Trending Pills (Exclusive for Mobile screens) */}
-        <div className="mt-2.5 md:hidden space-y-1.5">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Tìm quà tặng, mica, ly giữ nhiệt, áo thun..."
-              className="w-full pl-9 pr-9 py-2 text-xs bg-stone-100 hover:bg-stone-100/80 focus:bg-white border border-stone-200/80 focus:border-orange-500 rounded-full outline-hidden text-stone-800 placeholder-stone-400 focus:ring-2 focus:ring-orange-500/20"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => onSearchChange("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-stone-200"
-                aria-label="Xóa tìm kiếm"
-              >
-                ✕
-              </button>
-            )}
+        <div className="mt-3 md:hidden">
+          <label className="sr-only" htmlFor="store-search-mobile">Tìm sản phẩm</label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" aria-hidden="true" />
+            <input id="store-search-mobile" type="search" value={searchTerm} onChange={(event) => onSearchChange(event.target.value)} placeholder="Tìm sản phẩm..." className="mc-focus-ring h-10 w-full rounded-[var(--mc-radius-sm)] border border-white/15 bg-white/10 pl-9 pr-9 text-sm text-white placeholder:text-white/45 focus:border-[var(--mc-color-accent)]" />
+            {searchTerm && <button type="button" onClick={() => onSearchChange("")} className="mc-focus-ring absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-white/70" aria-label="Xóa tìm kiếm"><X className="h-4 w-4" aria-hidden="true" /></button>}
           </div>
-
-          {/* Quick Trending Keyword Pills on Mobile */}
-          {!searchTerm && (
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
-              <span className="text-stone-400 font-semibold shrink-0">Gợi ý:</span>
-              {TRENDING_SEARCHES.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => onSearchChange(tag)}
-                  className="px-2 py-0.5 bg-stone-100 hover:bg-orange-50 hover:text-orange-600 text-stone-600 rounded-full shrink-0 font-medium transition-colors"
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          )}
+          {!searchTerm && <div className="mc-no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-0.5 text-[11px]"><span className="shrink-0 text-white/45">Gợi ý</span>{TRENDING_SEARCHES.map((tag) => <button key={tag} type="button" onClick={() => onSearchChange(tag)} className="mc-focus-ring shrink-0 rounded-full border border-white/15 px-2.5 py-1 text-white/70 hover:border-white/40 hover:text-white">{tag}</button>)}</div>}
         </div>
       </div>
     </header>

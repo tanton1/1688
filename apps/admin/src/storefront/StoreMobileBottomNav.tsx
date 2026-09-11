@@ -11,98 +11,16 @@ interface StoreMobileBottomNavProps {
   activeFilterCount?: number;
 }
 
-export const StoreMobileBottomNav: React.FC<StoreMobileBottomNavProps> = ({
-  cartCount,
-  onGoHome,
-  onOpenOccasions,
-  onOpenSearch,
-  onOpenTracker,
-  onOpenCart,
-  activeFilterCount = 0
-}) => {
+export const StoreMobileBottomNav: React.FC<StoreMobileBottomNavProps> = ({ cartCount, onGoHome, onOpenOccasions, onOpenSearch, onOpenTracker, onOpenCart, activeFilterCount = 0 }) => {
+  const itemClass = "mc-focus-ring group flex min-h-14 flex-1 flex-col items-center justify-center rounded-lg py-1 text-[var(--mc-color-text-secondary)] transition-colors hover:text-[var(--mc-color-accent-strong)] active:scale-95";
   return (
-    <nav
-      aria-label="Điều hướng trên thiết bị di động"
-      className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-white/95 backdrop-blur-xl border-t border-stone-200/80 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))]"
-    >
-      <div className="flex items-center justify-around max-w-md mx-auto">
-        {/* 1. Trang Chủ */}
-        <button
-          type="button"
-          onClick={onGoHome}
-          className="flex flex-col items-center justify-center flex-1 py-1 text-stone-600 hover:text-orange-600 active:scale-95 transition-all group cursor-pointer"
-        >
-          <div className="w-9 h-9 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-active:bg-orange-100 transition-colors">
-            <Home className="w-5 h-5 text-stone-700 group-hover:text-orange-600" />
-          </div>
-          <span className="text-[10px] font-bold tracking-tight text-stone-700 group-hover:text-orange-600">
-            Trang Chủ
-          </span>
-        </button>
-
-        {/* 2. Dịp Quà Tặng */}
-        <button
-          type="button"
-          onClick={onOpenOccasions}
-          className="relative flex flex-col items-center justify-center flex-1 py-1 text-stone-600 hover:text-orange-600 active:scale-95 transition-all group cursor-pointer"
-        >
-          <div className="w-9 h-9 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-active:bg-orange-100 transition-colors">
-            <Gift className="w-5 h-5 text-stone-700 group-hover:text-orange-600" />
-            {activeFilterCount > 0 && (
-              <span className="absolute top-1 right-3.5 w-2 h-2 rounded-full bg-orange-600 ring-2 ring-white" />
-            )}
-          </div>
-          <span className="text-[10px] font-bold tracking-tight text-stone-700 group-hover:text-orange-600">
-            Dịp Quà Tặng
-          </span>
-        </button>
-
-        {/* 3. Tìm Kiếm */}
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          className="flex flex-col items-center justify-center flex-1 py-1 text-stone-600 hover:text-orange-600 active:scale-95 transition-all group cursor-pointer"
-        >
-          <div className="w-9 h-9 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-active:bg-orange-100 transition-colors">
-            <Search className="w-5 h-5 text-stone-700 group-hover:text-orange-600" />
-          </div>
-          <span className="text-[10px] font-bold tracking-tight text-stone-700 group-hover:text-orange-600">
-            Tìm Kiếm
-          </span>
-        </button>
-
-        {/* 4. Tra Cứu Đơn */}
-        <button
-          type="button"
-          onClick={onOpenTracker}
-          className="flex flex-col items-center justify-center flex-1 py-1 text-stone-600 hover:text-orange-600 active:scale-95 transition-all group cursor-pointer"
-        >
-          <div className="w-9 h-9 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-active:bg-orange-100 transition-colors">
-            <PackageCheck className="w-5 h-5 text-stone-700 group-hover:text-orange-600" />
-          </div>
-          <span className="text-[10px] font-bold tracking-tight text-stone-700 group-hover:text-orange-600">
-            Tra Cứu Đơn
-          </span>
-        </button>
-
-        {/* 5. Giỏ Hàng (Nổi bật) */}
-        <button
-          type="button"
-          onClick={onOpenCart}
-          className="relative flex flex-col items-center justify-center flex-1 py-1 text-stone-600 hover:text-orange-600 active:scale-95 transition-all group cursor-pointer"
-        >
-          <div className="relative w-9 h-9 rounded-full flex items-center justify-center bg-orange-500/10 group-hover:bg-orange-500 group-active:bg-orange-600 transition-colors">
-            <ShoppingBag className="w-5 h-5 text-orange-600 group-hover:text-white transition-colors" />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-md animate-in zoom-in ring-2 ring-white">
-                {cartCount > 99 ? "99+" : cartCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] font-bold tracking-tight text-orange-600 group-hover:text-orange-700">
-            Giỏ Hàng
-          </span>
-        </button>
+    <nav aria-label="Điều hướng trên thiết bị di động" className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)]/95 px-2 py-1.5 shadow-[0_-8px_30px_rgb(49_43_54_/_10%)] backdrop-blur-xl md:hidden">
+      <div className="mx-auto flex max-w-md items-center justify-around gap-1">
+        <button type="button" onClick={onGoHome} className={itemClass} aria-label="Về trang chủ"><Home className="h-5 w-5 text-[var(--mc-color-text-primary)] group-hover:text-[var(--mc-color-accent-strong)]" aria-hidden="true" /><span className="mt-0.5 text-[10px] font-semibold">Trang chủ</span></button>
+        <button type="button" onClick={onOpenOccasions} className={`${itemClass} relative`} aria-label={`Lọc theo dịp tặng${activeFilterCount > 0 ? `, ${activeFilterCount} bộ lọc đang bật` : ""}`}><span className="relative"><Gift className="h-5 w-5 text-[var(--mc-color-text-primary)] group-hover:text-[var(--mc-color-accent-strong)]" aria-hidden="true" />{activeFilterCount > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[var(--mc-color-accent)] ring-2 ring-white" aria-hidden="true" />}</span><span className="mt-0.5 text-[10px] font-semibold">Dịp tặng</span></button>
+        <button type="button" onClick={onOpenSearch} className={itemClass} aria-label="Tìm kiếm"><Search className="h-5 w-5 text-[var(--mc-color-text-primary)] group-hover:text-[var(--mc-color-accent-strong)]" aria-hidden="true" /><span className="mt-0.5 text-[10px] font-semibold">Tìm kiếm</span></button>
+        <button type="button" onClick={onOpenTracker} className={itemClass} aria-label="Tra cứu đơn hàng"><PackageCheck className="h-5 w-5 text-[var(--mc-color-text-primary)] group-hover:text-[var(--mc-color-accent-strong)]" aria-hidden="true" /><span className="mt-0.5 text-[10px] font-semibold">Tra cứu đơn</span></button>
+        <button type="button" onClick={onOpenCart} className={`${itemClass} text-[var(--mc-color-accent-strong)]`} aria-label={`Mở giỏ hàng, hiện có ${cartCount} sản phẩm`}><span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-[var(--mc-color-accent)]/10 group-hover:bg-[var(--mc-color-accent)] group-hover:text-white"><ShoppingBag className="h-4 w-4" aria-hidden="true" />{cartCount > 0 && <span className="absolute -right-2 -top-2 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--mc-color-accent-strong)] px-1 text-[10px] font-black text-white ring-2 ring-white">{cartCount > 99 ? "99+" : cartCount}</span>}</span><span className="mt-0.5 text-[10px] font-bold">Giỏ hàng</span></button>
       </div>
     </nav>
   );

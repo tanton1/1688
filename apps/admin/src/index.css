@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Macorner semantic tokens: keep storefront UI decisions in one place. */
+  --mc-color-border-default: #312b36;
+  --mc-color-surface-base: #000000;
+  --mc-color-surface-strong: #ffffff;
+  --mc-color-surface-canvas: #f4f1eb;
+  --mc-color-surface-subtle: #ece8e0;
+  --mc-color-surface-muted: #331400;
+  --mc-color-text-primary: #000000;
+  --mc-color-text-tertiary: #faf8f5;
+  --mc-color-text-secondary: #665e5c;
+  --mc-color-text-inverse: #665e5c;
+  --mc-color-accent: #ed6a22;
+  --mc-color-accent-strong: #c94f11;
+  --mc-color-success: #166534;
+  --mc-color-danger: #b42318;
+  --mc-space-1: 4px;
+  --mc-space-2: 6px;
+  --mc-space-3: 8px;
+  --mc-space-4: 10px;
+  --mc-space-5: 12px;
+  --mc-space-6: 16px;
+  --mc-space-7: 18px;
+  --mc-space-8: 56px;
+  --mc-radius-xs: 8px;
+  --mc-radius-sm: 50px;
+  --mc-motion-instant: 200ms;
+  --mc-shadow-soft: 0 12px 30px rgb(49 43 54 / 9%);
+  --mc-shadow-lift: 0 18px 46px rgb(49 43 54 / 15%);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -11,7 +42,40 @@ body {
   font-size: 14px;
 }
 
-:focus-visible { outline: 2px solid #ff5a00; outline-offset: 2px; }
+:focus-visible {
+  outline: 3px solid var(--mc-color-accent);
+  outline-offset: 3px;
+}
+
+/* Storefront primitives used by the implementation-facing Macorner surface. */
+.mc-storefront {
+  background: var(--mc-color-surface-canvas);
+  color: var(--mc-color-text-primary);
+  font-family: Geist, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.mc-eyebrow {
+  color: var(--mc-color-accent-strong);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mc-focus-ring:focus-visible {
+  outline: 3px solid var(--mc-color-accent);
+  outline-offset: 3px;
+}
+
+.mc-no-scrollbar::-webkit-scrollbar { display: none; }
+.mc-no-scrollbar { scrollbar-width: none; }
+
+@media (min-width: 768px) {
+  .mc-storefront .mc-content-width { max-width: 1240px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
