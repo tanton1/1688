@@ -447,7 +447,7 @@ export class SupabaseDataService {
       .from("source_products")
       .upsert(
         {
-          source_platform: "1688",
+          source_platform: normalized.sourcePlatform || "1688",
           source_product_id: normalized.sourceProductId,
           source_url: normalized.sourceUrl,
           title_cn: normalized.titleCN,

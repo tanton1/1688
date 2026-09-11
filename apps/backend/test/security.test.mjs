@@ -64,6 +64,14 @@ test("CORS permits a well-formed Chrome extension origin", async () => {
   assert.equal(response.headers["access-control-allow-origin"], "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
 });
 
+test("CORS permits supported merchant origins used by content scripts", async () => {
+  const response = await request.get("/health")
+    .set("Host", "store.example.com")
+    .set("Origin", "https://macorner.co")
+    .expect(200);
+  assert.equal(response.headers["access-control-allow-origin"], "https://macorner.co");
+});
+
 test("protected routes reject anonymous requests", async () => {
   const response = await request.get("/api/v1/products").expect(401);
   assert.equal(response.body.error, "AUTH_REQUIRED");

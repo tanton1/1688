@@ -28,10 +28,33 @@ app.use(cors((req, callback) => {
   // The extension authenticates API calls with its bearer token, so allowing
   // this well-formed origin does not make the API publicly writable.
   const isChromeExtensionOrigin = !!origin && /^chrome-extension:\/\/[a-p]{32}$/.test(origin);
+
+  // Content scripts execute fetch() in the source page's isolated world, so
+  // their Origin is the merchant page (not chrome-extension://...). Keep a
+  // narrow allowlist for the supported catalogue domains; write operations
+  // remain protected by bearer authentication and role checks below.
+  const isSupportedSourceOrigin = (() => {
+    if (!origin) return false;
+    try {
+      const parsed = new URL(origin);
+      if (parsed.protocol !== "https:") return false;
+      const host = parsed.hostname.toLowerCase();
+      return host === "1688.com" || host.endsWith(".1688.com") ||
+        host === "taobao.com" || host.endsWith(".taobao.com") ||
+        host === "tmall.com" || host.endsWith(".tmall.com") ||
+        host === "shopee.vn" || host.endsWith(".shopee.vn") ||
+        host === "tiktok.com" || host.endsWith(".tiktok.com") ||
+        host === "aliexpress.com" || host.endsWith(".aliexpress.com") ||
+        host === "macorner.co" || host.endsWith(".macorner.co");
+    } catch {
+      return false;
+    }
+  })();
   const isAllowed = !origin ||
     origin === requestOrigin ||
     ENV.CORS_ALLOWED_ORIGINS.includes(origin) ||
-    isChromeExtensionOrigin;
+    isChromeExtensionOrigin ||
+    isSupportedSourceOrigin;
 
   callback(isAllowed ? null : new Error("CORS_ORIGIN_DENIED"), {
     credentials: true,

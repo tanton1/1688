@@ -11,6 +11,7 @@
     "storage"
   ],
   "host_permissions": [
+    "https://1688-phi.vercel.app/*",
     "*://*.1688.com/*",
     "*://*.taobao.com/*",
     "*://*.tmall.com/*",

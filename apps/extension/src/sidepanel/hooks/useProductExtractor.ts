@@ -433,6 +433,34 @@ export function useProductExtractor() {
           }
           lastProcessedUrlRef.current = tabUrl;
 
+          const isMacornerProduct = /macorner\.co\//i.test(tabUrl) && /\/products\//i.test(tabUrl);
+
+          // Macorner's Customily choices are mounted outside Shopify's native
+          // variant array. Prefer the injected DOM extractor on this platform
+          // so an old/stale content script cannot return only the six quantity
+          // SKUs and hide the eight design images.
+          const tryDomInjection = async (): Promise<boolean> => {
+            if (!tab.id || !chrome.scripting) return false;
+            try {
+              const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: extractCommerceProductFromDom
+              });
+              const domData = results?.[0]?.result;
+              if (domData && !domData.error && domData.title?.length > 2 && domData.images?.length > 0 && Number(domData.price) > 0) {
+                console.log("[Sidepanel] Bóc tách thành công qua DOM injection:", domData);
+                const domProd = convertDomDataToRawProduct(domData, tabUrl);
+                setProduct(domProd);
+                setError(null);
+                setLoading(false);
+                return true;
+              }
+            } catch (injErr) {
+              console.warn("[Sidepanel] DOM injection extraction warning:", injErr);
+            }
+            return false;
+          };
+
           // Kiểm tra URL hệ thống trình duyệt
           if (tabUrl.startsWith("chrome://") || tabUrl.startsWith("edge://") || tabUrl.startsWith("about:") || tabUrl.startsWith("chrome-extension://")) {
             setProduct(null);
@@ -440,6 +468,8 @@ export function useProductExtractor() {
             setLoading(false);
             return;
           }
+
+          if (isMacornerProduct && await tryDomInjection()) return;
 
           // [Ưu tiên 1]: Gửi tin nhắn trực tiếp cho Content Script chuyên dụng trên Tab hiện tại
           // Content script chạy ngay trong trang web người dùng đang xem (có cookie, DOM đầy đủ, không bị anti-bot chặn)
@@ -465,25 +495,7 @@ export function useProductExtractor() {
           }
 
           // [Ưu tiên 2]: Trích xuất trực tiếp DOM trang web qua chrome.scripting.executeScript
-          if (tab.id && chrome.scripting) {
-            try {
-              const results = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: extractCommerceProductFromDom
-              });
-              const domData = results?.[0]?.result;
-              if (domData && !domData.error && domData.title?.length > 2 && domData.images?.length > 0 && Number(domData.price) > 0) {
-                console.log("[Sidepanel] Bóc tách thành công qua DOM injection:", domData);
-                const domProd = convertDomDataToRawProduct(domData, tabUrl);
-                setProduct(domProd);
-                setError(null);
-                setLoading(false);
-                return;
-              }
-            } catch (injErr) {
-              console.warn("[Sidepanel] DOM injection extraction warning:", injErr);
-            }
-          }
+          if (await tryDomInjection()) return;
 
           // [Ưu tiên 3]: Gọi Backend AI Cloner Preview (Dành cho dán link ngoài hoặc tab bị hạn chế)
           try {
