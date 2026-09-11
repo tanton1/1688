@@ -200,6 +200,8 @@ CREATE INDEX IF NOT EXISTS idx_product_variants_prod_id ON product_variants(prod
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color_name_en VARCHAR(100);
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size_name_en VARCHAR(100);
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS source_price NUMERIC(14, 2);
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS source_available BOOLEAN DEFAULT TRUE;
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS selected_for_sale BOOLEAN DEFAULT TRUE;
 
 -- 7. BẢNG QUY TẮC ĐỊNH GIÁ BÁN LẺ (PRICING RULES)
 CREATE TABLE IF NOT EXISTS pricing_rules (

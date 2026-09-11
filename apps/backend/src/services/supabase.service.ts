@@ -349,7 +349,11 @@ export class SupabaseDataService {
     if (!this.client) return null;
     try {
       const { data, error } = await this.client.from("products")
-        .select("*, product_variants(*)").eq("source_product_id", sourceProductId).maybeSingle();
+        .select("*, product_variants(*)")
+        .eq("source_product_id", sourceProductId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error || !data) return null;
       return this.mapDbRowToWebProduct(data);
     } catch (error) {
@@ -482,9 +486,13 @@ export class SupabaseDataService {
     }));
 
     if (variantRows.length > 0) {
-      await this.client
+      const { error: variantsError } = await this.client
         .from("source_variants")
         .upsert(variantRows, { onConflict: "source_product_id, source_sku_id" });
+      if (variantsError) {
+        console.error("[Supabase saveSourceVariants error]", variantsError);
+        return null;
+      }
     }
 
     return sourceProd.id;
@@ -497,6 +505,11 @@ export class SupabaseDataService {
     if (!this.client) return false;
 
     try {
+      const { data: previousProduct } = await this.client
+        .from("products")
+        .select("id")
+        .eq("id", product.id)
+        .maybeSingle();
       const dbRow = {
         id: product.id,
         version: product.version || 1,
@@ -571,7 +584,10 @@ export class SupabaseDataService {
         .from("product_variants")
         .delete()
         .eq("product_id", createdProd.id);
-      if (deleteVariantsError) return false;
+      if (deleteVariantsError) {
+        if (!previousProduct) await this.client.from("products").delete().eq("id", createdProd.id);
+        return false;
+      }
 
       const variantRows = product.variants.map(v => ({
         product_id: createdProd.id,
@@ -585,7 +601,6 @@ export class SupabaseDataService {
         selling_price_vnd: v.sellingPriceVND,
         stock_quantity: v.stockQuantity,
         image_url: v.imageUrl || null,
-        source_available: v.sourceAvailable,
         selected_for_sale: v.selectedForSale
       }));
 
@@ -596,6 +611,7 @@ export class SupabaseDataService {
         if (varErr) {
           console.error("[Supabase saveVariants error]", varErr);
           if (previousVariants?.length) await this.client.from("product_variants").insert(previousVariants);
+          else if (!previousProduct) await this.client.from("products").delete().eq("id", createdProd.id);
           return false;
         }
       }
@@ -699,7 +715,6 @@ export class SupabaseDataService {
           selling_price_vnd: v.sellingPriceVND,
           stock_quantity: v.stockQuantity,
           image_url: v.imageUrl || null,
-          source_available: v.sourceAvailable,
           selected_for_sale: v.selectedForSale
         }));
 
@@ -755,8 +770,10 @@ export class SupabaseDataService {
       sellingPriceVND: Number(v.selling_price_vnd) || 0,
       stockQuantity: Number(v.stock_quantity) || 0,
       imageUrl: v.image_url,
-      sourceAvailable: Boolean(v.source_available),
-      selectedForSale: Boolean(v.selected_for_sale)
+      // Older production schemas did not persist source_available. Stock is
+      // the authoritative fallback until that optional column is migrated.
+      sourceAvailable: v.source_available ?? Number(v.stock_quantity || 0) > 0,
+      selectedForSale: v.selected_for_sale ?? true
     }));
 
     return {

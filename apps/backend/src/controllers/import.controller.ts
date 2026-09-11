@@ -88,10 +88,18 @@ export class ImportController {
     const raw = normalized.rawSnapshot;
 
     // 1. Kiểm tra trùng lặp
-    const existing = Array.from(inMemoryProducts.values()).find(
+    const memoryExisting = Array.from(inMemoryProducts.values()).find(
       p => p.sourceProductId === normalized.sourceProductId
     );
-    if (existing) {
+    const persistedExisting = !memoryExisting && supabaseService.isConfigured()
+      ? await supabaseService.getProductBySourceId(normalized.sourceProductId)
+      : null;
+    const existing = memoryExisting || persistedExisting;
+    // A previous database failure may have created the product header before
+    // its variants were inserted. Reuse that incomplete row on retry instead
+    // of rejecting it or creating another duplicate product.
+    const recoverableExisting = existing && existing.variants.length === 0 ? existing : null;
+    if (existing && !recoverableExisting) {
       res.status(409).json({
         message: "Sản phẩm này đã tồn tại trên hệ thống",
         existingProduct: existing
@@ -197,7 +205,7 @@ export class ImportController {
       };
     });
 
-    const productId = crypto.randomUUID();
+    const productId = recoverableExisting?.id || crypto.randomUUID();
     const skuCode = `SP-${Date.now().toString().slice(-6)}`;
 
     const detailImagesList = (normalized.description?.images && normalized.description.images.length > 0)
@@ -279,7 +287,7 @@ export class ImportController {
       sourceProductId: normalized.sourceProductId,
       sourceUrl: normalized.sourceUrl,
       supplierName: normalized.supplier.shopName,
-      createdAt: new Date().toISOString(),
+      createdAt: recoverableExisting?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
