@@ -11,6 +11,7 @@ export class MediaMirrorService {
 
   constructor() {
     this.localUploadDir = path.join(process.cwd(), "public", "uploads", "products");
+    if (ENV.NODE_ENV === "production") return;
     try {
       if (!fs.existsSync(this.localUploadDir)) {
         fs.mkdirSync(this.localUploadDir, { recursive: true });
@@ -87,13 +88,16 @@ export class MediaMirrorService {
               return publicData.publicUrl;
             }
           } else if (error) {
-            console.warn("[MediaMirror] Supabase upload failed, using local fallback:", error.message);
+            console.warn("[MediaMirror] Supabase upload failed:", error.message);
           }
         }
       } catch (err: any) {
-        console.warn("[MediaMirror] Supabase upload exception, using local fallback:", err.message);
+        console.warn("[MediaMirror] Supabase upload exception:", err.message);
       }
     }
+
+    // Serverless production filesystems are immutable; keep the original URL if cloud upload fails.
+    if (ENV.NODE_ENV === "production") return null;
 
     // 2. Fallback: Lưu vào Local Directory của Backend
     try {
