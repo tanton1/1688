@@ -29,6 +29,34 @@ const skuMappingService = new SkuMappingService();
 
 export const normalizeSourceStock = (stock: number | null | undefined): number => stock ?? 0;
 
+/**
+ * Older imports (before customizer metadata was separated from SKU data) may
+ * have an empty source id and synthetic `__custom_*` SKU ids. Keep those
+ * records recoverable so the next explicit resync can migrate them in place
+ * instead of creating a duplicate product.
+ */
+const normalizeProductFingerprint = (value: unknown): string => String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim();
+
+const isLegacyCustomizerMatch = (product: WebProduct, normalized: ImportProductPayload["normalized"]): boolean => {
+  if (product.isPersonalized === true || product.sourceProductId || product.sourceUrl) return false;
+  const hasSyntheticCustomSku = (product.variants || []).some(variant => /(?:^|__)custom[_-]/i.test(variant.sourceSkuId || ""));
+  if (!hasSyntheticCustomSku) return false;
+
+  const incomingTitles = [normalized.titleCN, normalized.cleanedTitleCN]
+    .map(normalizeProductFingerprint)
+    .filter(title => title.length >= 12);
+  if (incomingTitles.length === 0) return false;
+  const storedTitles = [product.titleVI, product.titleEN]
+    .map(normalizeProductFingerprint)
+    .filter(title => title.length >= 12);
+  return incomingTitles.some(incoming => storedTitles.some(stored => stored === incoming));
+};
+
 export class ImportController {
   /**
    * Kiểm tra sản phẩm đã từng được import hay chưa để tránh trùng lặp
@@ -94,7 +122,24 @@ export class ImportController {
     const persistedExisting = !memoryExisting && supabaseService.isConfigured()
       ? await supabaseService.getProductBySourceId(normalized.sourceProductId)
       : null;
-    const existing = memoryExisting || persistedExisting;
+    let existing = memoryExisting || persistedExisting;
+
+    // Recover products created by the pre-personalization importer. This path
+    // is intentionally narrow: it requires explicit customizer evidence,
+    // an empty source identity, synthetic custom SKU ids, and an exact title
+    // fingerprint match. Ordinary products are never matched by title alone.
+    if (!existing && (normalized.customOptionGroups?.length || normalized.personalizationFields?.length)) {
+      const legacyCandidates = Array.from(inMemoryProducts.values());
+      if (supabaseService.isConfigured()) {
+        const searchResult = await supabaseService.getProducts({
+          search: normalized.titleCN,
+          page: 1,
+          pageSize: 20
+        });
+        if (searchResult?.items?.length) legacyCandidates.push(...searchResult.items);
+      }
+      existing = legacyCandidates.find(product => isLegacyCustomizerMatch(product, normalized)) || null;
+    }
     // A previous database failure may have created the product header before
     // its variants were inserted. Reuse that incomplete row on retry instead
     // of rejecting it or creating another duplicate product.

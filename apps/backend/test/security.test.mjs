@@ -592,6 +592,90 @@ test("single import preserves customizer metadata separately from the SKU matrix
   inMemoryProducts.delete(product.id);
 });
 
+test("legacy customizer products are recovered by exact title fingerprint", async () => {
+  const legacyId = "legacy-macorner-customizer";
+  inMemoryProducts.set(legacyId, {
+    id: legacyId,
+    version: 1,
+    slug: "custom-birth-flower-name-for-her-gift-7327",
+    skuCode: "MAC-LEGACY-1",
+    titleVI: "Custom Birth Flower Personalized Jewelry Dish",
+    titleEN: "Custom Birth Flower Personalized Jewelry Dish",
+    shortDescVI: "legacy",
+    fullDescVI: "legacy",
+    categoryName: "Jewelry",
+    primaryImage: "https://cdn.example.com/legacy.jpg",
+    galleryImages: [],
+    status: "DRAFT",
+    qualityScore: 40,
+    minPriceVND: 100000,
+    maxPriceVND: 100000,
+    isTitleLocked: false,
+    isDescLocked: false,
+    isImagesLocked: false,
+    isPriceAutoSync: true,
+    isStockAutoSync: true,
+    isPersonalized: false,
+    variants: [{
+      id: "legacy-variant",
+      sourceSkuId: "source__custom_0_january",
+      colorName: "January",
+      sizeName: "1 PC",
+      costPriceVND: 50000,
+      sellingPriceVND: 100000,
+      stockQuantity: 2,
+      imageUrl: "https://cdn.example.com/legacy-flower.jpg",
+      sourceAvailable: true,
+      selectedForSale: true
+    }],
+    sourceProductId: "",
+    sourceUrl: "",
+    supplierName: "Macorner"
+  });
+
+  const normalized = {
+    sourcePlatform: "GENERIC_WEB",
+    sourceProductId: "macorner-new-source-id",
+    sourceUrl: "https://macorner.co/products/custom-birth-flower-name-for-her-gift",
+    supplier: { shopId: "shop-legacy", shopName: "Macorner", shopUrl: "https://macorner.co" },
+    moq: 1,
+    titleCN: "Custom Birth Flower Personalized Jewelry Dish",
+    cleanedTitleCN: "Custom Birth Flower Personalized Jewelry Dish",
+    price: { currency: "CNY", min: 10, max: 10 },
+    media: { images: ["https://cdn.example.com/new.jpg"] },
+    attributes: [],
+    variants: [{ sourceSkuId: "native-qty-1", colorCN: "1 PC", colorVI: "1 PC", priceCNY: 10, stock: 4, imageUrl: "https://cdn.example.com/new.jpg" }],
+    customOptionGroups: [{
+      id: "birth-flower",
+      name: "Birth flower",
+      kind: "PERSONALIZATION",
+      inputType: "ASSET_PICKER",
+      source: "EXTERNAL_CUSTOMIZER",
+      required: true,
+      values: [{ id: "jan", label: "January", imageUrl: "https://cdn.example.com/january.jpg" }]
+    }],
+    description: { images: [] },
+    rawSnapshot: { offerId: "macorner-new-source-id", skuMap: {} }
+  };
+  const settings = { targetLanguage: "vi", translationMode: "ACCURATE", autoPublish: false, copyDescriptionImages: false };
+
+  const duplicate = await request.post("/api/v1/import/single")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({ normalized, settings })
+    .expect(409);
+  assert.equal(duplicate.body.existingProduct.id, legacyId);
+
+  const resynced = await request.post("/api/v1/import/single")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({ normalized, settings: { ...settings, resyncExisting: true } })
+    .expect(201);
+  assert.equal(resynced.body.product.id, legacyId);
+  assert.equal(resynced.body.product.isPersonalized, true);
+  assert.equal(resynced.body.product.personalizationFields[0].label, "Birth flower");
+  assert.equal(resynced.body.product.variants[0].sourceSkuId, "native-qty-1");
+  inMemoryProducts.delete(legacyId);
+});
+
 test("resync updates source variants and personalization without overwriting locked merchandising fields", async () => {
   const sourceId = "customizer-resync-source";
   const productId = "existing-resync-product";
