@@ -118,8 +118,8 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Thanh toán đơn hàng" className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Thanh toán đơn hàng" className="relative flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -141,7 +141,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {formError && (
             <div role="alert" aria-live="assertive" className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 font-medium">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />

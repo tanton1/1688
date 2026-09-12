@@ -284,8 +284,8 @@ export const MultiPlatformCloneModal: React.FC<MultiPlatformCloneModalProps> = (
     .filter(l => l.startsWith("http://") || l.startsWith("https://")).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="clone-modal-title" className="relative w-full max-w-5xl max-h-[94vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-sm animate-fadeIn">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="clone-modal-title" className="relative flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-slate-900 shadow-2xl text-slate-200">
         
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between">

@@ -77,8 +77,8 @@ export const StoreOrderTrackerModal: React.FC<StoreOrderTrackerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200" role="presentation">
-      <div ref={dialogRef} tabIndex={-1} className="relative bg-white rounded-3xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="order-tracker-title">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200" role="presentation">
+      <div ref={dialogRef} tabIndex={-1} className="relative flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="order-tracker-title">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -99,7 +99,7 @@ export const StoreOrderTrackerModal: React.FC<StoreOrderTrackerModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Search Box */}
           <form onSubmit={handleSearch} className="space-y-3">
             <div className="relative">

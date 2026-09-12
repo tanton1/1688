@@ -183,8 +183,9 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Quick Ingest Modal */}
         {showQuickModal && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div role="dialog" aria-modal="true" aria-labelledby="quick-import-title" className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs">
+            <div role="dialog" aria-modal="true" aria-labelledby="quick-import-title" className="flex min-h-[100dvh] w-screen flex-col bg-white p-5 shadow-2xl animate-in fade-in duration-150">
+              <div className="mx-auto w-full max-w-2xl flex-1">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 id="quick-import-title" className="font-bold text-sm text-slate-900 flex items-center gap-2">
                   <PlusCircle className="w-4 h-4 text-orange-500" />
@@ -233,6 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 </div>
               </form>
+              </div>
             </div>
           </div>
         )}

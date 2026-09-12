@@ -44,8 +44,8 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
   const isVietQR = order.paymentMethod === "VIETQR";
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Đặt hàng thành công" className="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden text-slate-800">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Đặt hàng thành công" className="relative flex min-h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl text-slate-800">
         {/* Banner Success */}
         <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-6 text-center space-y-2">
           <div className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center mx-auto shadow-inner animate-in zoom-in">
@@ -60,7 +60,7 @@ export const StoreOrderSuccessModal: React.FC<StoreOrderSuccessModalProps> = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto p-6">
           {/* VietQR Payment Box */}
           {isVietQR && (
             <div className="p-4 rounded-2xl bg-gradient-to-br from-orange-50 via-amber-50 to-white border-2 border-orange-300 space-y-3">

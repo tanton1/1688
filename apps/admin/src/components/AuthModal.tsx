@@ -112,8 +112,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, currentUser, onClo
         : mode === "reset-complete" ? "Đã đổi mật khẩu"
           : "Kiểm tra email";
 
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="auth-title" className="flex min-h-[100dvh] w-screen flex-col bg-white p-6 shadow-2xl">
+      <div className="mx-auto w-full max-w-md flex-1">
       <div className="flex items-start justify-between border-b border-slate-100 pb-4">
         <div className="flex gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-orange-100 text-orange-600"><ShieldCheck aria-hidden="true" /></span><div><h2 id="auth-title" className="text-base font-bold text-slate-950">{currentUser ? "Tài khoản" : title}</h2><p className="mt-1 text-sm text-slate-500">{mode === "login" ? "Quyền được xác thực và cấp từ máy chủ." : "Khôi phục quyền truy cập tài khoản an toàn."}</p></div></div>
         {currentUser && <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500"><X size={18} /></button>}
@@ -158,6 +159,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, currentUser, onClo
           <button type="button" onClick={() => resetForm("login")} className="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-700">Đăng nhập</button>
         </div>}
       </div>}
+      </div>
     </div>
   </div>;
 };

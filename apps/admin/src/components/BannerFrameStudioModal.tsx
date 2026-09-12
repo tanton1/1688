@@ -636,8 +636,8 @@ export const BannerFrameStudioModal: React.FC<BannerFrameStudioModalProps> = ({
   const detailImgs = product.detailImages || [];
 
   return (
-    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xưởng xử lý ảnh sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col max-h-[94vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xưởng xử lý ảnh sản phẩm" className="flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-100">
           <div className="flex items-center gap-3">

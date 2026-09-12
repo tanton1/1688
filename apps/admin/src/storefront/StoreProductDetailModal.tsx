@@ -361,14 +361,14 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   };
 
   return (
-    <div className={fullPage ? "min-h-screen bg-[var(--mc-color-surface-canvas)]" : "fixed inset-0 z-50 overflow-y-auto bg-stone-950/75 backdrop-blur-xs flex items-center justify-center sm:p-4 lg:p-6 animate-in fade-in duration-200"}>
+    <div className={fullPage ? "min-h-screen bg-[var(--mc-color-surface-canvas)]" : "fixed inset-0 z-50 overflow-y-auto bg-stone-950/75 backdrop-blur-xs animate-in fade-in duration-200"}>
       <div
         ref={dialogRef}
         tabIndex={-1}
         role={fullPage ? "main" : "dialog"}
         aria-modal={fullPage ? undefined : "true"}
         aria-label={product.titleVI}
-        className={fullPage ? "relative mx-auto min-h-screen w-full max-w-7xl overflow-x-hidden bg-white border-x border-[var(--mc-color-border-default)]/10" : "relative bg-white w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] sm:rounded-3xl shadow-2xl max-w-5xl overflow-y-auto border border-stone-200 flex flex-col"}
+        className={fullPage ? "relative mx-auto min-h-screen w-full max-w-7xl overflow-x-hidden bg-white border-x border-[var(--mc-color-border-default)]/10" : "relative flex h-[100dvh] w-screen flex-col overflow-y-auto border-0 bg-white shadow-2xl"}
       >
         {/* Close Button */}
         <button

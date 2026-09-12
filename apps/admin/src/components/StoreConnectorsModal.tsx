@@ -176,8 +176,8 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Kết nối kênh bán hàng" className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] border border-slate-200 animate-in fade-in zoom-in duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Kết nối kênh bán hàng" className="flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">

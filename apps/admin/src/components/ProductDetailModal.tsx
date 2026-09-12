@@ -2794,8 +2794,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal xem mã Schema JSON-LD */}
       {showJsonLdModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-60 p-4">
-          <div ref={jsonDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Mã cấu trúc JSON-LD" className="bg-slate-950 text-slate-100 rounded-2xl max-w-2xl w-full border border-slate-800 shadow-2xl p-6 space-y-4">
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/70 backdrop-blur-xs">
+          <div ref={jsonDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Mã cấu trúc JSON-LD" className="flex min-h-[100dvh] w-screen flex-col bg-slate-950 p-6 text-slate-100 shadow-2xl">
+            <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Code className="w-5 h-5 text-blue-400" />
@@ -2844,6 +2845,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 Đóng
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -2858,8 +2860,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal: Áp Dụng Template Lên Sản Phẩm */}
       {showApplyTemplateModal && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div ref={applyTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Áp dụng mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+          <div ref={applyTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Áp dụng mẫu sản phẩm" className="flex min-h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-indigo-50/50">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-indigo-600 text-white rounded-lg">
@@ -2884,7 +2886,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="space-y-2.5">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                   Danh Sách Template Khả Dụng ({availableTemplates.length}):
@@ -2978,8 +2980,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal: Lưu Thành Template Mới */}
       {showSaveTemplateModal && (
-        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div ref={saveTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Lưu mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+          <div ref={saveTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Lưu mẫu sản phẩm" className="flex min-h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-600 text-white rounded-lg">
@@ -3004,7 +3006,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div className="mx-auto w-full max-w-3xl flex-1 space-y-4 overflow-y-auto p-6 text-xs">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">
                   Tên Template Mới <span className="text-red-500">*</span>

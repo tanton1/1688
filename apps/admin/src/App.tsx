@@ -648,8 +648,9 @@ export const App: React.FC = () => {
 
       {/* Modal Cấu Hình Backend URL */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200 animate-in fade-in zoom-in duration-150">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+          <div className="flex min-h-[100dvh] w-screen flex-col bg-white p-5 shadow-2xl animate-in fade-in duration-150">
+            <div className="mx-auto w-full max-w-2xl flex-1">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                 <Settings className="w-4 h-4 text-orange-500" />
@@ -711,6 +712,7 @@ export const App: React.FC = () => {
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}

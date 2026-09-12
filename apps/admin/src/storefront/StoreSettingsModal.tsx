@@ -106,8 +106,8 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Cấu hình cửa hàng" className="relative bg-white rounded-3xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Cấu hình cửa hàng" className="relative flex h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-2.5">
@@ -128,7 +128,7 @@ export const StoreSettingsModal: React.FC<StoreSettingsModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Section 1: Thông tin thương hiệu */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
