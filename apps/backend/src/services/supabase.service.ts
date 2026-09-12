@@ -385,7 +385,10 @@ export class SupabaseDataService {
   private isMissingInventoryTrackedColumn(error: any): boolean {
     const code = String(error?.code || "");
     const message = String(error?.message || error?.details || "").toLowerCase();
-    return code === "42703" && message.includes("inventory_tracked");
+    if (!message.includes("inventory_tracked")) return false;
+    // PostgREST commonly reports an unknown write column as PGRST204 while
+    // SQL-backed requests can surface PostgreSQL's 42703 code.
+    return code === "42703" || code === "PGRST204" || message.includes("column") || message.includes("schema cache");
   }
 
   /** Insert variants with a one-time compatibility retry for old schemas. */
