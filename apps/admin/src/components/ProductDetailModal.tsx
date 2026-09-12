@@ -2794,7 +2794,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal xem mã Schema JSON-LD */}
       {showJsonLdModal && (
-        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/70 backdrop-blur-xs">
           <div ref={jsonDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Mã cấu trúc JSON-LD" className="flex min-h-[100dvh] w-screen flex-col bg-slate-950 p-6 text-slate-100 shadow-2xl">
             <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -2860,7 +2860,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal: Áp Dụng Template Lên Sản Phẩm */}
       {showApplyTemplateModal && (
-        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
           <div ref={applyTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Áp dụng mẫu sản phẩm" className="flex min-h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-indigo-50/50">
               <div className="flex items-center gap-2">
@@ -2980,7 +2980,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
       {/* Modal: Lưu Thành Template Mới */}
       {showSaveTemplateModal && (
-        <div className="fixed inset-0 z-60 overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/60 backdrop-blur-xs">
           <div ref={saveTemplateDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Lưu mẫu sản phẩm" className="flex min-h-[100dvh] w-screen flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
             <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
