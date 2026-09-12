@@ -1,4 +1,4 @@
-import { SourcePlatform } from "./normalized-product.js";
+import { CustomizationEvidence, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
 
 export type PublishStatus = "DRAFT" | "READY_TO_REVIEW" | "PUBLISHED" | "ARCHIVED";
 
@@ -346,6 +346,9 @@ export interface ClonePreviewResponse {
   categorySuggested: string;
   rawAttributes?: Array<{ key: string; value: string }>;
   rawOptions?: Array<{ name: string; values: string[] }>;
+  customOptionGroups?: SourceOptionGroup[];
+  customizationEvidence?: CustomizationEvidence;
+  customizerMockupTemplateUrl?: string;
   qualityScorePreview: number;
   extractionStatus: "LIVE" | "DEMO" | "UNVERIFIED";
   isDemo: boolean;

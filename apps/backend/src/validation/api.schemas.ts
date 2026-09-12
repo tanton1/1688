@@ -42,6 +42,40 @@ const normalizedVariant = z.object({
   imageUrl: imageRef.optional()
 }).strict();
 
+const sourceOptionValue = z.object({
+  id: text(300),
+  label: text(500),
+  imageUrl: imageRef.optional(),
+  sourceValue: z.string().max(500).optional()
+}).strict();
+
+const sourceOptionGroup = z.object({
+  id: text(300),
+  name: text(500),
+  kind: z.enum(["VARIATION", "PERSONALIZATION", "ATTRIBUTE", "UNKNOWN"]),
+  inputType: z.enum(["SELECT", "ASSET_PICKER", "TEXT", "TEXTAREA", "IMAGE_UPLOAD", "COLOR_SWATCH"]).optional(),
+  required: z.boolean().optional(),
+  source: z.enum(["NATIVE_SKU", "EXTERNAL_CUSTOMIZER", "DOM", "1688", "AI_SUGGESTION"]).optional(),
+  values: z.array(sourceOptionValue).max(500)
+}).strict();
+
+const customizationEvidence = z.object({
+  hasCustomTextInput: z.boolean().optional(),
+  hasImageUpload: z.boolean().optional(),
+  hasCustomerAssetPicker: z.boolean().optional(),
+  detectedLabels: z.array(z.string().max(500)).max(100).optional(),
+  textFields: z.array(z.object({
+    id: text(300),
+    label: text(500),
+    type: z.enum(["TEXT", "TEXTAREA", "IMAGE_UPLOAD"]),
+    required: z.boolean().optional(),
+    maxLength: z.number().int().positive().max(10_000).optional(),
+    accept: z.array(z.string().max(200)).max(20).optional()
+  }).strict()).max(100).optional(),
+  confidence: z.number().finite().min(0).max(1).optional(),
+  reviewRequired: z.boolean().optional()
+}).strict();
+
 export const importSingleSchema = z.object({
   normalized: z.object({
     sourcePlatform,
@@ -60,6 +94,11 @@ export const importSingleSchema = z.object({
     media: z.object({ images: z.array(imageRef).max(500), videoUrl: imageRef.nullable().optional() }).strict(),
     attributes: z.array(z.object({ keyCN: text(500), valueCN: z.string().max(2_000), keyVI: optionalText(500), valueVI: optionalText(2_000) }).strict()).max(500),
     variants: z.array(normalizedVariant).max(5_000),
+    optionGroups: z.array(sourceOptionGroup).max(100).optional(),
+    customOptionGroups: z.array(sourceOptionGroup).max(100).optional(),
+    personalizationFields: z.array(z.unknown()).max(100).optional(),
+    customizationEvidence: customizationEvidence.optional(),
+    customizerMockupTemplateUrl: imageRef.optional(),
     description: z.object({ rawHtml: z.string().max(2_000_000).optional(), images: z.array(imageRef).max(500), structuredText: z.unknown().optional() }).strict(),
     rawSnapshot: rawProduct
   }).strict(),

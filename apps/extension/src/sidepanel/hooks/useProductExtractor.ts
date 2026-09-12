@@ -101,7 +101,15 @@ async function extractCommerceProductFromDom(): Promise<any> {
     // Customily/third-party personalization controls are rendered as live DOM
     // image swatches and are not included in Shopify's product JSON.
     const extractCustomOptionGroups = () => {
-      const groups: Array<{ name: string; values: Array<{ label: string; imageUrl?: string }> }> = [];
+      const groups: Array<{
+        id: string;
+        name: string;
+        kind: "PERSONALIZATION";
+        inputType: "ASSET_PICKER" | "SELECT";
+        required: boolean;
+        source: "EXTERNAL_CUSTOMIZER";
+        values: Array<{ id: string; label: string; imageUrl?: string; sourceValue?: string }>;
+      }> = [];
       const containers = Array.from(doc.querySelectorAll(
         "#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item, #customily-options .customily_option, .customily-main-app .customily_option"
       ));
@@ -115,7 +123,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
           .trim();
         if (!name || (/quantity|buy more|shipping/i.test(name) && !/choose|option|design|style/i.test(name))) continue;
 
-        const values: Array<{ label: string; imageUrl?: string }> = [];
+        const values: Array<{ id: string; label: string; imageUrl?: string; sourceValue?: string }> = [];
         const swatches = Array.from(container.querySelectorAll(
           ".customily-swatch, .swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]"
         ));
@@ -135,11 +143,77 @@ async function extractCommerceProductFromDom(): Promise<any> {
             input?.getAttribute("aria-label") || input?.value || imageEl?.alt || inferImageLabel(resolvedImageUrl) || swatch.getAttribute("data-value") ||
             swatch.getAttribute("title") || swatch.textContent || ""
           ).replace(/\s+/g, " ").trim();
-          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl: resolvedImageUrl });
+          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) {
+            values.push({
+              id: `${name}-${values.length + 1}`.toLowerCase().replace(/[^a-z0-9]+/gi, "-"),
+              label,
+              sourceValue: input?.value || swatch.getAttribute("data-value") || label,
+              imageUrl: resolvedImageUrl
+            });
+          }
         }
-        if (values.length >= 2 && values.some(value => Boolean(value.imageUrl))) groups.push({ name, values });
+        // Keep select-only customizer controls too. They are still customer
+        // personalization and must remain outside the native SKU matrix.
+        if (values.length >= 1) {
+          groups.push({
+            id: `custom-${groups.length + 1}`,
+            name,
+            kind: "PERSONALIZATION",
+            inputType: values.some(value => Boolean(value.imageUrl)) ? "ASSET_PICKER" : "SELECT",
+            required: true,
+            source: "EXTERNAL_CUSTOMIZER",
+            values
+          });
+        }
       }
       return groups;
+    };
+
+    const extractCustomizationEvidence = () => {
+      const containers = Array.from(doc.querySelectorAll(
+        "#custom-options, .personalized-form, [data-personalization], #customily-options, .customily-main-app"
+      ));
+      const textFields: Array<{
+        id: string;
+        label: string;
+        type: "TEXT" | "TEXTAREA" | "IMAGE_UPLOAD";
+        required?: boolean;
+        maxLength?: number;
+        accept?: string[];
+      }> = [];
+      const detectedLabels: string[] = [];
+      containers.forEach(container => {
+        container.querySelectorAll("input[type=text], input:not([type]), textarea, input[type=file]").forEach((control: any, index) => {
+          const input = control as HTMLInputElement;
+          const fieldContainer = input.closest(".ant-form-item, .customily_option, [data-personalization-field]") || input.parentElement;
+          const labelEl = fieldContainer?.querySelector(".option_name, label, legend, [data-option-label]") as HTMLElement | null;
+          const label = (labelEl?.textContent || input.getAttribute("aria-label") || input.getAttribute("placeholder") || "Nội dung cá nhân hóa")
+            .replace(/\*/g, "").replace(/\s+/g, " ").trim();
+          const type = input.type === "file" ? "IMAGE_UPLOAD" : input.tagName.toLowerCase() === "textarea" ? "TEXTAREA" : "TEXT";
+          const id = input.id || input.name || `custom-field-${textFields.length + index + 1}`;
+          if (!textFields.some(field => field.id === id)) {
+            textFields.push({
+              id,
+              label,
+              type,
+              required: input.required || fieldContainer?.querySelector("[required]") !== null,
+              maxLength: input.maxLength > 0 ? input.maxLength : undefined,
+              accept: input.accept ? input.accept.split(",").map(value => value.trim()).filter(Boolean) : undefined
+            });
+            if (label && !detectedLabels.includes(label)) detectedLabels.push(label);
+          }
+        });
+      });
+      const customGroups = extractCustomOptionGroups();
+      return {
+        hasCustomTextInput: textFields.some(field => field.type === "TEXT" || field.type === "TEXTAREA"),
+        hasImageUpload: textFields.some(field => field.type === "IMAGE_UPLOAD"),
+        hasCustomerAssetPicker: customGroups.length > 0,
+        detectedLabels,
+        textFields,
+        confidence: customGroups.length > 0 || textFields.length > 0 ? 0.95 : 0,
+        reviewRequired: false
+      };
     };
 
     // Customily mounts its swatches asynchronously after the Shopify shell.
@@ -205,49 +279,9 @@ async function extractCommerceProductFromDom(): Promise<any> {
             const baseOptionNames = new Set(shopifyOptions.map((option: any) => option.name.toLowerCase()));
             const uniqueCustomGroups = customGroups.filter(group => !baseOptionNames.has(group.name.toLowerCase()));
 
-            // Shopify owns price/stock for quantity packs; the personalization
-            // app owns the design image. Flatten Shopify's complete native
-            // combination into one axis and the Customily image choices into a
-            // second axis so Style/Size is not overwritten by option2.
-            let mergedVariants = rawVariants;
-            if (uniqueCustomGroups.length > 0 && rawVariants.length > 0) {
-              const customCombinations = uniqueCustomGroups.reduce(
-                (combinations: Array<{ values: string[]; imageUrl?: string }>, group: any) => combinations.flatMap(combo =>
-                  group.values.map((value: any) => ({
-                    values: [...combo.values, value.label],
-                    imageUrl: value.imageUrl || combo.imageUrl
-                  }))
-                ),
-                [{ values: [], imageUrl: undefined }]
-              ).slice(0, 5000);
-              const nativeOptionName = shopifyOptions.map((option: any) => option.name).filter(Boolean).join(" / ") || "Biến thể sản phẩm";
-              const customOptionName = uniqueCustomGroups.map(group => group.name).join(" / ") || "Mẫu cá nhân hóa";
-              const nativeValues = [...new Set(rawVariants.map((base: any) => String(base.title || [base.option1, base.option2, base.option3].filter(Boolean).join(" / ")).trim()).filter(Boolean))];
-              const customValues = customCombinations.map(combo => combo.values.length === 1
-                ? combo.values[0]
-                : combo.values.map((value, index) => `${uniqueCustomGroups[index]?.name || `Tùy chọn ${index + 1}`}: ${value}`).join(" / "));
-
-              mergedVariants = rawVariants.flatMap((base: any) => customCombinations.map((combo, index) => {
-                const nativeValue = String(base.title || [base.option1, base.option2, base.option3].filter(Boolean).join(" / ")).trim();
-                const customValue = customValues[index];
-                return {
-                  ...base,
-                  id: `${base.id}__custom_${index}`,
-                  sku: base.sku ? `${base.sku}__custom_${index}` : undefined,
-                  title: [nativeValue, customValue].filter(Boolean).join(" / "),
-                  option1: nativeValue,
-                  option2: customValue,
-                  option3: undefined,
-                  featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
-                };
-              }));
-              shopifyOptions.splice(0, shopifyOptions.length,
-                { name: nativeOptionName, values: nativeValues },
-                { name: customOptionName, values: [...new Set(customValues)] }
-              );
-            }
             const mergedOptions = [...shopifyOptions];
             const customImages = uniqueCustomGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean));
+            const customizationEvidence = extractCustomizationEvidence();
 
             // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
             const detailImages: string[] = [];
@@ -291,7 +325,9 @@ async function extractCommerceProductFromDom(): Promise<any> {
               shopName: shopifyData.vendor || window.location.hostname,
               description: shopifyData.description || "",
               options: mergedOptions,
-              variants: mergedVariants
+              variants: rawVariants,
+              customOptionGroups: uniqueCustomGroups,
+              customizationEvidence
             };
           }
         }
@@ -423,6 +459,8 @@ async function extractCommerceProductFromDom(): Promise<any> {
     }
 
     const pathId = pathname.split("/").filter(Boolean).pop() || window.location.hostname;
+    const genericCustomOptionGroups = extractCustomOptionGroups();
+    const genericCustomizationEvidence = extractCustomizationEvidence();
     return {
       url,
       sourceProductId: String(schemaProduct?.sku || pathId).slice(0, 128),
@@ -433,7 +471,9 @@ async function extractCommerceProductFromDom(): Promise<any> {
       currency: currency || "USD",
       shopName,
       description: schemaProduct?.description || ogDesc || "",
-      variants: domVariants
+      variants: domVariants,
+      customOptionGroups: genericCustomOptionGroups,
+      customizationEvidence: genericCustomizationEvidence
     };
   } catch (err: any) {
     return { error: err.message };
@@ -700,6 +740,9 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       galleryImages: images.slice(1),
       detailImages: domData.detailImages || [],
       rawOptions: domData.options,
+      customOptionGroups: domData.customOptionGroups || [],
+      customizationEvidence: domData.customizationEvidence,
+      customizerMockupTemplateUrl: domData.customizerMockupTemplateUrl,
       extractionStatus: "LIVE",
       isDemo: false,
       rawAttributes: [
@@ -755,6 +798,9 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
     },
     images,
     descriptionImages: domData.detailImages || [],
+    customOptionGroups: domData.customOptionGroups || [],
+    customizationEvidence: domData.customizationEvidence,
+    customizerMockupTemplateUrl: domData.customizerMockupTemplateUrl,
     attributes: [
       { nameCN: "Nguồn xuất xứ", valueCN: supplierName },
       { nameCN: "Phương thức scan", valueCN: "Tự động trích xuất DOM thời gian thực" }
@@ -1000,6 +1046,9 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
     },
     images,
     descriptionImages: preview.detailImages || [],
+    customOptionGroups: preview.customOptionGroups || [],
+    customizationEvidence: preview.customizationEvidence,
+    customizerMockupTemplateUrl: preview.customizerMockupTemplateUrl,
     attributes: (preview.rawAttributes || preview.attributes || []).map((a: any) => ({ nameCN: a.key, valueCN: a.value })),
     skuProps,
     skuMap,

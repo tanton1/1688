@@ -879,6 +879,8 @@ export class MultiPlatformClonerService {
       detailImages,
       variants,
       rawOptions: extracted.options,
+      customOptionGroups: extracted.customOptionGroups || [],
+      customizationEvidence: extracted.customizationEvidence,
       categorySuggested: "Thời trang & Phụ kiện",
       rawAttributes: [
         { key: "Nguồn gốc", value: platform },

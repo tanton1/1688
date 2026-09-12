@@ -1,4 +1,4 @@
-import { SourcePlatform } from "./normalized-product.js";
+import { CustomizationEvidence, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
 
 export interface Raw1688Shop {
   shopId: string;
@@ -70,6 +70,10 @@ export interface Raw1688Product {
   skuMap: Record<string, Raw1688SkuItem>; // key = combination key or skuId
   descriptionHtml?: string;
   descriptionImages?: string[];
+  /** External customizer metadata; never treated as native SKU axes. */
+  customOptionGroups?: SourceOptionGroup[];
+  customizationEvidence?: CustomizationEvidence;
+  customizerMockupTemplateUrl?: string;
   extractedAt: string; // ISO date string
 }
 

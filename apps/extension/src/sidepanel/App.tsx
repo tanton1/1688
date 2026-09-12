@@ -158,6 +158,9 @@ export const App: React.FC = () => {
           imageUrl: v.imageUrl
         };
       }),
+      customOptionGroups: product.customOptionGroups,
+      customizationEvidence: product.customizationEvidence,
+      customizerMockupTemplateUrl: product.customizerMockupTemplateUrl,
       description: {
         images: product.descriptionImages || []
       },

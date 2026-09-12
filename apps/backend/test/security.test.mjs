@@ -528,6 +528,69 @@ test("imports reject zero normalized and variant source prices", async () => {
   assert.equal(variantPrice.body.error, "VALIDATION_ERROR");
 });
 
+test("single import preserves customizer metadata separately from the SKU matrix", async () => {
+  const sourceId = "customizer-import-source";
+  const response = await request.post("/api/v1/import/single")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({
+      normalized: {
+        sourcePlatform: "GENERIC_WEB",
+        sourceProductId: sourceId,
+        sourceUrl: "https://macorner.co/products/customizer-import-source",
+        supplier: { shopId: "shop-customizer", shopName: "Macorner", shopUrl: "https://macorner.co" },
+        moq: 1,
+        titleCN: "Custom Birth Flower Personalized Dish",
+        cleanedTitleCN: "Custom Birth Flower Personalized Dish",
+        price: { currency: "CNY", min: 10, max: 10 },
+        media: {
+          images: ["https://cdn.example.com/dish.jpg", "https://cdn.example.com/january.jpg"]
+        },
+        attributes: [],
+        variants: [{
+          sourceSkuId: "native-qty-1",
+          colorCN: "1 PC",
+          colorVI: "1 PC",
+          priceCNY: 10,
+          stock: 4,
+          imageUrl: "https://cdn.example.com/dish.jpg"
+        }],
+        customOptionGroups: [{
+          id: "birth-flower",
+          name: "Birth flower",
+          kind: "PERSONALIZATION",
+          inputType: "ASSET_PICKER",
+          source: "EXTERNAL_CUSTOMIZER",
+          required: true,
+          values: [{ id: "jan", label: "January", imageUrl: "https://cdn.example.com/january.jpg" }]
+        }],
+        description: { images: [] },
+        rawSnapshot: {
+          offerId: sourceId,
+          skuMap: {
+            "native-qty-1": { skuId: "native-qty-1", priceCNY: 10, stock: 4, attributes: {} }
+          }
+        }
+      },
+      settings: {
+        targetLanguage: "vi",
+        translationMode: "ACCURATE",
+        autoPublish: false,
+        copyDescriptionImages: false
+      }
+    })
+    .expect(201);
+
+  const product = response.body.product;
+  assert.equal(product.isPersonalized, true);
+  assert.equal(product.personalizationFields.length, 1);
+  assert.equal(product.personalizationFields[0].type, "ASSET_PICKER");
+  assert.equal(product.variants.length, 1);
+  assert.equal(product.variants[0].sourceSkuId, "native-qty-1");
+  assert.equal(product.variants[0].sourceSkuId.includes("__custom_"), false);
+  assert.ok(product.galleryImages.includes("https://cdn.example.com/january.jpg"));
+  inMemoryProducts.delete(product.id);
+});
+
 test("AI model names outside the server allowlist are rejected before provider lookup", async () => {
   const id = "test-ai-model-allowlist";
   inMemoryProducts.set(id, {

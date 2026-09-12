@@ -8,7 +8,7 @@ import {
   BulkImportRequest,
   ImportJobStatus
 } from "@hub1688/shared-types";
-import { evaluateProductQuality } from "@hub1688/shared-utils";
+import { evaluateProductQuality, inferPersonalizationSchema } from "@hub1688/shared-utils";
 import { TranslationEngineService } from "../services/translation.service.js";
 import { PricingEngineService } from "../services/pricing.service.js";
 import { SkuMappingService } from "../services/sku-mapping.service.js";
@@ -212,11 +212,27 @@ export class ImportController {
       ? normalized.description.images
       : (raw?.descriptionImages || []);
 
+    // Customizer metadata is intentionally resolved independently from the
+    // commercial SKU matrix. Older extension payloads may only keep the raw
+    // custom groups on rawSnapshot, so use both locations for a safe retry.
+    const personalization = inferPersonalizationSchema({
+      title: normalized.titleCN,
+      description: normalized.description.rawHtml || raw?.descriptionHtml || "",
+      customOptionGroups: normalized.customOptionGroups || raw?.customOptionGroups || [],
+      personalizationFields: normalized.personalizationFields,
+      customizationEvidence: normalized.customizationEvidence || raw?.customizationEvidence
+    });
+
     const galleryImagesList = [...normalized.media.images.slice(1)];
     variants.forEach(v => {
       if (v.imageUrl && !normalized.media.images.includes(v.imageUrl) && !galleryImagesList.includes(v.imageUrl)) {
         galleryImagesList.push(v.imageUrl);
       }
+    });
+    const customOptionImages = (normalized.customOptionGroups || raw?.customOptionGroups || [])
+      .flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean) as string[]);
+    customOptionImages.forEach(image => {
+      if (!galleryImagesList.includes(image) && image !== normalized.media.images[0]) galleryImagesList.push(image);
     });
 
     // 5. Tự động sinh trọn gói SEO Metadata (Meta Title, Description, Image Alt, FAQs, JSON-LD)
@@ -284,6 +300,9 @@ export class ImportController {
       isPriceAutoSync: true,
       isStockAutoSync: true,
       variants,
+      isPersonalized: personalization.isPersonalized,
+      personalizationFields: personalization.personalizationFields,
+      customizerMockupTemplateUrl: normalized.customizerMockupTemplateUrl || raw?.customizerMockupTemplateUrl,
       sourceProductId: normalized.sourceProductId,
       sourceUrl: normalized.sourceUrl,
       supplierName: normalized.supplier.shopName,

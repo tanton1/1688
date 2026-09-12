@@ -458,7 +458,12 @@ export class SupabaseDataService {
           moq: normalized.moq,
           min_price_cny: normalized.price.min,
           max_price_cny: normalized.price.max,
-          raw_media_json: normalized.media,
+          raw_media_json: {
+            ...normalized.media,
+            customOptionGroups: normalized.customOptionGroups || raw.customOptionGroups || [],
+            customizationEvidence: normalized.customizationEvidence || raw.customizationEvidence || null,
+            customizerMockupTemplateUrl: normalized.customizerMockupTemplateUrl || raw.customizerMockupTemplateUrl || null
+          },
           raw_attributes_json: normalized.attributes,
           supplier_id: supplierId,
           last_checked_at: new Date().toISOString(),

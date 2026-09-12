@@ -245,6 +245,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const currentPrice = Math.round(basePrice * (1 - discountPercent / 100));
   const currentStock = selectedVariant?.stockQuantity ?? 0;
   const isOutOfStock = currentStock <= 0;
+  const personalizationNeedsConfiguration = Boolean(product.isPersonalized && !(product.personalizationFields || []).length);
   const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
   const hasMockup = Boolean(
     product.isPersonalized ||
@@ -316,6 +317,11 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const executePurchase = async (mode: "cart" | "buy") => {
     setPurchaseError("");
+    if (personalizationNeedsConfiguration) {
+      setPurchaseError("Sản phẩm cá nhân hóa chưa có cấu hình trường nhập liệu. Vui lòng hoàn tất cấu hình trong quản trị trước khi bán.");
+      requestAnimationFrame(() => document.getElementById("product-personalizer")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
     if (product.isPersonalized && !customizationValidation.valid) {
       setShowCustomizationValidation(true);
       setPurchaseError("Vui lòng hoàn thành các mục cá nhân hoá bắt buộc trước khi đặt hàng.");
@@ -713,10 +719,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  disabled={isOutOfStock || isPreparingPurchase}
+                  disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
                   onClick={handleAddToCartClick}
                   className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
-                    isOutOfStock || isPreparingPurchase
+                    isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration
                       ? "bg-stone-100 text-stone-400 cursor-not-allowed"
                       : "bg-orange-50 hover:bg-orange-100 text-[var(--mc-color-accent-strong)] border border-orange-200 shadow-xs"
                   }`}
@@ -727,10 +733,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
                 <button
                   type="button"
-                  disabled={isOutOfStock || isPreparingPurchase}
+                  disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
                   onClick={handleBuyNowClick}
                   className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
-                    isOutOfStock || isPreparingPurchase
+                    isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration
                       ? "bg-stone-300 cursor-not-allowed"
                       : "bg-[var(--mc-color-action-primary)] hover:bg-[var(--mc-color-action-primary-hover)] shadow-orange-950/20"
                   }`}
@@ -867,7 +873,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              disabled={isOutOfStock || isPreparingPurchase}
+              disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
               onClick={handleAddToCartClick}
               className="mc-focus-ring min-h-11 px-3.5 py-2.5 rounded-xl font-bold text-xs bg-orange-50 text-[var(--mc-color-accent-strong)] border border-orange-200 flex items-center gap-1 transition-colors hover:bg-orange-100 active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400 cursor-pointer"
             >
@@ -876,7 +882,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             </button>
             <button
               type="button"
-              disabled={isOutOfStock || isPreparingPurchase}
+              disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
               onClick={handleBuyNowClick}
               className="mc-focus-ring min-h-11 px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-[var(--mc-color-action-primary)] shadow-md shadow-orange-950/20 flex items-center gap-1 transition-colors hover:bg-[var(--mc-color-action-primary-hover)] active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none cursor-pointer"
             >

@@ -1,4 +1,5 @@
 import { Raw1688Product, Raw1688Shop } from "./1688-raw.js";
+import type { PersonalizationField } from "./web-product.js";
 
 export type TranslationMode = "ACCURATE" | "ECOMMERCE" | "SEO" | "REWRITE";
 
@@ -23,6 +24,50 @@ export interface NormalizedVariant {
   priceCNY: number;
   stock: number;
   imageUrl?: string;
+}
+
+/**
+ * Source option metadata is deliberately separate from the sellable SKU matrix.
+ * An option rendered by a customizer can be an asset/text input and must not be
+ * multiplied into synthetic variants.
+ */
+export type SourceOptionKind = "VARIATION" | "PERSONALIZATION" | "ATTRIBUTE" | "UNKNOWN";
+export type SourceOptionInputType = "SELECT" | "ASSET_PICKER" | "TEXT" | "TEXTAREA" | "IMAGE_UPLOAD" | "COLOR_SWATCH";
+
+export interface SourceOptionValue {
+  id: string;
+  label: string;
+  imageUrl?: string;
+  sourceValue?: string;
+}
+
+export interface SourceOptionGroup {
+  id: string;
+  name: string;
+  kind: SourceOptionKind;
+  inputType?: SourceOptionInputType;
+  required?: boolean;
+  source?: "NATIVE_SKU" | "EXTERNAL_CUSTOMIZER" | "DOM" | "1688" | "AI_SUGGESTION";
+  values: SourceOptionValue[];
+}
+
+export interface CustomizationTextFieldHint {
+  id: string;
+  label: string;
+  type: "TEXT" | "TEXTAREA" | "IMAGE_UPLOAD";
+  required?: boolean;
+  maxLength?: number;
+  accept?: string[];
+}
+
+export interface CustomizationEvidence {
+  hasCustomTextInput?: boolean;
+  hasImageUpload?: boolean;
+  hasCustomerAssetPicker?: boolean;
+  detectedLabels?: string[];
+  textFields?: CustomizationTextFieldHint[];
+  confidence?: number;
+  reviewRequired?: boolean;
 }
 
 export type SourcePlatform = "1688" | "TAOBAO" | "TMALL" | "SHOPEE" | "TIKTOK_SHOP" | "ALIEXPRESS" | "GENERIC_WEB";
@@ -51,6 +96,13 @@ export interface Normalized1688Product {
     valueVI?: string;
   }>;
   variants: NormalizedVariant[];
+  /** Native SKU/variation groups only. */
+  optionGroups?: SourceOptionGroup[];
+  /** Options owned by an external/custom personalization UI. */
+  customOptionGroups?: SourceOptionGroup[];
+  personalizationFields?: PersonalizationField[];
+  customizationEvidence?: CustomizationEvidence;
+  customizerMockupTemplateUrl?: string;
   description: {
     rawHtml?: string;
     images: string[];
