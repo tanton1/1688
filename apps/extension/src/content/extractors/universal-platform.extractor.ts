@@ -492,6 +492,22 @@ export class UniversalPlatformExtractor {
       if (image.startsWith("//")) image = `https:${image}`;
       try { return new URL(image, window.location.href).href; } catch { return undefined; }
     };
+    const inferImageLabel = (imageUrl?: string): string => {
+      if (!imageUrl) return "";
+      try {
+        const fileName = (new URL(imageUrl, window.location.href).pathname.split("/").pop() || "")
+          .replace(/%20/gi, " ")
+          .replace(/\.[a-z0-9]+$/i, "");
+        const semanticPart = fileName.includes("__") ? fileName.split("__").pop() || "" : fileName;
+        return semanticPart
+          .replace(/[_-]\d{6,}$/g, "")
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      } catch {
+        return "";
+      }
+    };
     const readImageUrl = (element: Element): string | undefined => {
       const image = element.querySelector("img") as HTMLImageElement | null;
       const direct = image?.getAttribute("data-src") || image?.getAttribute("data-original") || image?.getAttribute("src");
@@ -519,14 +535,17 @@ export class UniversalPlatformExtractor {
         const input = (control.tagName === "INPUT" ? control : control.querySelector("input")) as HTMLInputElement | null;
         const image = control.querySelector("img") as HTMLImageElement | null;
         const imageUrl = readImageUrl(control);
+        const valueLabel = control.querySelector(".pb-tooltip-title, [data-value-label]");
         const label = (
           control.getAttribute("data-value") ||
           control.getAttribute("title") ||
           control.getAttribute("aria-label") ||
+          valueLabel?.textContent ||
           input?.getAttribute("aria-label") ||
           input?.value ||
           image?.getAttribute("alt") ||
           image?.getAttribute("title") ||
+          inferImageLabel(imageUrl) ||
           control.textContent ||
           ""
         ).replace(/\s+/g, " ").trim();

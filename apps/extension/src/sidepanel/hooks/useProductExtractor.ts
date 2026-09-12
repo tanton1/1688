@@ -87,7 +87,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
         const fileName = (new URL(imageUrl, window.location.href).pathname.split("/").pop() || "")
           .replace(/%20/gi, " ")
           .replace(/\.[a-z0-9]+$/i, "");
-        const semanticPart = fileName.includes("__") ? fileName.split("__").pop() || "" : "";
+        const semanticPart = fileName.includes("__") ? fileName.split("__").pop() || "" : fileName;
         return semanticPart
           .replace(/[_-]\d{6,}$/g, "")
           .replace(/[_-]+/g, " ")

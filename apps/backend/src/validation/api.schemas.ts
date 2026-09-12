@@ -109,7 +109,8 @@ export const importSingleSchema = z.object({
     categoryName: optionalText(120),
     autoPublish: z.boolean(),
     copyDescriptionImages: z.boolean(),
-    selectedSkuIds: z.array(id).max(5_000).optional()
+    selectedSkuIds: z.array(id).max(5_000).optional(),
+    resyncExisting: z.boolean().optional()
   }).strict()
 }).strict();
 

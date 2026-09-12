@@ -99,7 +99,8 @@ export class ImportController {
     // its variants were inserted. Reuse that incomplete row on retry instead
     // of rejecting it or creating another duplicate product.
     const recoverableExisting = existing && existing.variants.length === 0 ? existing : null;
-    if (existing && !recoverableExisting) {
+    const isResync = settings.resyncExisting === true;
+    if (existing && !recoverableExisting && !isResync) {
       res.status(409).json({
         message: "Sản phẩm này đã tồn tại trên hệ thống",
         existingProduct: existing
@@ -205,8 +206,8 @@ export class ImportController {
       };
     });
 
-    const productId = recoverableExisting?.id || crypto.randomUUID();
-    const skuCode = `SP-${Date.now().toString().slice(-6)}`;
+    const productId = existing?.id || crypto.randomUUID();
+    const skuCode = existing?.skuCode || `SP-${Date.now().toString().slice(-6)}`;
 
     const detailImagesList = (normalized.description?.images && normalized.description.images.length > 0)
       ? normalized.description.images
@@ -253,7 +254,7 @@ export class ImportController {
 
     const newProduct: WebProduct = {
       id: productId,
-      slug: `${seoPackage.slug}-${Date.now().toString().slice(-4)}`,
+      slug: existing?.slug || `${seoPackage.slug}-${Date.now().toString().slice(-4)}`,
       skuCode,
       
       // Tiếng Việt
@@ -306,9 +307,106 @@ export class ImportController {
       sourceProductId: normalized.sourceProductId,
       sourceUrl: normalized.sourceUrl,
       supplierName: normalized.supplier.shopName,
-      createdAt: recoverableExisting?.createdAt || new Date().toISOString(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+
+    // Resync keeps the product identity and all merchant-controlled fields,
+    // while refreshing source-owned SKU/media/customizer data. The explicit
+    // flag prevents an ordinary duplicate import from mutating a live listing.
+    if (isResync && existing) {
+      const previous = existing;
+      const previousBySku = new Map(previous.variants.map(variant => [variant.sourceSkuId, variant]));
+
+      newProduct.version = (previous.version || 1) + 1;
+      newProduct.slug = previous.slug;
+      newProduct.skuCode = previous.skuCode;
+      newProduct.createdAt = previous.createdAt;
+      newProduct.storeSyncHistory = previous.storeSyncHistory;
+      newProduct.volumeDiscountTiers = previous.volumeDiscountTiers;
+      newProduct.giftAddons = previous.giftAddons;
+      newProduct.occasionTags = previous.occasionTags;
+      newProduct.recipientTags = previous.recipientTags;
+      newProduct.rating = previous.rating;
+      newProduct.reviewCount = previous.reviewCount;
+      newProduct.warrantyPolicy = previous.warrantyPolicy;
+      newProduct.shippingPolicy = previous.shippingPolicy;
+      newProduct.isMediaMirrored = previous.isMediaMirrored;
+      newProduct.mirroredAt = previous.mirroredAt;
+
+      if (previous.isTitleLocked) {
+        newProduct.titleVI = previous.titleVI;
+        newProduct.titleVariants = previous.titleVariants;
+        newProduct.titleEN = previous.titleEN;
+        newProduct.titleVariantsEN = previous.titleVariantsEN;
+      }
+      if (previous.isDescLocked) {
+        newProduct.shortDescVI = previous.shortDescVI;
+        newProduct.shortDescEN = previous.shortDescEN;
+        newProduct.fullDescVI = previous.fullDescVI;
+        newProduct.fullDescEN = previous.fullDescEN;
+      }
+      if (previous.isImagesLocked) {
+        newProduct.primaryImage = previous.primaryImage;
+        newProduct.galleryImages = previous.galleryImages;
+        newProduct.detailImages = previous.detailImages;
+        newProduct.videoUrl = previous.videoUrl;
+        newProduct.videoPosterUrl = previous.videoPosterUrl;
+      }
+
+      if (newProduct.variants.length === 0 && previous.variants.length > 0) {
+        newProduct.variants = previous.variants;
+      } else {
+        newProduct.variants = newProduct.variants.map(variant => {
+          const oldVariant = previousBySku.get(variant.sourceSkuId);
+          if (!oldVariant) {
+            // Do not introduce an unexpected charge or inventory commitment
+            // for a newly discovered SKU while merchant pricing is locked.
+            return previous.isPriceAutoSync
+              ? variant
+              : {
+                  ...variant,
+                  costPriceVND: previous.minPriceVND,
+                  sellingPriceVND: previous.minPriceVND,
+                  sourcePrice: undefined
+                };
+          }
+          return {
+            ...variant,
+            ...(previous.isPriceAutoSync ? {} : {
+              costPriceVND: oldVariant.costPriceVND,
+              sellingPriceVND: oldVariant.sellingPriceVND,
+              sourcePrice: oldVariant.sourcePrice
+            }),
+            ...(previous.isStockAutoSync ? {} : {
+              stockQuantity: oldVariant.stockQuantity,
+              sourceAvailable: oldVariant.sourceAvailable
+            }),
+            ...(previous.isImagesLocked ? { imageUrl: oldVariant.imageUrl } : {})
+          };
+        });
+      }
+
+      if (previous.isPriceAutoSync) {
+        const selectedPrices = newProduct.variants.filter(v => v.selectedForSale).map(v => v.sellingPriceVND);
+        if (selectedPrices.length > 0) {
+          newProduct.minPriceVND = Math.min(...selectedPrices);
+          newProduct.maxPriceVND = Math.max(...selectedPrices);
+        }
+      } else {
+        newProduct.minPriceVND = previous.minPriceVND;
+        newProduct.maxPriceVND = previous.maxPriceVND;
+      }
+
+      // A resync must not silently unpublish or publish a listing. Publishing
+      // remains an explicit quality-gated action in the existing UI.
+      if (!settings.autoPublish) newProduct.status = previous.status;
+      newProduct.isTitleLocked = previous.isTitleLocked;
+      newProduct.isDescLocked = previous.isDescLocked;
+      newProduct.isImagesLocked = previous.isImagesLocked;
+      newProduct.isPriceAutoSync = previous.isPriceAutoSync;
+      newProduct.isStockAutoSync = previous.isStockAutoSync;
+    }
 
     // 5. Chấm điểm Quality Score
     const qualityResult = evaluateProductQuality(newProduct);

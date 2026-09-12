@@ -33,6 +33,7 @@ export const App: React.FC = () => {
   const [targetLanguage, setTargetLanguage] = useState<"vi" | "en">("vi");
   const [multiplier, setMultiplier] = useState<number>(2.2);
   const [importing, setImporting] = useState<boolean>(false);
+  const [resyncExisting, setResyncExisting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<ExtensionAuthUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -178,7 +179,8 @@ export const App: React.FC = () => {
             translationMode,
             autoPublish,
             copyDescriptionImages: true,
-            selectedSkuIds: variants.filter(v => v.selectedForSale).map(v => v.sourceSkuId)
+            selectedSkuIds: variants.filter(v => v.selectedForSale).map(v => v.sourceSkuId),
+            resyncExisting
           }
         })
       });
@@ -223,6 +225,11 @@ export const App: React.FC = () => {
           });
         }
       } else {
+        if (res.status === 409 && data.existingProduct) {
+          setResyncExisting(true);
+          setSuccessMessage("⚠ Sản phẩm đã tồn tại. Đã bật chế độ cập nhật lại; bấm đồng bộ lần nữa để lấy variation và custom mới.");
+          return;
+        }
         if (res.status === 401) {
           await clearAuthSession();
           setAuthUser(null);
@@ -378,6 +385,21 @@ export const App: React.FC = () => {
                 <span>TÙY CHỌN NÂNG CAO</span>
               </button>
             </div>
+
+            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={resyncExisting}
+                onChange={(event) => setResyncExisting(event.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 accent-orange-600"
+              />
+              <span>
+                <strong>Cập nhật sản phẩm đã có (resync)</strong>
+                <span className="block text-[10px] leading-relaxed text-amber-800">
+                  Giữ nguyên trường đã khóa, đồng bộ lại variation native, tồn kho, ảnh và schema custom cá nhân hóa.
+                </span>
+              </span>
+            </label>
 
             {/* Notification message */}
             {successMessage && (

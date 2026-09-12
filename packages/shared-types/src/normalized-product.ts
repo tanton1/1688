@@ -11,6 +11,8 @@ export interface ImportSettings {
   autoPublish: boolean;
   copyDescriptionImages: boolean;
   selectedSkuIds?: string[]; // If user chooses specific variants in Sidepanel
+  /** Explicitly update an existing product with the same sourceProductId. */
+  resyncExisting?: boolean;
 }
 
 export interface NormalizedVariant {

@@ -587,8 +587,115 @@ test("single import preserves customizer metadata separately from the SKU matrix
   assert.equal(product.variants.length, 1);
   assert.equal(product.variants[0].sourceSkuId, "native-qty-1");
   assert.equal(product.variants[0].sourceSkuId.includes("__custom_"), false);
+  assert.equal(product.personalizationFields[0].options[0].previewAssetUrl, "https://cdn.example.com/january.jpg");
   assert.ok(product.galleryImages.includes("https://cdn.example.com/january.jpg"));
   inMemoryProducts.delete(product.id);
+});
+
+test("resync updates source variants and personalization without overwriting locked merchandising fields", async () => {
+  const sourceId = "customizer-resync-source";
+  const productId = "existing-resync-product";
+  inMemoryProducts.set(productId, {
+    id: productId,
+    version: 4,
+    slug: "locked-jewelry-dish",
+    skuCode: "MAC-LOCKED-1",
+    titleVI: "Tên sản phẩm đã duyệt",
+    titleEN: "Approved product title",
+    shortDescVI: "Mô tả ngắn thủ công",
+    fullDescVI: "Mô tả dài thủ công",
+    categoryName: "Jewelry",
+    primaryImage: "https://cdn.example.com/locked-primary.jpg",
+    galleryImages: ["https://cdn.example.com/locked-gallery.jpg"],
+    detailImages: ["https://cdn.example.com/locked-detail.jpg"],
+    status: "PUBLISHED",
+    qualityScore: 90,
+    minPriceVND: 777000,
+    maxPriceVND: 777000,
+    isTitleLocked: true,
+    isDescLocked: true,
+    isImagesLocked: true,
+    isPriceAutoSync: false,
+    isStockAutoSync: true,
+    variants: [{
+      id: "old-variant",
+      sourceSkuId: "native-qty-1",
+      colorName: "1 PC",
+      costPriceVND: 500000,
+      sellingPriceVND: 777000,
+      stockQuantity: 2,
+      imageUrl: "https://cdn.example.com/locked-variant.jpg",
+      sourceAvailable: true,
+      selectedForSale: true
+    }],
+    sourceProductId: sourceId,
+    sourceUrl: "https://macorner.co/products/customizer-resync-source",
+    supplierName: "Macorner",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  });
+
+  const response = await request.post("/api/v1/import/single")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({
+      normalized: {
+        sourcePlatform: "GENERIC_WEB",
+        sourceProductId: sourceId,
+        sourceUrl: "https://macorner.co/products/customizer-resync-source",
+        supplier: { shopId: "shop-resync", shopName: "Macorner", shopUrl: "https://macorner.co" },
+        moq: 1,
+        titleCN: "New source title Personalized Jewelry Dish",
+        cleanedTitleCN: "New source title Personalized Jewelry Dish",
+        price: { currency: "CNY", min: 12, max: 12 },
+        media: { images: ["https://cdn.example.com/new-primary.jpg", "https://cdn.example.com/new-gallery.jpg"] },
+        attributes: [],
+        variants: [{
+          sourceSkuId: "native-qty-1",
+          colorCN: "1 PC",
+          colorVI: "1 PC",
+          priceCNY: 12,
+          stock: 9,
+          imageUrl: "https://cdn.example.com/new-variant.jpg"
+        }],
+        customOptionGroups: [{
+          id: "birth-flower",
+          name: "Birth flower",
+          kind: "PERSONALIZATION",
+          inputType: "ASSET_PICKER",
+          source: "EXTERNAL_CUSTOMIZER",
+          required: true,
+          values: [{ id: "jan", label: "January", imageUrl: "https://cdn.example.com/january.jpg" }]
+        }],
+        description: { images: [] },
+        rawSnapshot: {
+          offerId: sourceId,
+          skuMap: {
+            "native-qty-1": { skuId: "native-qty-1", priceCNY: 12, stock: 9, attributes: {} }
+          }
+        }
+      },
+      settings: {
+        targetLanguage: "vi",
+        translationMode: "ACCURATE",
+        autoPublish: false,
+        copyDescriptionImages: false,
+        resyncExisting: true
+      }
+    })
+    .expect(201);
+
+  const product = response.body.product;
+  assert.equal(product.id, productId);
+  assert.equal(product.slug, "locked-jewelry-dish");
+  assert.equal(product.version, 5);
+  assert.equal(product.titleVI, "Tên sản phẩm đã duyệt");
+  assert.equal(product.fullDescVI, "Mô tả dài thủ công");
+  assert.equal(product.primaryImage, "https://cdn.example.com/locked-primary.jpg");
+  assert.equal(product.variants[0].sellingPriceVND, 777000);
+  assert.equal(product.variants[0].stockQuantity, 9);
+  assert.equal(product.isPersonalized, true);
+  assert.equal(product.personalizationFields[0].label, "Birth flower");
+  assert.equal(product.personalizationFields[0].options[0].previewAssetUrl, "https://cdn.example.com/january.jpg");
+  inMemoryProducts.delete(productId);
 });
 
 test("AI model names outside the server allowlist are rejected before provider lookup", async () => {
