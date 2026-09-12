@@ -77,7 +77,7 @@ const drawContainedImage = (
 
 const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number, printAreas: Array<{ xPercent: number; yPercent: number; widthPercent: number; heightPercent: number; rotationDeg?: number; shape?: "RECT" | "CIRCLE" }> = []) => {
   const preview = field.preview || {};
-  const area = printAreas.find(candidate => (candidate as any).fieldIds?.includes(field.id));
+  const area = printAreas.find(candidate => (candidate as any).fieldIds?.includes(field.id)) || (printAreas.length === 1 ? printAreas[0] : undefined);
   const fallbackArea = printAreas[0];
   const defaultY = 32 + Math.min(index, 5) * 9;
   return {
