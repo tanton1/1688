@@ -18,10 +18,11 @@ export class UniversalPlatformExtractor {
     const url = window.location.href;
     const platform = detectProductPlatform(url);
 
-    if (/macorner\.co$/i.test(window.location.hostname) && window.location.pathname.includes("/products/") && !document.querySelector("#custom-options .swatch-container, .personalized-form .swatch-container")) {
+    const customSwatchSelector = "#custom-options .swatch-container, .personalized-form .swatch-container, #customily-options .customily-swatch img, .customily-main-app .customily-swatch img";
+    if (/macorner\.co$/i.test(window.location.hostname) && window.location.pathname.includes("/products/") && !document.querySelector(customSwatchSelector)) {
       await new Promise<void>(resolve => {
         const observer = new MutationObserver(() => {
-          if (document.querySelector("#custom-options .swatch-container, .personalized-form .swatch-container")) {
+          if (document.querySelector(customSwatchSelector)) {
             observer.disconnect();
             resolve();
           }
@@ -204,7 +205,7 @@ export class UniversalPlatformExtractor {
 
     // Personalized image swatches (e.g. Macorner/Customily) are part of the
     // product choices and should be available in the imported gallery too.
-    document.querySelectorAll("#custom-options .swatch-container img, .personalized-form .swatch-container img, [data-personalization] img").forEach(img => {
+    document.querySelectorAll("#custom-options .swatch-container img, .personalized-form .swatch-container img, [data-personalization] img, #customily-options .customily-swatch img, .customily-main-app .customily-swatch img").forEach(img => {
       const el = img as HTMLImageElement;
       addImg(el.getAttribute("data-src") || el.getAttribute("data-original") || el.src);
     });
@@ -525,61 +526,89 @@ export class UniversalPlatformExtractor {
         if (image.startsWith("//")) image = "https:" + image;
         try { return new URL(image, window.location.href).href; } catch { return undefined; }
       };
+      const inferImageLabel = (imageUrl?: string): string => {
+        if (!imageUrl) return "";
+        try {
+          const fileName = (new URL(imageUrl, window.location.href).pathname.split("/").pop() || "")
+            .replace(/%20/gi, " ")
+            .replace(/\.[a-z0-9]+$/i, "");
+          const semanticPart = fileName.includes("__") ? fileName.split("__").pop() || "" : "";
+          return semanticPart
+            .replace(/[_-]\d{6,}$/g, "")
+            .replace(/[_-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        } catch {
+          return "";
+        }
+      };
       const customGroups: Array<{ name: string; values: Array<{ label: string; imageUrl?: string }> }> = [];
-      document.querySelectorAll("#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item").forEach(container => {
-        const labelEl = container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
-        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "").replace(/\s+/g, " ").trim();
+      document.querySelectorAll("#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item, #customily-options .customily_option, .customily-main-app .customily_option").forEach(container => {
+        const labelEl = container.querySelector(".option_name") || container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
+        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "")
+          .replace(/\(\s*\d+\s*[|/]\s*\d+\s*\)/g, "")
+          .replace(/\brequired\b/gi, "")
+          .replace(/\*/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
         if (!name || (/quantity|buy more|shipping/i.test(name) && !/choose|option|design|style/i.test(name))) return;
         const values: Array<{ label: string; imageUrl?: string }> = [];
-        container.querySelectorAll(".swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]").forEach(swatch => {
+        container.querySelectorAll(".customily-swatch, .swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]").forEach(swatch => {
           const imageEl = swatch.querySelector("img") as HTMLImageElement | null;
+          const imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
           const valueLabel = swatch.querySelector(".pb-tooltip-title, [data-value-label], [title], [aria-label]") as HTMLElement | null;
-          const input = swatch.tagName === "INPUT" ? swatch as HTMLInputElement : null;
-          const label = (valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent || input?.value || swatch.getAttribute("data-value") || swatch.getAttribute("title") || swatch.textContent || "").replace(/\s+/g, " ").trim();
-          let imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
-          if (!imageUrl) {
+          const input = (swatch.tagName === "INPUT" ? swatch : swatch.querySelector("input[type=radio], input[type=checkbox]")) as HTMLInputElement | null;
+          let resolvedImageUrl = imageUrl;
+          if (!resolvedImageUrl) {
             const styled = (swatch.querySelector("[style*='background-image']") || swatch) as HTMLElement | null;
             const match = styled?.getAttribute("style")?.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
-            imageUrl = normalizeImageUrl(match?.[1]);
+            resolvedImageUrl = normalizeImageUrl(match?.[1]);
           }
-          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl });
+          const label = (valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent || input?.getAttribute("aria-label") || input?.value || imageEl?.alt || inferImageLabel(resolvedImageUrl) || swatch.getAttribute("data-value") || swatch.getAttribute("title") || swatch.textContent || "").replace(/\s+/g, " ").trim();
+          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl: resolvedImageUrl });
         });
-        if (values.length >= 2) customGroups.push({ name, values });
+        if (values.length >= 2 && values.some(value => Boolean(value.imageUrl))) customGroups.push({ name, values });
       });
 
       if (customGroups.length > 0) {
-        const nativeOptionName = /\bpcs?\b/i.test(String((parsedVariants[0] as any).option1 || "")) ? "Số lượng" : "Phân loại";
-        const nativeValues = [...new Set(parsedVariants.map((variant: any) => variant.option1).filter(Boolean).map(String))];
+        const nativeOptionName = "Biến thể sản phẩm";
+        const customOptionName = customGroups.map(group => group.name).join(" / ") || "Mẫu cá nhân hóa";
+        const nativeValues = [...new Set(parsedVariants.map((variant: any) => String(variant.title || [variant.option1, variant.option2, variant.option3].filter(Boolean).join(" / ")).trim()).filter(Boolean))];
         const customCombinations = customGroups.reduce(
           (combinations: Array<{ values: string[]; imageUrl?: string }>, group) => combinations.flatMap(combo =>
             group.values.map(value => ({ values: [...combo.values, value.label], imageUrl: value.imageUrl || combo.imageUrl }))
           ),
           [{ values: [], imageUrl: undefined }]
         ).slice(0, 5000);
-        const mergedVariants = parsedVariants.flatMap((base: any) => customCombinations.map((combo, index) => ({
-          ...base,
-          id: `${base.id}__custom_${index}_${combo.values.map(value => value.toLowerCase().replace(/[^a-z0-9]+/g, "-")).join("-")}`,
-          title: [base.title || base.option1, ...combo.values].filter(Boolean).join(" / "),
-          option1: base.option1,
-          option2: combo.values[0] || undefined,
-          option3: combo.values[1] || undefined,
-          featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
-        })));
+        const customValues = customCombinations.map(combo => combo.values.length === 1
+          ? combo.values[0]
+          : combo.values.map((value, index) => `${customGroups[index]?.name || `Tùy chọn ${index + 1}`}: ${value}`).join(" / "));
+        const mergedVariants = parsedVariants.flatMap((base: any) => customCombinations.map((combo, index) => {
+          const nativeValue = String(base.title || [base.option1, base.option2, base.option3].filter(Boolean).join(" / ")).trim();
+          const customValue = customValues[index];
+          return {
+            ...base,
+            id: `${base.id}__custom_${index}`,
+            title: [nativeValue, customValue].filter(Boolean).join(" / "),
+            option1: nativeValue,
+            option2: customValue,
+            option3: undefined,
+            featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
+          };
+        }));
         const skuProps: Raw1688SkuProp[] = [
           { propId: "prop_1", propNameCN: nativeOptionName, values: nativeValues.map((value, idx) => ({ valueId: `v1_${idx}`, valueCN: value })) },
-          ...customGroups.map((group, groupIndex) => ({
-            propId: `prop_${groupIndex + 2}`,
-            propNameCN: group.name,
-            values: group.values.map((value, idx) => ({ valueId: `v${groupIndex + 2}_${idx}`, valueCN: value.label, imageUrl: value.imageUrl }))
-          }))
+          { propId: "prop_2", propNameCN: customOptionName, values: customValues.map((value, idx) => ({ valueId: `v2_${idx}`, valueCN: value, imageUrl: customCombinations[idx]?.imageUrl })) }
         ];
         const skuMap: Record<string, Raw1688SkuItem> = {};
         mergedVariants.forEach((v: any) => {
           let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
           if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
           const priceCNY = toCny(vPrice);
-          const attributes: Record<string, string> = { [nativeOptionName]: v.option1 || "" };
-          customGroups.forEach((group, index) => { attributes[group.name] = v[`option${index + 2}`] || ""; });
+          const attributes: Record<string, string> = {
+            [nativeOptionName]: v.option1 || "",
+            [customOptionName]: v.option2 || ""
+          };
           const skuItem: Raw1688SkuItem = {
             skuId: String(v.id), attributes, priceCNY: priceCNY > 0 ? priceCNY : basePriceCNY,
             stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,

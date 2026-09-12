@@ -36,6 +36,34 @@ async function findActiveWebTab(): Promise<chrome.tabs.Tab | null> {
   }
 }
 
+function comparableProductUrl(value: string): string {
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
+  } catch {
+    return value;
+  }
+}
+
+async function waitForTabComplete(tabId: number): Promise<void> {
+  const current = await chrome.tabs.get(tabId);
+  if (current.status === "complete") return;
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      reject(new Error("Trang nguồn tải quá thời gian cho phép"));
+    }, 20000);
+    const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+      window.clearTimeout(timeoutId);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+  });
+}
+
 /**
  * Hàm thực thi trực tiếp trên DOM của Tab để trích xuất thông số tức thời (Shopify .js, Schema.org, OpenGraph, DOM Tags)
  */
@@ -53,39 +81,63 @@ async function extractCommerceProductFromDom(): Promise<any> {
       try { return new URL(image, window.location.href).href; } catch { return undefined; }
     };
 
+    const inferImageLabel = (imageUrl?: string): string => {
+      if (!imageUrl) return "";
+      try {
+        const fileName = (new URL(imageUrl, window.location.href).pathname.split("/").pop() || "")
+          .replace(/%20/gi, " ")
+          .replace(/\.[a-z0-9]+$/i, "");
+        const semanticPart = fileName.includes("__") ? fileName.split("__").pop() || "" : "";
+        return semanticPart
+          .replace(/[_-]\d{6,}$/g, "")
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      } catch {
+        return "";
+      }
+    };
+
     // Customily/third-party personalization controls are rendered as live DOM
     // image swatches and are not included in Shopify's product JSON.
     const extractCustomOptionGroups = () => {
       const groups: Array<{ name: string; values: Array<{ label: string; imageUrl?: string }> }> = [];
       const containers = Array.from(doc.querySelectorAll(
-        "#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item"
+        "#custom-options .ant-form-item, .personalized-form .ant-form-item, [data-personalization] .ant-form-item, #customily-options .customily_option, .customily-main-app .customily_option"
       ));
       for (const container of containers) {
-        const labelEl = container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
-        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "").replace(/\s+/g, " ").trim();
+        const labelEl = container.querySelector(".option_name") || container.querySelector(".ant-form-item-label label, .pb-form-item-label, [data-option-label], legend, label");
+        const name = (labelEl?.getAttribute("title") || labelEl?.textContent || "")
+          .replace(/\(\s*\d+\s*[|/]\s*\d+\s*\)/g, "")
+          .replace(/\brequired\b/gi, "")
+          .replace(/\*/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
         if (!name || (/quantity|buy more|shipping/i.test(name) && !/choose|option|design|style/i.test(name))) continue;
 
         const values: Array<{ label: string; imageUrl?: string }> = [];
         const swatches = Array.from(container.querySelectorAll(
-          ".swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]"
+          ".customily-swatch, .swatch-container .pb-tooltip, .swatch-container > div, [role=option], [role=radio], input[type=radio]"
         ));
         for (const swatch of swatches) {
           const imageEl = swatch.querySelector?.("img") as HTMLImageElement | null;
+          const imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
           const valueLabel = swatch.querySelector?.(".pb-tooltip-title, [data-value-label], [title], [aria-label]") as HTMLElement | null;
-          const input = swatch.tagName === "INPUT" ? swatch as HTMLInputElement : null;
-          const label = (
-            valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent ||
-            input?.value || swatch.getAttribute("data-value") || swatch.getAttribute("title") || swatch.textContent || ""
-          ).replace(/\s+/g, " ").trim();
-          let imageUrl = normalizeImageUrl(imageEl?.getAttribute("data-src") || imageEl?.getAttribute("data-original") || imageEl?.getAttribute("src"));
-          if (!imageUrl) {
+          const input = (swatch.tagName === "INPUT" ? swatch : swatch.querySelector?.("input[type=radio], input[type=checkbox]")) as HTMLInputElement | null;
+          let resolvedImageUrl = imageUrl;
+          if (!resolvedImageUrl) {
             const styled = (swatch.querySelector?.("[style*='background-image']") || swatch) as HTMLElement | null;
             const match = styled?.getAttribute("style")?.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
-            imageUrl = normalizeImageUrl(match?.[1]);
+            resolvedImageUrl = normalizeImageUrl(match?.[1]);
           }
-          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl });
+          const label = (
+            valueLabel?.getAttribute("title") || valueLabel?.getAttribute("aria-label") || valueLabel?.textContent ||
+            input?.getAttribute("aria-label") || input?.value || imageEl?.alt || inferImageLabel(resolvedImageUrl) || swatch.getAttribute("data-value") ||
+            swatch.getAttribute("title") || swatch.textContent || ""
+          ).replace(/\s+/g, " ").trim();
+          if (label && !values.some(value => value.label.toLowerCase() === label.toLowerCase())) values.push({ label, imageUrl: resolvedImageUrl });
         }
-        if (values.length >= 2) groups.push({ name, values });
+        if (values.length >= 2 && values.some(value => Boolean(value.imageUrl))) groups.push({ name, values });
       }
       return groups;
     };
@@ -154,7 +206,9 @@ async function extractCommerceProductFromDom(): Promise<any> {
             const uniqueCustomGroups = customGroups.filter(group => !baseOptionNames.has(group.name.toLowerCase()));
 
             // Shopify owns price/stock for quantity packs; the personalization
-            // app owns the design image. Combine both into selectable variants.
+            // app owns the design image. Flatten Shopify's complete native
+            // combination into one axis and the Customily image choices into a
+            // second axis so Style/Size is not overwritten by option2.
             let mergedVariants = rawVariants;
             if (uniqueCustomGroups.length > 0 && rawVariants.length > 0) {
               const customCombinations = uniqueCustomGroups.reduce(
@@ -166,21 +220,33 @@ async function extractCommerceProductFromDom(): Promise<any> {
                 ),
                 [{ values: [], imageUrl: undefined }]
               ).slice(0, 5000);
-              mergedVariants = rawVariants.flatMap((base: any) => customCombinations.map((combo, index) => ({
-                ...base,
-                id: `${base.id}__custom_${index}_${combo.values.map((value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-")).join("-")}`,
-                sku: base.sku ? `${base.sku}__${combo.values.join("-")}` : undefined,
-                title: [base.title || base.option1, ...combo.values].filter(Boolean).join(" / "),
-                option1: base.option1,
-                option2: combo.values[0] || undefined,
-                option3: combo.values[1] || undefined,
-                featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
-              })));
+              const nativeOptionName = shopifyOptions.map((option: any) => option.name).filter(Boolean).join(" / ") || "Biến thể sản phẩm";
+              const customOptionName = uniqueCustomGroups.map(group => group.name).join(" / ") || "Mẫu cá nhân hóa";
+              const nativeValues = [...new Set(rawVariants.map((base: any) => String(base.title || [base.option1, base.option2, base.option3].filter(Boolean).join(" / ")).trim()).filter(Boolean))];
+              const customValues = customCombinations.map(combo => combo.values.length === 1
+                ? combo.values[0]
+                : combo.values.map((value, index) => `${uniqueCustomGroups[index]?.name || `Tùy chọn ${index + 1}`}: ${value}`).join(" / "));
+
+              mergedVariants = rawVariants.flatMap((base: any) => customCombinations.map((combo, index) => {
+                const nativeValue = String(base.title || [base.option1, base.option2, base.option3].filter(Boolean).join(" / ")).trim();
+                const customValue = customValues[index];
+                return {
+                  ...base,
+                  id: `${base.id}__custom_${index}`,
+                  sku: base.sku ? `${base.sku}__custom_${index}` : undefined,
+                  title: [nativeValue, customValue].filter(Boolean).join(" / "),
+                  option1: nativeValue,
+                  option2: customValue,
+                  option3: undefined,
+                  featured_image: combo.imageUrl ? { src: combo.imageUrl } : base.featured_image
+                };
+              }));
+              shopifyOptions.splice(0, shopifyOptions.length,
+                { name: nativeOptionName, values: nativeValues },
+                { name: customOptionName, values: [...new Set(customValues)] }
+              );
             }
-            const mergedOptions = [
-              ...shopifyOptions,
-              ...uniqueCustomGroups.map(group => ({ name: group.name, values: group.values.map(value => value.label) }))
-            ];
+            const mergedOptions = [...shopifyOptions];
             const customImages = uniqueCustomGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean));
 
             // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
@@ -393,6 +459,43 @@ export function useProductExtractor() {
     setCurrentUrl(cleanUrl);
 
     try {
+      // A pasted Macorner URL needs a real browser DOM. The backend can read
+      // Shopify's .js endpoint but cannot see asynchronously rendered
+      // personalization swatches and their CDN images.
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.scripting && /(?:^|\.)macorner\.co$/i.test(new URL(cleanUrl).hostname) && /\/products\//i.test(new URL(cleanUrl).pathname)) {
+        let temporaryTabId: number | undefined;
+        try {
+          const expectedUrl = comparableProductUrl(cleanUrl);
+          const openTabs = await chrome.tabs.query({});
+          let sourceTab = openTabs.find(tab => tab.id && tab.url && comparableProductUrl(tab.url) === expectedUrl);
+
+          if (!sourceTab?.id) {
+            sourceTab = await chrome.tabs.create({ url: cleanUrl, active: false });
+            temporaryTabId = sourceTab.id;
+          }
+
+          if (sourceTab.id) {
+            await waitForTabComplete(sourceTab.id);
+            const results = await chrome.scripting.executeScript({
+              target: { tabId: sourceTab.id },
+              func: extractCommerceProductFromDom
+            });
+            const domData = results?.[0]?.result;
+            if (domData && !domData.error && domData.title?.length > 2 && domData.images?.length > 0 && Number(domData.price) > 0) {
+              setProduct(convertDomDataToRawProduct(domData, cleanUrl));
+              setError(null);
+              return;
+            }
+          }
+        } catch (domError) {
+          console.warn("[Sidepanel] Pasted Macorner DOM extraction warning:", domError);
+        } finally {
+          if (temporaryTabId) {
+            try { await chrome.tabs.remove(temporaryTabId); } catch {}
+          }
+        }
+      }
+
       const prevRes = await apiFetch("/api/v1/clone/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
