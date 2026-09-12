@@ -17,8 +17,34 @@ export class Detail1688Extractor {
     const offerId = offerIdMatch[1];
 
     // 1. Tiêu đề sản phẩm
-    const titleEl = document.querySelector(".title-text, .d-title, h1, .title") as HTMLElement;
-    const title = titleEl ? titleEl.innerText.trim() : document.title.replace(/- 1688.*/, "").trim();
+    // 1688 hiện có một h1 tên shop đứng trước h1 tên sản phẩm. Ưu tiên các
+    // container của product title để không gửi tên nhà cung cấp làm tiêu đề.
+    const titleSelectors = [
+      ".module-od-title h1",
+      ".productTitle h1",
+      ".title-content h1",
+      ".title-text",
+      ".d-title",
+      ".title"
+    ];
+    let title = "";
+    for (const selector of titleSelectors) {
+      const candidate = document.querySelector(selector) as HTMLElement | null;
+      const text = candidate?.innerText.trim() || "";
+      if (text.length >= 3) {
+        title = text;
+        break;
+      }
+    }
+    if (!title) {
+      const headings = Array.from(document.querySelectorAll("h1")) as HTMLElement[];
+      const productHeading = headings.find((heading) => {
+        const text = heading.innerText.trim();
+        return text.length >= 3 && !/(?:company|co\.?\s*,?\s*ltd|有限公司|供应商|shop)/i.test(text);
+      });
+      title = productHeading?.innerText.trim() || headings[0]?.innerText.trim() || "";
+    }
+    if (!title) title = document.title.replace(/- 1688.*/, "").trim();
     if (!title || title.length < 3) throw new Error("EXTRACTION_FAILED: không tìm thấy tiêu đề sản phẩm");
 
     // 2. Thông tin Shop / Nhà cung cấp
@@ -37,7 +63,9 @@ export class Detail1688Extractor {
     let maxPriceCNY = 0;
     const priceTiers: Raw1688PriceTier[] = [];
 
-    const priceEls = document.querySelectorAll(".price-text, .price-num, .price, .normal-price");
+    const priceEls = document.querySelectorAll(
+      ".item-price-stock, .price-text, .price-num, .price, .normal-price, .offer-price, .od-promotion-price"
+    );
     if (priceEls.length > 0) {
       const pricesFound: number[] = [];
       priceEls.forEach(el => {
@@ -50,8 +78,6 @@ export class Detail1688Extractor {
         maxPriceCNY = Math.max(...pricesFound);
       }
     }
-    if (minPriceCNY <= 0 || maxPriceCNY <= 0) throw new Error("EXTRACTION_FAILED: không tìm thấy giá nguồn xác thực");
-
     // Quét bảng giá sỉ bậc thang
     const ladderEls = document.querySelectorAll(".price-ladder .ladder-item, .step-price .price-item, .od-price-tier, .price-range-item");
     ladderEls.forEach(el => {
@@ -84,6 +110,19 @@ export class Detail1688Extractor {
     if (scriptMin && scriptMin > 0) minPriceCNY = scriptMin;
     if (scriptMax && scriptMax > 0) maxPriceCNY = scriptMax;
 
+    // Một số layout mới chỉ có giá trong skuModel (không render giá tổng
+    // trong DOM). Chỉ báo lỗi sau khi đã thử cả DOM, JSON và skuMap.
+    if (minPriceCNY <= 0 || maxPriceCNY <= 0) {
+      const skuPrices = Object.values(skuMap)
+        .map((item) => item.priceCNY)
+        .filter((price) => Number.isFinite(price) && price > 0);
+      if (skuPrices.length > 0) {
+        minPriceCNY = Math.min(...skuPrices);
+        maxPriceCNY = Math.max(...skuPrices);
+      }
+    }
+    if (minPriceCNY <= 0 || maxPriceCNY <= 0) throw new Error("EXTRACTION_FAILED: không tìm thấy giá nguồn xác thực");
+
     // 5. Danh sách hình ảnh sản phẩm (Gallery images)
     const images: string[] = [];
 
@@ -99,6 +138,9 @@ export class Detail1688Extractor {
 
     // 5b. Quét các selector gallery hiện đại trên DOM
     const gallerySelectors = [
+      ".preview-img",
+      ".ant-image-img.preview-img",
+      ".od-picture-gallery img",
       ".detail-gallery-turn img",
       ".fui-slider img",
       ".vertical-img img",
@@ -116,6 +158,19 @@ export class Detail1688Extractor {
     ];
     const imgEls = document.querySelectorAll(gallerySelectors.join(", "));
     imgEls.forEach(img => {
+      const image = img as HTMLImageElement;
+      const className = image.className?.toString().toLowerCase() || "";
+      const parentClass = image.parentElement?.className?.toString().toLowerCase() || "";
+      const srcCandidate = image.src || image.getAttribute("data-src") || image.getAttribute("data-lazyload-src") || "";
+      // Broad gallery selectors also match SVG arrows, lazy placeholders and
+      // toolbar icons. Keep only actual product media.
+      if (
+        className.includes("svg") ||
+        parentClass.includes("arrow") ||
+        parentClass.includes("control") ||
+        srcCandidate.includes(".svg") ||
+        srcCandidate.includes("img.alicdn.com/tfs/")
+      ) return;
       let src = (img as HTMLImageElement).src ||
                 (img as HTMLImageElement).getAttribute("data-src") ||
                 (img as HTMLImageElement).getAttribute("data-lazyload-src");
@@ -374,6 +429,40 @@ export class Detail1688Extractor {
     return null;
   }
 
+  /** Parse a balanced JSON array from an inline script without regex truncation. */
+  private static extractBalancedJsonArray(str: string, startIndex: number): string | null {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let start = -1;
+
+    for (let i = startIndex; i < str.length; i++) {
+      const ch = str[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === "[") {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (ch === "]") {
+          depth--;
+          if (depth === 0 && start !== -1) return str.slice(start, i + 1);
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Tầng 1: Trích xuất trực tiếp từ các thẻ <script> chứa dữ liệu cấu hình 1688
    */
@@ -438,6 +527,35 @@ export class Detail1688Extractor {
               if (!scriptImages.includes(src)) scriptImages.push(src);
             }
           });
+        }
+
+        // 1688's current window.context keeps offerImgList beside skuModel,
+        // so it is not part of the object returned by the skuModel marker.
+        // Read that sibling array directly when the selected JSON root does
+        // not expose images.
+        if (scriptImages.length === 0) {
+          for (const imageMarker of ['"offerImgList"', "offerImgList"]) {
+            const imageMarkerIndex = text.indexOf(imageMarker);
+            if (imageMarkerIndex === -1) continue;
+            const arrayStart = text.indexOf("[", text.indexOf(":", imageMarkerIndex));
+            if (arrayStart === -1) continue;
+            const arrayText = this.extractBalancedJsonArray(text, arrayStart);
+            if (!arrayText) continue;
+            try {
+              const parsedImages = JSON.parse(arrayText);
+              if (Array.isArray(parsedImages)) {
+                parsedImages.forEach((img: any) => {
+                  let src = typeof img === "string" ? img : img?.url || img?.src || img?.imageUrl;
+                  if (src && typeof src === "string") {
+                    if (src.startsWith("//")) src = "https:" + src;
+                    src = src.replace(/_\d+x\d+.*$/, "").replace(/\.\d+x\d+\./g, ".800x800.");
+                    if (!scriptImages.includes(src)) scriptImages.push(src);
+                  }
+                });
+              }
+            } catch {}
+            if (scriptImages.length > 0) break;
+          }
         }
 
         // Trích xuất URL mô tả chi tiết từ TFS (Alibaba Taobao File System)
@@ -566,7 +684,10 @@ export class Detail1688Extractor {
           skuMap,
           priceTiers: priceTiers.length > 0 ? priceTiers : undefined,
           minPrice: foundPrices.length > 0 ? Math.min(...foundPrices) : undefined,
-          maxPrice: foundPrices.length > 0 ? Math.max(...foundPrices) : undefined
+          maxPrice: foundPrices.length > 0 ? Math.max(...foundPrices) : undefined,
+          scriptImages: scriptImages.length > 0 ? scriptImages : undefined,
+          scriptDescUrl,
+          scriptDetailImages: []
         };
       } catch {}
     }
