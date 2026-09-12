@@ -604,6 +604,37 @@ export function useProductExtractor() {
             return false;
           };
 
+          // Existing tabs do not automatically receive a newly reloaded
+          // extension's content script. If the direct message has no
+          // listener, inject the bundled script into the current tab and
+          // retry once before falling back to the generic DOM/backend paths.
+          const requestContentScriptExtraction = async (): Promise<any | null> => {
+            if (!tab.id || !chrome.tabs) return null;
+
+            const sendRequest = () => new Promise<any | null>((resolve) => {
+              chrome.tabs.sendMessage(tab.id!, { action: "EXTRACT_CURRENT_PRODUCT" }, (res) => {
+                if (chrome.runtime.lastError) resolve(null);
+                else resolve(res || null);
+              });
+            });
+
+            let response = await sendRequest();
+            if (response?.success) return response;
+
+            if (!chrome.scripting) return response;
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ["src/content/index.js"]
+              });
+              await new Promise(resolve => window.setTimeout(resolve, 150));
+              response = await sendRequest();
+            } catch (injectErr) {
+              console.warn("[Sidepanel] Không thể nạp lại content script:", injectErr);
+            }
+            return response;
+          };
+
           // Kiểm tra URL hệ thống trình duyệt
           if (tabUrl.startsWith("chrome://") || tabUrl.startsWith("edge://") || tabUrl.startsWith("about:") || tabUrl.startsWith("chrome-extension://")) {
             setProduct(null);
@@ -618,12 +649,7 @@ export function useProductExtractor() {
           // Content script chạy ngay trong trang web người dùng đang xem (có cookie, DOM đầy đủ, không bị anti-bot chặn)
           if (tab.id) {
             try {
-              const response = await new Promise<any>((resolve) => {
-                chrome.tabs.sendMessage(tab.id!, { action: "EXTRACT_CURRENT_PRODUCT" }, (res) => {
-                  if (chrome.runtime.lastError) resolve(null);
-                  else resolve(res);
-                });
-              });
+              const response = await requestContentScriptExtraction();
 
               if (response?.success && response.data?.title && (response.data.images?.length > 0 || response.data.skuProps?.length > 0)) {
                 console.log("[Sidepanel] Bóc tách thành công qua Content Script:", response.data);
