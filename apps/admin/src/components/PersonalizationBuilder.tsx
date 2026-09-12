@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   PersonalizationField,
   PersonalizationFieldType,
   PersonalizationOptionItem,
   PersonalizationCanvas,
-  PersonalizationPrintArea
+  PersonalizationPrintArea,
+  PersonalizationCanvasLayer,
+  PersonalizationListingIdea
 } from "@hub1688/shared-types";
 import {
   ArrowDown,
@@ -62,6 +64,8 @@ const createOption = (type: PersonalizationFieldType): PersonalizationOptionItem
   value: type === "COLOR_SWATCH" ? "#f97316" : newId("value")
 });
 
+const nextFieldsFallback = (fields: PersonalizationField[]): PersonalizationField[] => fields;
+
 const NumberInput = ({ label, value, onChange, min = 0, max = 100 }: { label: string; value?: number; onChange: (value: number | undefined) => void; min?: number; max?: number }) => (
   <label className="block text-[10px] font-bold text-slate-500">
     {label}
@@ -81,6 +85,8 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
   onCanvasChange
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(fields[0]?.id || null);
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(canvas?.printAreas?.[0]?.id || null);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; x: number; y: number; rect: DOMRect } | null>(null);
 
   const patchField = (index: number, updates: Partial<PersonalizationField>) => {
     const next = [...fields];
@@ -107,6 +113,39 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
     next[areaIndex] = { ...next[areaIndex], ...updates };
     onCanvasChange({ ...(canvas || {}), printAreas: next });
   };
+  const patchLayer = (layerIndex: number, updates: Partial<PersonalizationCanvasLayer>) => {
+    const layers = [...(canvas?.layers || [])];
+    layers[layerIndex] = { ...layers[layerIndex], ...updates };
+    onCanvasChange({ ...(canvas || {}), printAreas, layers });
+  };
+  const addLayer = () => {
+    const areaId = printAreas[0]?.id;
+    if (!areaId) return;
+    const fieldId = fields[0]?.id;
+    const layer: PersonalizationCanvasLayer = { id: newId("layer"), label: "Lớp mới", source: fieldId ? "FIELD" : "VARIANT_DESIGN", fieldId, printAreaId: areaId, zIndex: (canvas?.layers || []).length };
+    onCanvasChange({ ...(canvas || {}), printAreas, layers: [...(canvas?.layers || []), layer] });
+  };
+  const applyIdeaPreset = (idea: PersonalizationListingIdea) => {
+    const ok = !fields.length || typeof window === "undefined" || window.confirm("Áp dụng preset sẽ thay thế các trường cá nhân hóa hiện tại. Tiếp tục?");
+    if (!ok) return;
+    const areaId = printAreas[0]?.id || newId("area");
+    const area = printAreas[0] || { id: areaId, label: "Mặt trước", xPercent: 18, yPercent: 20, widthPercent: 64, heightPercent: 62, shape: "RECT" as const };
+    const make = (id: string, label: string, type: PersonalizationFieldType, extra: Partial<PersonalizationField> = {}): PersonalizationField => ({ id, label, type, required: true, step: `${fields.length + 1}. ${label}`, ...extra });
+    const nextFields: PersonalizationField[] = idea === "PHOTO_GIFT"
+      ? [make("photo", "Ảnh khách hàng", "IMAGE_UPLOAD", { minImageWidth: 800, minImageHeight: 800, helpText: "Ảnh vuông, rõ mặt; bạn có thể căn chỉnh sau khi tải lên" }), make("name", "Tên người nhận", "TEXT", { maxLength: 30, preview: { fontSizePercent: 3.2, textAlign: "center", fontWeight: "bold" } })]
+      : idea === "DESIGN_CHOICE"
+        ? [make("design", "Chọn design", "ASSET_PICKER", { options: [createOption("ASSET_PICKER")] }), make("name", "Tên hiển thị", "TEXT", { maxLength: 30 })]
+        : idea === "NAME_TEXT"
+          ? [make("name", "Tên / chữ in", "TEXT", { maxLength: 30, allowedPattern: "^[\\p{L} 0-9.'-]+$" })]
+          : idea === "AVATAR" || idea === "PET"
+            ? [make("character", idea === "AVATAR" ? "Chọn nhân vật" : "Chọn thú cưng", idea === "AVATAR" ? "AVATAR_BUILDER" : "PET_BUILDER", { options: [createOption(idea === "AVATAR" ? "AVATAR_BUILDER" : "PET_BUILDER")] }), make("name", "Tên", "TEXT", { maxLength: 24 })]
+            : idea === "MULTI_PERSON"
+              ? [make("people", "Nhân vật", "REPEAT_GROUP", { repeat: { minItems: 1, maxItems: 6, itemLabel: "Người", fields: [{ id: "name", label: "Tên", type: "TEXT", required: true, maxLength: 24 }] } })]
+              : nextFieldsFallback(fields);
+    onFieldsChange(nextFields);
+    setExpandedId(nextFields[0]?.id || null);
+    onCanvasChange({ ...(canvas || {}), idea, printAreas: [area], layers: nextFields.map((field, index) => ({ id: newId("layer"), label: field.label, source: "FIELD" as const, fieldId: field.id, printAreaId: areaId, zIndex: index })) });
+  };
 
   return (
     <div className="space-y-5">
@@ -123,17 +162,22 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
             </label>
           </div>
           <label htmlFor="personalization-mockup-url" className="mt-4 block text-xs font-bold text-slate-700">URL mockup nền trơn</label>
+          <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]"><label className="text-[10px] font-bold text-slate-500">Ý tưởng listing<select value={canvas?.idea || "CUSTOM"} onChange={event => applyIdeaPreset(event.target.value as PersonalizationListingIdea)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs"><option value="PHOTO_GIFT">Quà kèm ảnh khách</option><option value="DESIGN_CHOICE">Chọn design</option><option value="NAME_TEXT">Tên / chữ in</option><option value="AVATAR">Avatar nhiều lớp</option><option value="PET">Chân dung thú cưng</option><option value="MULTI_PERSON">Nhiều người / thú cưng</option><option value="CUSTOM">Tùy chỉnh thủ công</option></select></label><div className="flex items-end"><span className="rounded-lg bg-slate-950 px-2.5 py-2 text-[10px] font-bold text-white">Preset theo listing</span></div></div>
           <div className="mt-1.5 flex items-center gap-2">
             <ImageIcon className="h-4 w-4 shrink-0 text-slate-400" />
             <input id="personalization-mockup-url" type="url" value={mockupUrl || ""} onChange={event => onMockupUrlChange(event.target.value)} placeholder="https://.../mockup-tron.png" className="mc-focus-ring min-h-11 w-full rounded-xl border border-slate-300 px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
           </div>
           <p className="mt-1.5 text-[10px] text-slate-500">Khuyến nghị PNG/JPG vuông, nền sạch và vùng in nằm ở trung tâm. Design của SKU và dữ liệu khách sẽ được chồng lên mockup này.</p>
+          {selectedAreaId && printAreas.some(area => area.id === selectedAreaId) && <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-white p-3"><label className="text-[10px] font-bold text-slate-500">Hình dạng<select value={printAreas.find(area => area.id === selectedAreaId)?.shape || "RECT"} onChange={event => { const areaIndex = printAreas.findIndex(area => area.id === selectedAreaId); if (areaIndex >= 0) patchArea(areaIndex, { shape: event.target.value as "RECT" | "CIRCLE" }); }} className="mt-1 min-h-9 w-full rounded border border-slate-300 px-2 text-[10px]"><option value="RECT">Chữ nhật</option><option value="CIRCLE">Tròn</option></select></label><label className="text-[10px] font-bold text-slate-500">Cách vừa ảnh<select value={printAreas.find(area => area.id === selectedAreaId)?.fit || "CONTAIN"} onChange={event => { const areaIndex = printAreas.findIndex(area => area.id === selectedAreaId); if (areaIndex >= 0) patchArea(areaIndex, { fit: event.target.value as "CONTAIN" | "COVER" }); }} className="mt-1 min-h-9 w-full rounded border border-slate-300 px-2 text-[10px]"><option value="CONTAIN">Không cắt</option><option value="COVER">Lấp đầy vùng</option></select></label><label className="text-[10px] font-bold text-slate-500">An toàn in (%)<input type="number" min={0} max={45} value={printAreas.find(area => area.id === selectedAreaId)?.safeZonePercent || 0} onChange={event => { const areaIndex = printAreas.findIndex(area => area.id === selectedAreaId); if (areaIndex >= 0) patchArea(areaIndex, { safeZonePercent: Number(event.target.value) }); }} className="mt-1 min-h-9 w-full rounded border border-slate-300 px-2 text-[10px]" /></label></div>}
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-slate-800">Mặt preview / scene</span><button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), scenes: [...(canvas?.scenes || []), { id: newId("scene"), label: `Mặt ${((canvas?.scenes || []).length || 0) + 1}`, mockupUrl }], printAreas })} className="text-[10px] font-bold text-orange-700">+ Thêm mặt</button></div>{(canvas?.scenes || []).length === 0 ? <p className="text-[10px] text-slate-500">Có thể thêm mặt trước, mặt sau hoặc góc lifestyle; mỗi mặt có mockup và vùng in riêng.</p> : <div className="space-y-2">{(canvas?.scenes || []).map((scene, sceneIndex) => <div key={scene.id} className="grid gap-2 sm:grid-cols-[120px_1fr_auto]"><input value={scene.label} onChange={event => { const scenes = [...(canvas?.scenes || [])]; scenes[sceneIndex] = { ...scene, label: event.target.value }; onCanvasChange({ ...(canvas || {}), scenes, printAreas }); }} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><input value={scene.mockupUrl || ""} onChange={event => { const scenes = [...(canvas?.scenes || [])]; scenes[sceneIndex] = { ...scene, mockupUrl: event.target.value }; onCanvasChange({ ...(canvas || {}), scenes, printAreas }); }} placeholder="URL mockup mặt này" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), scenes: (canvas?.scenes || []).filter((_, index) => index !== sceneIndex), printAreas })} className="text-[10px] font-bold text-rose-600">Xóa</button></div>)}</div>}</div>
           <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-orange-950">Vùng in trên mockup</span><button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), printAreas: [...printAreas, { id: newId("area"), label: `Vùng ${printAreas.length + 1}`, xPercent: 18, yPercent: 20, widthPercent: 64, heightPercent: 62, shape: "RECT" }] })} className="text-[10px] font-bold text-orange-700">+ Thêm vùng</button></div>{printAreas.length === 0 ? <p className="text-[10px] text-orange-900/70">Đang dùng vùng mặc định. Thêm vùng để căn nhiều mặt in hoặc chỉ định field cụ thể.</p> : <div className="space-y-2">{printAreas.map((area, areaIndex) => <div key={area.id} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-[1fr_repeat(4,70px)_auto]"><input value={area.label || ""} onChange={event => patchArea(areaIndex, { label: event.target.value })} placeholder="Tên vùng" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" />{(["xPercent", "yPercent", "widthPercent", "heightPercent"] as const).map(key => <input key={key} type="number" min={0} max={100} value={area[key]} onChange={event => patchArea(areaIndex, { [key]: Number(event.target.value) })} aria-label={key} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" />)}<button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), printAreas: printAreas.filter((_, index) => index !== areaIndex) })} className="text-[10px] font-bold text-rose-600">Xóa</button></div>)}</div>}</div>
         </div>
-        <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
-          {mockupUrl || previewImageUrl ? <img src={mockupUrl || previewImageUrl} alt="Xem trước mockup" className="h-full w-full object-contain p-2" /> : <div className="absolute inset-0 grid place-items-center p-6 text-center text-xs text-slate-400">Thêm URL mockup nền trơn để xem trước vùng thiết kế.</div>}
-          <div className="pointer-events-none absolute left-[22%] top-[25%] h-[50%] w-[56%] rounded-xl border-2 border-dashed border-orange-500/70 bg-orange-100/10" />
-          <span className="absolute bottom-2 left-2 rounded-md bg-slate-950/75 px-2 py-1 text-[9px] font-bold text-white">Vùng in minh hoạ</span>
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-slate-800">Lớp hiển thị</span><button type="button" onClick={addLayer} disabled={!printAreas.length} className="text-[10px] font-bold text-orange-700 disabled:opacity-40">+ Thêm lớp</button></div>{(canvas?.layers || []).length === 0 ? <p className="text-[10px] text-slate-500">Preset sẽ tạo sẵn lớp design/ảnh khách. Bạn có thể thêm lớp variant hoặc field để kiểm soát thứ tự chồng.</p> : <div className="space-y-2">{(canvas?.layers || []).map((layer, layerIndex) => <div key={layer.id} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-[1fr_120px_1fr_1fr_70px_auto]"><input value={layer.label || ""} onChange={event => patchLayer(layerIndex, { label: event.target.value })} placeholder="Tên lớp" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><select value={layer.source} onChange={event => patchLayer(layerIndex, { source: event.target.value as PersonalizationCanvasLayer["source"], fieldId: event.target.value === "FIELD" ? layer.fieldId || fields[0]?.id : undefined })} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]"><option value="FIELD">Field (ảnh/chữ)</option><option value="VARIANT_DESIGN">Design SKU</option><option value="VARIANT_COLOR">Màu SKU</option></select>{layer.source === "FIELD" ? <select value={layer.fieldId || ""} onChange={event => patchLayer(layerIndex, { fieldId: event.target.value })} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]"><option value="">Chọn field</option>{fields.map(field => <option key={field.id} value={field.id}>{field.label}</option>)}</select> : <span className="grid min-h-9 place-items-center rounded bg-slate-50 text-[10px] text-slate-500">Theo variant</span>}<select value={layer.printAreaId} onChange={event => patchLayer(layerIndex, { printAreaId: event.target.value })} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]"><option value="">Chọn vùng</option>{printAreas.map(area => <option key={area.id} value={area.id}>{area.label || area.id}</option>)}</select><input type="number" min={-100} max={100} value={layer.zIndex} onChange={event => patchLayer(layerIndex, { zIndex: Number(event.target.value) })} aria-label="Thứ tự lớp" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), printAreas, layers: (canvas?.layers || []).filter((_, index) => index !== layerIndex) })} className="text-[10px] font-bold text-rose-600">Xóa</button></div>)}</div>}</div>
+        <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner" onPointerMove={event => { const drag = dragRef.current; if (!drag) return; const dx = (event.clientX - drag.startX) / drag.rect.width * 100; const dy = (event.clientY - drag.startY) / drag.rect.height * 100; const areaIndex = printAreas.findIndex(area => area.id === drag.id); if (areaIndex >= 0) patchArea(areaIndex, { xPercent: Math.max(0, Math.min(100 - printAreas[areaIndex].widthPercent, drag.x + dx)), yPercent: Math.max(0, Math.min(100 - printAreas[areaIndex].heightPercent, drag.y + dy)) }); }} onPointerUp={() => { dragRef.current = null; }} onPointerLeave={() => { dragRef.current = null; }}>
+          {mockupUrl || previewImageUrl ? <img src={mockupUrl || previewImageUrl} alt="Xem trước mockup" className="absolute inset-0 h-full w-full object-contain p-2" /> : <div className="absolute inset-0 grid place-items-center p-6 text-center text-xs text-slate-400">Thêm URL mockup nền trơn để xem trước vùng thiết kế.</div>}
+          {printAreas.map(area => <button key={area.id} type="button" aria-label={`Chọn ${area.label || "vùng in"}`} onClick={() => setSelectedAreaId(area.id)} onPointerDown={event => { const rect = event.currentTarget.parentElement?.getBoundingClientRect(); if (!rect) return; setSelectedAreaId(area.id); dragRef.current = { id: area.id, startX: event.clientX, startY: event.clientY, x: area.xPercent, y: area.yPercent, rect }; event.currentTarget.setPointerCapture(event.pointerId); }} className={`absolute rounded-xl border-2 border-dashed transition ${selectedAreaId === area.id ? "border-orange-600 bg-orange-300/20 shadow-[0_0_0_3px_rgba(234,88,12,0.2)]" : "border-orange-500/70 bg-orange-100/10"}`} style={{ left: `${area.xPercent}%`, top: `${area.yPercent}%`, width: `${area.widthPercent}%`, height: `${area.heightPercent}%`, borderRadius: area.shape === "CIRCLE" ? "999px" : undefined }}><span className="absolute -top-5 left-0 rounded bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-bold text-white">{area.label || "Vùng in"}</span></button>)}
+          {!printAreas.length && <div className="pointer-events-none absolute left-[18%] top-[20%] h-[62%] w-[64%] rounded-xl border-2 border-dashed border-orange-500/50" />}
+          <span className="absolute bottom-2 left-2 rounded-md bg-slate-950/75 px-2 py-1 text-[9px] font-bold text-white">Kéo vùng để căn vị trí · chọn field ở danh sách</span>
         </div>
       </div>
 

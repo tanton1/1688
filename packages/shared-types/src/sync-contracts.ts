@@ -1,3 +1,5 @@
+import { PersonalizationCanvas } from "./web-product.js";
+
 export interface ExistingProductCheckResult {
   exists: boolean;
   sourceProductId: string;
@@ -72,6 +74,8 @@ export interface CustomerOrderItem {
   customizedPreviewUrl?: string;
   customizationId?: string;
   customizationSchemaVersion?: number;
+  /** Immutable copy of the listing canvas used to render this order. */
+  customizerCanvasSnapshot?: PersonalizationCanvas;
 }
 
 export interface CustomerOrder {

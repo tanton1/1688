@@ -397,7 +397,8 @@ export class StorefrontController {
         customizationData: item.customizationData,
         customizedPreviewUrl: item.customizedPreviewUrl,
         customizationId: item.customizationId,
-        customizationSchemaVersion: matchedProd.version || 1
+        customizationSchemaVersion: matchedProd.version || 1,
+        customizerCanvasSnapshot: matchedProd.customizerCanvas
       });
     }
 

@@ -58,6 +58,7 @@ export function buildWooCommercePayload(product: WebProduct, config?: Partial<Wo
       { key: "_hub1688_personalization_schema_version", value: String(product.version || 1) },
       { key: "_hub1688_personalization_schema", value: JSON.stringify(product.personalizationFields || []) },
       { key: "_hub1688_customizer_mockup", value: product.customizerMockupTemplateUrl || "" },
+      { key: "_hub1688_customizer_canvas", value: JSON.stringify(product.customizerCanvas || { printAreas: [] }) },
       { key: "_hub1688_variant_image_map", value: JSON.stringify(Object.fromEntries((product.variants || []).filter(variant => variant.imageUrl).map(variant => [variant.sourceSkuId, variant.imageUrl]))) }
     ] : []
   };
@@ -117,6 +118,7 @@ export function buildShopifyPayload(product: WebProduct, config?: Partial<Shopif
         { namespace: "hub1688", key: "personalization_schema_version", type: "number_integer", value: String(product.version || 1) },
         { namespace: "hub1688", key: "personalization_schema", type: "json", value: JSON.stringify(product.personalizationFields || []) },
         ...(product.customizerMockupTemplateUrl ? [{ namespace: "hub1688", key: "customizer_mockup", type: "single_line_text_field", value: product.customizerMockupTemplateUrl }] : []),
+        { namespace: "hub1688", key: "customizer_canvas", type: "json", value: JSON.stringify(product.customizerCanvas || { printAreas: [] }) },
         { namespace: "hub1688", key: "variant_image_map", type: "json", value: JSON.stringify(Object.fromEntries((product.variants || []).filter(variant => variant.imageUrl).map(variant => [variant.sourceSkuId, variant.imageUrl]))) }
       ] : []
     }

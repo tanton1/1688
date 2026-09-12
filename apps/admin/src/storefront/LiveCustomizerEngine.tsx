@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   PersonalizationField,
   PersonalizationImageValue,
+  PersonalizationCanvasLayer,
+  PersonalizationPrintArea,
   WebProduct,
   WebProductVariant
 } from "@hub1688/shared-types";
@@ -51,12 +53,17 @@ const drawContainedImage = (
   width: number,
   height: number,
   shape?: "RECT" | "CIRCLE",
-  crop?: PersonalizationImageValue["crop"]
+  crop?: PersonalizationImageValue["crop"],
+  fit: "CONTAIN" | "COVER" = "CONTAIN"
 ) => {
   context.save();
   if (shape === "CIRCLE") {
     context.beginPath();
     context.arc(x + width / 2, y + height / 2, Math.min(width, height) / 2, 0, Math.PI * 2);
+    context.clip();
+  } else if (crop || fit === "COVER") {
+    context.beginPath();
+    context.rect(x, y, width, height);
     context.clip();
   }
   if (crop) {
@@ -67,7 +74,7 @@ const drawContainedImage = (
     context.rotate((crop.rotation || 0) * Math.PI / 180);
     context.drawImage(image, -renderedWidth / 2 + (crop.x || 0) / 100 * width, -renderedHeight / 2 + (crop.y || 0) / 100 * height, renderedWidth, renderedHeight);
   } else {
-    const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const ratio = (fit === "COVER" ? Math.max : Math.min)(width / image.naturalWidth, height / image.naturalHeight);
     const renderedWidth = image.naturalWidth * ratio;
     const renderedHeight = image.naturalHeight * ratio;
     context.drawImage(image, x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight);
@@ -75,9 +82,9 @@ const drawContainedImage = (
   context.restore();
 };
 
-const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number, printAreas: Array<{ xPercent: number; yPercent: number; widthPercent: number; heightPercent: number; rotationDeg?: number; shape?: "RECT" | "CIRCLE" }> = []) => {
+const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number, printAreas: PersonalizationPrintArea[] = [], explicitArea?: PersonalizationPrintArea) => {
   const preview = field.preview || {};
-  const area = printAreas.find(candidate => (candidate as any).fieldIds?.includes(field.id)) || (printAreas.length === 1 ? printAreas[0] : undefined);
+  const area = explicitArea || printAreas.find(candidate => candidate.fieldIds?.includes(field.id)) || (printAreas.length === 1 ? printAreas[0] : undefined);
   const fallbackArea = printAreas[0];
   const defaultY = 32 + Math.min(index, 5) * 9;
   return {
@@ -86,9 +93,17 @@ const canvasPlacement = (field: PersonalizationField, index: number, width: numb
     width: (area?.widthPercent ?? preview.widthPercent ?? fallbackArea?.widthPercent ?? 56) / 100 * width,
     height: (area?.heightPercent ?? preview.heightPercent ?? fallbackArea?.heightPercent ?? (field.type === "IMAGE_UPLOAD" ? 38 : 10)) / 100 * height,
     rotation: (area?.rotationDeg ?? preview.rotationDeg ?? fallbackArea?.rotationDeg ?? 0) * Math.PI / 180,
-    shape: area?.shape || preview.shape || fallbackArea?.shape
+    shape: area?.shape || preview.shape || fallbackArea?.shape,
+    fit: area?.fit || "CONTAIN"
   };
 };
+
+const blendModeForCanvas = (mode?: PersonalizationCanvasLayer["blendMode"]): GlobalCompositeOperation => ({
+  MULTIPLY: "multiply",
+  SCREEN: "screen",
+  OVERLAY: "overlay",
+  NORMAL: "source-over"
+}[mode || "NORMAL"] as GlobalCompositeOperation);
 
 export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   product,
@@ -108,9 +123,19 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
   const [previewExportable, setPreviewExportable] = useState(true);
   const [cropFieldId, setCropFieldId] = useState<string | null>(null);
+  const scenes = useMemo(() => product.customizerCanvas?.scenes || [], [product.customizerCanvas]);
+  const [activeSceneId, setActiveSceneId] = useState<string>(() => scenes[0]?.id || "default");
 
   const fields = useMemo(() => product.personalizationFields || [], [product.personalizationFields]);
-  const printAreas = useMemo(() => product.customizerCanvas?.printAreas || [], [product.customizerCanvas]);
+  const printAreas = useMemo(
+    () => (product.customizerCanvas?.printAreas || []).filter(area => !area.sceneId || area.sceneId === activeSceneId),
+    [product.customizerCanvas, activeSceneId]
+  );
+  const canvasLayers = useMemo(
+    () => (product.customizerCanvas?.layers || []).filter(layer => !layer.sceneId || layer.sceneId === activeSceneId).sort((a, b) => a.zIndex - b.zIndex),
+    [product.customizerCanvas, activeSceneId]
+  );
+  const activeScene = scenes.find(scene => scene.id === activeSceneId) || scenes[0];
   const visibleFields = useMemo(
     () => fields.filter(field => isPersonalizationFieldVisible(field, values)),
     [fields, values]
@@ -121,6 +146,9 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   useEffect(() => { validationChangeRef.current = onValidationChange; }, [onValidationChange]);
   useEffect(() => { valuesRef.current = values; }, [values]);
   useEffect(() => { validationChangeRef.current?.(validation); }, [validation]);
+  useEffect(() => {
+    if (scenes.length && !scenes.some(scene => scene.id === activeSceneId)) setActiveSceneId(scenes[0].id);
+  }, [scenes, activeSceneId]);
 
   const handleFieldChange = (fieldId: string, value: unknown) => {
     setUploadErrors(current => ({ ...current, [fieldId]: "" }));
@@ -168,7 +196,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
       context.fillRect(0, 0, width, height);
 
       const visual = getVariantVisual(product, variant);
-      const baseUrl = product.customizerMockupTemplateUrl || (visual.type === "PLAIN" ? variant?.imageUrl : undefined) || product.primaryImage;
+      const baseUrl = (variant?.sourceSkuId ? activeScene?.variantMockupUrls?.[variant.sourceSkuId] : undefined) || activeScene?.mockupUrl || product.customizerMockupTemplateUrl || (visual.type === "PLAIN" ? variant?.imageUrl : undefined) || product.primaryImage;
       let baseDrawn = false;
       if (baseUrl) {
         try {
@@ -198,36 +226,63 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
         context.stroke();
       }
 
-      if (visual.type === "COLOR" && visual.colorHex) {
-        context.save();
-        context.globalAlpha = 0.52;
-        context.globalCompositeOperation = "multiply";
-        context.fillStyle = visual.colorHex;
-        context.beginPath();
-        context.roundRect(printArea.x, printArea.y, printArea.width, printArea.height, 36);
-        context.fill();
-        context.restore();
-      }
-      if (visual.type === "DESIGN" && visual.imageUrl) {
-        try {
-          const design = await loadCanvasImage(visual.imageUrl);
-          if (cancelled) return;
+      const drawVariantLayer = async (layer?: PersonalizationCanvasLayer) => {
+        const area = layer ? printAreas.find(candidate => candidate.id === layer.printAreaId) : configuredArea;
+        const target = {
+          x: width * (area?.xPercent ?? 18) / 100,
+          y: height * (area?.yPercent ?? 20) / 100,
+          width: width * (area?.widthPercent ?? 64) / 100,
+          height: height * (area?.heightPercent ?? 62) / 100
+        };
+        if ((layer?.source === "VARIANT_COLOR" || (!layer && visual.type === "COLOR")) && visual.colorHex) {
           context.save();
-          context.globalAlpha = 0.92;
-          context.globalCompositeOperation = "multiply";
-          drawContainedImage(context, design, printArea.x, printArea.y, printArea.width, printArea.height);
+          context.globalAlpha = layer?.opacity ?? 0.52;
+          context.globalCompositeOperation = blendModeForCanvas(layer?.blendMode || "MULTIPLY");
+          context.fillStyle = visual.colorHex;
+          if (area?.shape === "CIRCLE") {
+            context.beginPath();
+            context.arc(target.x + target.width / 2, target.y + target.height / 2, Math.min(target.width, target.height) / 2, 0, Math.PI * 2);
+          } else {
+            context.beginPath();
+            context.roundRect(target.x, target.y, target.width, target.height, 36);
+          }
+          context.fill();
           context.restore();
-        } catch {
-          // Variant image remains available in the gallery even if supplier CORS blocks compositing.
         }
-      }
+        if ((layer?.source === "VARIANT_DESIGN" || (!layer && visual.type === "DESIGN")) && visual.imageUrl) {
+          try {
+            const design = await loadCanvasImage(visual.imageUrl);
+            if (cancelled) return;
+            context.save();
+            context.globalAlpha = layer?.opacity ?? 0.92;
+            context.globalCompositeOperation = blendModeForCanvas(layer?.blendMode || "MULTIPLY");
+            drawContainedImage(context, design, target.x, target.y, target.width, target.height, area?.shape, undefined, layer?.fit || area?.fit || "CONTAIN");
+            context.restore();
+          } catch {
+            // Variant image remains available in the gallery even if supplier CORS blocks compositing.
+          }
+        }
+      };
 
-      for (let index = 0; index < visibleFields.length; index += 1) {
-        const field = visibleFields[index];
-        const value = values[field.id];
-        if (value === undefined || value === null || value === "" || value === false) continue;
-        const placement = canvasPlacement(field, index, width, height, printAreas);
+      const drawFieldLayer = async (field: PersonalizationField, index: number, layer?: PersonalizationCanvasLayer, overrideValues: Record<string, any> = values) => {
+        const value = overrideValues[field.id];
+        if (value === undefined || value === null || value === "" || value === false) return;
+        if (field.type === "REPEAT_GROUP" && field.repeat && Array.isArray(value)) {
+          for (let itemIndex = 0; itemIndex < value.length; itemIndex += 1) {
+            const item = value[itemIndex];
+            if (!item || typeof item !== "object") continue;
+            for (const child of field.repeat.fields) {
+              if (!isPersonalizationFieldVisible(child, item)) continue;
+              await drawFieldLayer(child, index + itemIndex, layer, item);
+            }
+          }
+          return;
+        }
+        const explicitArea = layer ? printAreas.find(candidate => candidate.id === layer.printAreaId) : undefined;
+        const placement = canvasPlacement(field, index, width, height, printAreas, explicitArea);
         context.save();
+        context.globalAlpha = layer?.opacity ?? 1;
+        context.globalCompositeOperation = blendModeForCanvas(layer?.blendMode);
         context.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
         context.rotate(placement.rotation);
         context.translate(-placement.width / 2, -placement.height / 2);
@@ -239,8 +294,8 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
         if (assetUrl) {
           try {
             const asset = await loadCanvasImage(assetUrl);
-            if (cancelled) return;
-            drawContainedImage(context, asset, 0, 0, placement.width, placement.height, placement.shape, field.type === "IMAGE_UPLOAD" ? (value as PersonalizationImageValue)?.crop : undefined);
+            if (cancelled) { context.restore(); return; }
+            drawContainedImage(context, asset, 0, 0, placement.width, placement.height, placement.shape, field.type === "IMAGE_UPLOAD" ? (value as PersonalizationImageValue)?.crop : undefined, layer?.fit || placement.fit);
           } catch {
             // Do not prevent text and other layers from rendering.
           }
@@ -255,6 +310,34 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
           context.fillText(text.slice(0, 160), x, placement.height / 2, placement.width);
         }
         context.restore();
+      };
+
+      if (canvasLayers.length) {
+        const renderedFieldIds = new Set<string>();
+        for (const layer of canvasLayers) {
+          if (layer.source === "FIELD") {
+            const field = visibleFields.find(candidate => candidate.id === layer.fieldId);
+            if (field) {
+              renderedFieldIds.add(field.id);
+              await drawFieldLayer(field, visibleFields.indexOf(field), layer);
+            }
+          } else {
+            await drawVariantLayer(layer);
+          }
+        }
+        // A print area can bind fields directly for quick setup, even when a
+        // merchant also uses explicit layers for variant design/color.
+        for (let index = 0; index < visibleFields.length; index += 1) {
+          const field = visibleFields[index];
+          if (renderedFieldIds.has(field.id)) continue;
+          const area = printAreas.find(candidate => candidate.fieldIds?.includes(field.id));
+          if (area) await drawFieldLayer(field, index, { id: `implicit-${field.id}`, source: "FIELD", fieldId: field.id, printAreaId: area.id, zIndex: 0 });
+        }
+      } else {
+        await drawVariantLayer();
+        for (let index = 0; index < visibleFields.length; index += 1) {
+          await drawFieldLayer(visibleFields[index], index);
+        }
       }
 
       context.fillStyle = "rgba(15, 23, 42, 0.72)";
@@ -275,7 +358,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
 
     void render();
     return () => { cancelled = true; };
-  }, [product, variant, values, visibleFields, printAreas]);
+  }, [product, variant, values, visibleFields, printAreas, canvasLayers, activeScene]);
 
   const renderField = (field: PersonalizationField) => {
     const value = values[field.id];
@@ -339,6 +422,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${validation.valid ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-200"}`}>{validation.completedRequired}/{validation.totalRequired} bắt buộc</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all" style={{ width: `${validation.totalRequired ? validation.completedRequired / validation.totalRequired * 100 : 100}%` }} /></div>
+        {scenes.length > 1 && <div className="mt-3 flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Mặt mockup"><span className="self-center pr-1 text-[10px] font-bold text-slate-400">Xem mặt:</span>{scenes.map(scene => <button key={scene.id} type="button" role="tab" aria-selected={activeScene?.id === scene.id} onClick={() => setActiveSceneId(scene.id)} className={`min-h-9 shrink-0 rounded-lg px-3 text-[10px] font-bold transition ${activeScene?.id === scene.id ? "bg-white text-slate-900" : "bg-white/10 text-slate-200 hover:bg-white/20"}`}>{scene.label}</button>)}</div>}
       </div>
 
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_210px]">

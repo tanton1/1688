@@ -181,17 +181,39 @@ export const productUpdateSchema = z.object({
   customizerCanvas: z.object({
     width: z.number().positive().max(20_000).optional(),
     height: z.number().positive().max(20_000).optional(),
+    idea: z.enum(["PHOTO_GIFT", "DESIGN_CHOICE", "NAME_TEXT", "AVATAR", "PET", "MULTI_PERSON", "CUSTOM"]).optional(),
+    scenes: z.array(z.object({
+      id: id,
+      label: text(120),
+      mockupUrl: imageRef.optional(),
+      variantMockupUrls: z.record(z.string(), imageRef).optional()
+    }).strict()).max(10).optional(),
     printAreas: z.array(z.object({
       id: id,
       label: optionalText(120),
+      sceneId: id.optional(),
       xPercent: z.number().min(0).max(100),
       yPercent: z.number().min(0).max(100),
       widthPercent: z.number().positive().max(100),
       heightPercent: z.number().positive().max(100),
       rotationDeg: z.number().min(-360).max(360).optional(),
       shape: z.enum(["RECT", "CIRCLE"]).optional(),
+      fit: z.enum(["CONTAIN", "COVER"]).optional(),
+      safeZonePercent: z.number().min(0).max(45).optional(),
       fieldIds: z.array(id).max(100).optional()
-    }).strict()).max(20)
+    }).strict()).max(20),
+    layers: z.array(z.object({
+      id: id,
+      label: optionalText(120),
+      source: z.enum(["FIELD", "VARIANT_DESIGN", "VARIANT_COLOR"]),
+      fieldId: id.optional(),
+      printAreaId: id,
+      sceneId: id.optional(),
+      zIndex: z.number().int().min(-100).max(100),
+      opacity: z.number().min(0).max(1).optional(),
+      blendMode: z.enum(["NORMAL", "MULTIPLY", "SCREEN", "OVERLAY"]).optional(),
+      fit: z.enum(["CONTAIN", "COVER"]).optional()
+    }).strict()).max(200).optional()
   }).strict().optional(),
   volumeDiscountTiers: z.array(z.unknown()).max(100).optional(),
   giftAddons: z.array(z.unknown()).max(100).optional(),

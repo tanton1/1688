@@ -151,20 +151,49 @@ export interface PersonalizationConditionGroup {
 export interface PersonalizationPrintArea {
   id: string;
   label?: string;
+  sceneId?: string;
   xPercent: number;
   yPercent: number;
   widthPercent: number;
   heightPercent: number;
   rotationDeg?: number;
   shape?: "RECT" | "CIRCLE";
+  fit?: "CONTAIN" | "COVER";
+  safeZonePercent?: number;
   /** Restrict a field/layer to this area. */
   fieldIds?: string[];
+}
+
+export type PersonalizationListingIdea = "PHOTO_GIFT" | "DESIGN_CHOICE" | "NAME_TEXT" | "AVATAR" | "PET" | "MULTI_PERSON" | "CUSTOM";
+
+export interface PersonalizationMockupScene {
+  id: string;
+  label: string;
+  mockupUrl?: string;
+  /** Optional mockup overrides per physical SKU. */
+  variantMockupUrls?: Record<string, string>;
+}
+
+export interface PersonalizationCanvasLayer {
+  id: string;
+  label?: string;
+  source: "FIELD" | "VARIANT_DESIGN" | "VARIANT_COLOR";
+  fieldId?: string;
+  printAreaId: string;
+  sceneId?: string;
+  zIndex: number;
+  opacity?: number;
+  blendMode?: "NORMAL" | "MULTIPLY" | "SCREEN" | "OVERLAY";
+  fit?: "CONTAIN" | "COVER";
 }
 
 export interface PersonalizationCanvas {
   width?: number;
   height?: number;
+  idea?: PersonalizationListingIdea;
+  scenes?: PersonalizationMockupScene[];
   printAreas: PersonalizationPrintArea[];
+  layers?: PersonalizationCanvasLayer[];
 }
 
 export interface PersonalizationPreviewPlacement {
