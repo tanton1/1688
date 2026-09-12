@@ -9,8 +9,7 @@ import {
   isStorefrontVariantAvailable,
   isStorefrontVariantOptionAvailable,
   validatePersonalizationValues,
-  calculateStorefrontUnitPrice,
-  calculatePersonalizationPriceDelta
+  calculateStorefrontUnitPrice
 } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
@@ -247,7 +246,6 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   }, [product.volumeDiscountTiers, quantity]);
 
   const discountPercent = activeDiscountTier?.discountPercent || 0;
-  const personalizationDelta = calculatePersonalizationPriceDelta(product.personalizationFields || [], customizationValues);
   const currentPrice = calculateStorefrontUnitPrice(product, selectedVariant, quantity, customizationValues, selectedAddons);
   const maxQuantity = getStorefrontVariantMaxQuantity(selectedVariant);
   const isOutOfStock = !isStorefrontVariantAvailable(selectedVariant);
