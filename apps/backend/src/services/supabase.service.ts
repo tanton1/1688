@@ -24,6 +24,7 @@ export class SupabaseDataService {
    * write so subsequent saves do not repeat a failing request.
    */
   private inventoryTrackedColumnAvailable: boolean | null = null;
+  private sourceAvailableColumnAvailable: boolean | null = null;
 
   constructor() {
     const key = ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -384,10 +385,10 @@ export class SupabaseDataService {
     }
   }
 
-  private isMissingInventoryTrackedColumn(error: any): boolean {
+  private isMissingVariantColumn(error: any, column: "inventory_tracked" | "source_available"): boolean {
     const code = String(error?.code || "");
     const message = String(error?.message || error?.details || "").toLowerCase();
-    if (!message.includes("inventory_tracked")) return false;
+    if (!message.includes(column)) return false;
     // PostgREST commonly reports an unknown write column as PGRST204 while
     // SQL-backed requests can surface PostgreSQL's 42703 code.
     return code === "42703" || code === "PGRST204" || message.includes("column") || message.includes("schema cache");
@@ -397,19 +398,32 @@ export class SupabaseDataService {
   private async insertVariantRows(rows: Array<Record<string, any>>): Promise<any> {
     if (!this.client || rows.length === 0) return null;
 
-    const writeRows = this.inventoryTrackedColumnAvailable === false
-      ? rows.map(({ inventory_tracked: _ignored, ...legacyRow }) => legacyRow)
-      : rows;
-    let result = await this.client.from("product_variants").insert(writeRows);
+    let result: any;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const writeRows = rows.map(row => {
+        const next = { ...row };
+        if (this.inventoryTrackedColumnAvailable === false) delete next.inventory_tracked;
+        if (this.sourceAvailableColumnAvailable === false) delete next.source_available;
+        return next;
+      });
+      result = await this.client.from("product_variants").insert(writeRows);
+      if (!result.error) {
+        if (this.inventoryTrackedColumnAvailable === null) this.inventoryTrackedColumnAvailable = true;
+        if (this.sourceAvailableColumnAvailable === null) this.sourceAvailableColumnAvailable = true;
+        return result;
+      }
 
-    if (result.error && this.inventoryTrackedColumnAvailable !== false && this.isMissingInventoryTrackedColumn(result.error)) {
-      this.inventoryTrackedColumnAvailable = false;
-      const legacyRows = rows.map(({ inventory_tracked: _ignored, ...legacyRow }) => legacyRow);
-      result = await this.client.from("product_variants").insert(legacyRows);
-    } else if (!result.error && this.inventoryTrackedColumnAvailable === null) {
-      this.inventoryTrackedColumnAvailable = true;
+      let retried = false;
+      if (this.inventoryTrackedColumnAvailable !== false && this.isMissingVariantColumn(result.error, "inventory_tracked")) {
+        this.inventoryTrackedColumnAvailable = false;
+        retried = true;
+      }
+      if (this.sourceAvailableColumnAvailable !== false && this.isMissingVariantColumn(result.error, "source_available")) {
+        this.sourceAvailableColumnAvailable = false;
+        retried = true;
+      }
+      if (!retried) return result;
     }
-
     return result;
   }
 
