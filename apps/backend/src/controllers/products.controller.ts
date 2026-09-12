@@ -184,6 +184,7 @@ export class ProductsController {
     if (updates.isPersonalized !== undefined) product.isPersonalized = updates.isPersonalized;
     if (updates.personalizationFields !== undefined) product.personalizationFields = updates.personalizationFields;
     if (updates.customizerMockupTemplateUrl !== undefined) product.customizerMockupTemplateUrl = updates.customizerMockupTemplateUrl;
+    if (updates.customizerCanvas !== undefined) product.customizerCanvas = updates.customizerCanvas;
     if (updates.volumeDiscountTiers !== undefined) product.volumeDiscountTiers = updates.volumeDiscountTiers;
     if (updates.giftAddons !== undefined) product.giftAddons = updates.giftAddons;
     if (updates.occasionTags !== undefined) product.occasionTags = updates.occasionTags;

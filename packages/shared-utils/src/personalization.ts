@@ -1,4 +1,4 @@
-import { PersonalizationField, PersonalizationImageValue } from "@hub1688/shared-types";
+import { PersonalizationField, PersonalizationImageValue, PersonalizationVisibilityRule } from "@hub1688/shared-types";
 
 export interface PersonalizationValidationResult {
   valid: boolean;
@@ -28,15 +28,22 @@ export const isPersonalizationFieldVisible = (
   field: PersonalizationField,
   values: Record<string, unknown>
 ): boolean => {
+  const evaluateRule = (rule: PersonalizationVisibilityRule): boolean => {
+    const current = values[rule.fieldId];
+    const equal = current === rule.value || (current !== undefined && rule.value !== undefined && String(current) === String(rule.value));
+    const included = (rule.values || []).some(candidate => candidate === current || String(candidate) === String(current));
+    switch (rule.operator || "EQUALS") {
+      case "NOT_EQUALS": return !equal;
+      case "IN": return included;
+      case "NOT_EMPTY": return hasValue(current);
+      default: return equal;
+    }
+  };
+  const rules = field.conditions?.rules;
+  if (rules?.length) return field.conditions?.mode === "ANY" ? rules.some(evaluateRule) : rules.every(evaluateRule);
   const rule = field.visibleWhen;
   if (!rule) return true;
-  const current = values[rule.fieldId];
-  switch (rule.operator || "EQUALS") {
-    case "NOT_EQUALS": return current !== rule.value;
-    case "IN": return (rule.values || []).includes(current as string | number | boolean);
-    case "NOT_EMPTY": return hasValue(current);
-    default: return current === rule.value;
-  }
+  return evaluateRule(rule);
 };
 
 const validateSingleField = (field: PersonalizationField, value: unknown): string | undefined => {
@@ -50,6 +57,20 @@ const validateSingleField = (field: PersonalizationField, value: unknown): strin
   }
   if (typeof value === "string" && field.maxLength && value.length > field.maxLength) {
     return `${field.label} tối đa ${field.maxLength} ký tự`;
+  }
+  if ((field.type === "TEXT" || field.type === "TEXTAREA") && typeof value === "string") {
+    if (field.allowedCharacters) {
+      const allowed = new Set(Array.from(field.allowedCharacters));
+      const invalid = Array.from(value).find(character => !allowed.has(character));
+      if (invalid) return `${field.label} chứa ký tự không được phép`;
+    }
+    if (field.allowedPattern) {
+      try {
+        if (!new RegExp(field.allowedPattern, "u").test(value)) return `${field.label} không đúng định dạng`;
+      } catch {
+        // An invalid merchant pattern must not make every customer order fail.
+      }
+    }
   }
   if (field.type === "NUMBER") {
     const numberValue = Number(value);
@@ -93,6 +114,27 @@ const validateSingleField = (field: PersonalizationField, value: unknown): strin
     }
   }
   return undefined;
+};
+
+/** Sum option-level price deltas for the current personalization payload. */
+export const calculatePersonalizationPriceDelta = (
+  fields: PersonalizationField[] = [],
+  values: Record<string, unknown> = {}
+): number => {
+  let total = 0;
+  for (const field of fields) {
+    if (!isPersonalizationFieldVisible(field, values)) continue;
+    const value = values[field.id];
+    if (field.type === "REPEAT_GROUP" && field.repeat && Array.isArray(value)) {
+      for (const item of value) {
+        if (item && typeof item === "object") total += calculatePersonalizationPriceDelta(field.repeat.fields, item as Record<string, unknown>);
+      }
+      continue;
+    }
+    const option = field.options?.find(candidate => candidate.value === value || String(candidate.value) === String(value));
+    total += Number(option?.priceDeltaVND || 0);
+  }
+  return Math.round(total);
 };
 
 const valuesFromUnknown = (value: unknown): Record<string, unknown> =>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { WebProduct, WebProductVariant, StorefrontConfig, CustomerOrder } from "@hub1688/shared-types";
-import { getStorefrontVariantMaxQuantity, isStorefrontVariantAvailable, normalizeCatalogKey } from "@hub1688/shared-utils";
+import { calculateStorefrontUnitPrice, getStorefrontVariantMaxQuantity, isStorefrontVariantAvailable, normalizeCatalogKey } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { StoreHeader } from "./StoreHeader";
 import { StoreHeroBanner } from "./StoreHeroBanner";
@@ -302,16 +302,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   }, [products]);
 
   // Giá hiển thị dùng cùng contract với checkout phía server.
-  const calculateUnitPrice = (product: WebProduct, variant: WebProductVariant, quantity: number, addonIds: string[] = []) => {
-    const tier = [...(product.volumeDiscountTiers || [])]
-      .sort((a, b) => b.minQty - a.minQty)
-      .find(candidate => quantity >= candidate.minQty);
-    const discounted = Math.round(variant.sellingPriceVND * (1 - (tier?.discountPercent || 0) / 100));
-    const addons = (product.giftAddons || [])
-      .filter(addon => addonIds.includes(addon.id))
-      .reduce((sum, addon) => sum + addon.priceVND, 0);
-    return discounted + addons;
-  };
+  const calculateUnitPrice = (product: WebProduct, variant: WebProductVariant, quantity: number, addonIds: string[] = [], customizationData: Record<string, any> = {}) =>
+    calculateStorefrontUnitPrice(product, variant, quantity, customizationData, addonIds);
 
   // Add Item to Cart
   const handleAddToCart = (
@@ -334,7 +326,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     const baseSku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
     const lineId = hasCustom ? `${baseSku.slice(0, 80)}-line-${customizationId || "draft"}` : baseSku;
     const vName = [variant.colorName, variant.sizeName].filter(Boolean).join(" - ") || variant.sourceSkuId || "Mặc định";
-    const price = calculateUnitPrice(product, variant, safeQuantity, giftAddonsSelected);
+    const price = calculateUnitPrice(product, variant, safeQuantity, giftAddonsSelected, customizationData);
 
     setCart(prev => {
       const existingIdx = prev.findIndex(item => (item.lineId || item.skuCode) === lineId);
@@ -345,7 +337,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           ...next[existingIdx],
           quantity: nextQuantity,
           maxQuantity,
-          priceVND: calculateUnitPrice(product, variant, nextQuantity, giftAddonsSelected)
+          priceVND: calculateUnitPrice(product, variant, nextQuantity, giftAddonsSelected, customizationData)
         };
         return next;
       } else {
@@ -421,7 +413,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         ...item,
         quantity: nextQuantity,
         maxQuantity,
-        priceVND: product && variant ? calculateUnitPrice(product, variant, nextQuantity, item.giftAddonsSelected) : item.priceVND
+        priceVND: product && variant ? calculateUnitPrice(product, variant, nextQuantity, item.giftAddonsSelected, item.customizationData) : item.priceVND
       };
     }));
   };

@@ -50,30 +50,43 @@ const drawContainedImage = (
   y: number,
   width: number,
   height: number,
-  shape?: "RECT" | "CIRCLE"
+  shape?: "RECT" | "CIRCLE",
+  crop?: PersonalizationImageValue["crop"]
 ) => {
-  const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
-  const renderedWidth = image.naturalWidth * ratio;
-  const renderedHeight = image.naturalHeight * ratio;
   context.save();
   if (shape === "CIRCLE") {
     context.beginPath();
     context.arc(x + width / 2, y + height / 2, Math.min(width, height) / 2, 0, Math.PI * 2);
     context.clip();
   }
-  context.drawImage(image, x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight);
+  if (crop) {
+    const ratio = Math.max(width / image.naturalWidth, height / image.naturalHeight) * Math.max(0.5, Math.min(3, crop.zoom || 1));
+    const renderedWidth = image.naturalWidth * ratio;
+    const renderedHeight = image.naturalHeight * ratio;
+    context.translate(x + width / 2, y + height / 2);
+    context.rotate((crop.rotation || 0) * Math.PI / 180);
+    context.drawImage(image, -renderedWidth / 2 + (crop.x || 0) / 100 * width, -renderedHeight / 2 + (crop.y || 0) / 100 * height, renderedWidth, renderedHeight);
+  } else {
+    const ratio = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const renderedWidth = image.naturalWidth * ratio;
+    const renderedHeight = image.naturalHeight * ratio;
+    context.drawImage(image, x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight);
+  }
   context.restore();
 };
 
-const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number) => {
+const canvasPlacement = (field: PersonalizationField, index: number, width: number, height: number, printAreas: Array<{ xPercent: number; yPercent: number; widthPercent: number; heightPercent: number; rotationDeg?: number; shape?: "RECT" | "CIRCLE" }> = []) => {
   const preview = field.preview || {};
+  const area = printAreas.find(candidate => (candidate as any).fieldIds?.includes(field.id));
+  const fallbackArea = printAreas[0];
   const defaultY = 32 + Math.min(index, 5) * 9;
   return {
-    x: (preview.xPercent ?? 22) / 100 * width,
-    y: (preview.yPercent ?? defaultY) / 100 * height,
-    width: (preview.widthPercent ?? 56) / 100 * width,
-    height: (preview.heightPercent ?? (field.type === "IMAGE_UPLOAD" ? 38 : 10)) / 100 * height,
-    rotation: (preview.rotationDeg || 0) * Math.PI / 180
+    x: (area?.xPercent ?? preview.xPercent ?? fallbackArea?.xPercent ?? 22) / 100 * width,
+    y: (area?.yPercent ?? preview.yPercent ?? fallbackArea?.yPercent ?? defaultY) / 100 * height,
+    width: (area?.widthPercent ?? preview.widthPercent ?? fallbackArea?.widthPercent ?? 56) / 100 * width,
+    height: (area?.heightPercent ?? preview.heightPercent ?? fallbackArea?.heightPercent ?? (field.type === "IMAGE_UPLOAD" ? 38 : 10)) / 100 * height,
+    rotation: (area?.rotationDeg ?? preview.rotationDeg ?? fallbackArea?.rotationDeg ?? 0) * Math.PI / 180,
+    shape: area?.shape || preview.shape || fallbackArea?.shape
   };
 };
 
@@ -94,8 +107,10 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   const [uploadingFieldId, setUploadingFieldId] = useState<string | null>(null);
   const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
   const [previewExportable, setPreviewExportable] = useState(true);
+  const [cropFieldId, setCropFieldId] = useState<string | null>(null);
 
   const fields = useMemo(() => product.personalizationFields || [], [product.personalizationFields]);
+  const printAreas = useMemo(() => product.customizerCanvas?.printAreas || [], [product.customizerCanvas]);
   const visibleFields = useMemo(
     () => fields.filter(field => isPersonalizationFieldVisible(field, values)),
     [fields, values]
@@ -166,7 +181,13 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
         }
       }
 
-      const printArea = { x: width * 0.18, y: height * 0.2, width: width * 0.64, height: height * 0.62 };
+      const configuredArea = printAreas[0];
+      const printArea = {
+        x: width * (configuredArea?.xPercent ?? 18) / 100,
+        y: height * (configuredArea?.yPercent ?? 20) / 100,
+        width: width * (configuredArea?.widthPercent ?? 64) / 100,
+        height: height * (configuredArea?.heightPercent ?? 62) / 100
+      };
       if (!baseDrawn) {
         context.fillStyle = "#ffffff";
         context.strokeStyle = "#cbd5e1";
@@ -205,7 +226,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
         const field = visibleFields[index];
         const value = values[field.id];
         if (value === undefined || value === null || value === "" || value === false) continue;
-        const placement = canvasPlacement(field, index, width, height);
+        const placement = canvasPlacement(field, index, width, height, printAreas);
         context.save();
         context.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
         context.rotate(placement.rotation);
@@ -219,7 +240,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
           try {
             const asset = await loadCanvasImage(assetUrl);
             if (cancelled) return;
-            drawContainedImage(context, asset, 0, 0, placement.width, placement.height, field.preview?.shape);
+            drawContainedImage(context, asset, 0, 0, placement.width, placement.height, placement.shape, field.type === "IMAGE_UPLOAD" ? (value as PersonalizationImageValue)?.crop : undefined);
           } catch {
             // Do not prevent text and other layers from rendering.
           }
@@ -254,7 +275,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
 
     void render();
     return () => { cancelled = true; };
-  }, [product, variant, values, visibleFields]);
+  }, [product, variant, values, visibleFields, printAreas]);
 
   const renderField = (field: PersonalizationField) => {
     const value = values[field.id];
@@ -277,7 +298,10 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
     if (field.type === "TEXTAREA") {
       control = <textarea id={`personalization-${field.id}`} value={String(value || "")} maxLength={field.maxLength} rows={3} placeholder={field.placeholder} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={`${commonInput} resize-y py-2.5`} />;
     } else if (field.type === "SELECT") {
-      control = <select id={`personalization-${field.id}`} value={String(value ?? "")} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={commonInput}><option value="">{field.placeholder || "Chọn một tùy chọn"}</option>{(field.options || []).map(option => <option key={option.id} value={option.value}>{option.label}</option>)}</select>;
+      const visualOptions = (field.options || []).length > 0 && (field.options || []).length <= 12 && (field.options || []).some(option => option.previewAssetUrl || option.thumbnail);
+      control = visualOptions
+        ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{(field.options || []).map(option => { const selected = String(value ?? "") === String(option.value); return <button key={option.id} type="button" aria-pressed={selected} onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, option.value); }} className={`overflow-hidden rounded-xl border text-left transition ${selected ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-200 hover:border-orange-400"}`}>{option.previewAssetUrl || option.thumbnail ? <img src={option.previewAssetUrl || option.thumbnail} alt="" className="aspect-[4/3] w-full object-cover" /> : null}<span className="block px-2 py-2 text-[11px] font-bold text-slate-700">{option.label}</span>{option.priceDeltaVND ? <span className="block px-2 pb-2 text-[10px] font-semibold text-orange-600">{option.priceDeltaVND > 0 ? "+" : ""}{option.priceDeltaVND.toLocaleString("vi-VN")}đ</span> : null}</button>; })}</div>
+        : <select id={`personalization-${field.id}`} value={String(value ?? "")} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value)} className={commonInput}><option value="">{field.placeholder || "Chọn một tùy chọn"}</option>{(field.options || []).map(option => <option key={option.id} value={option.value}>{option.label}{option.priceDeltaVND ? ` (+${option.priceDeltaVND.toLocaleString("vi-VN")}đ)` : ""}</option>)}</select>;
     } else if (field.type === "NUMBER") {
       control = <input id={`personalization-${field.id}`} type="number" min={field.min} max={field.max} value={value ?? ""} placeholder={field.placeholder} onBlur={() => setTouched(current => ({ ...current, [field.id]: true }))} onChange={event => handleFieldChange(field.id, event.target.value === "" ? "" : Number(event.target.value))} className={commonInput} />;
     } else if (field.type === "CHECKBOX") {
@@ -288,7 +312,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
       control = <div className="grid grid-cols-3 gap-2">{(field.options || []).map(option => { const selected = value === option.value; return <button key={option.id} type="button" aria-label={option.label} aria-pressed={selected} onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, option.value); }} className={`mc-focus-ring min-h-11 overflow-hidden rounded-xl border bg-white text-left transition active:scale-[0.98] ${selected ? "border-orange-500 ring-2 ring-orange-500/20" : "border-slate-200 hover:border-slate-400"}`}>{option.thumbnail || option.previewAssetUrl ? <img src={option.thumbnail || option.previewAssetUrl} alt="" className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-slate-50 text-xl">◇</div>}<span className="block truncate px-2 py-1.5 text-[10px] font-bold text-slate-700">{option.label}</span></button>; })}</div>;
     } else if (field.type === "IMAGE_UPLOAD") {
       const image = value as PersonalizationImageValue | undefined;
-      control = <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3"><div className="flex items-center gap-3">{image?.url ? <img src={image.url} alt="Ảnh đã tải" className="h-16 w-16 rounded-lg border border-slate-200 bg-white object-cover" /> : <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200"><ImagePlus className="h-6 w-6" /></div>}<div className="min-w-0 flex-1"><label htmlFor={`personalization-${field.id}`} className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold ${uploadingFieldId === field.id ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:bg-slate-800"}`}>{uploadingFieldId === field.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}{uploadingFieldId === field.id ? "Đang tải ảnh…" : image?.url ? "Đổi ảnh" : "Chọn ảnh từ máy"}</label><input id={`personalization-${field.id}`} type="file" accept={(field.accept || ["image/jpeg", "image/png", "image/webp"]).join(",")} disabled={uploadingFieldId === field.id} onChange={event => void handleImageUpload(field, event.target.files?.[0])} className="sr-only" />{image?.url && <button type="button" onClick={() => handleFieldChange(field.id, undefined)} className="ml-1 min-h-11 px-2 text-[11px] font-bold text-rose-600">Xóa</button>}</div></div><p className="mt-2 text-[10px] leading-4 text-slate-500">JPG/PNG/WebP · tối đa {field.maxFileSizeMB || 12}MB{field.minImageWidth ? ` · từ ${field.minImageWidth}px` : ""}. Ảnh được nén và lưu an toàn.</p></div>;
+      control = <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3"><div className="flex items-center gap-3">{image?.url ? <button type="button" onClick={() => setCropFieldId(field.id)} className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white"><img src={image.url} alt="Ảnh đã tải" className="h-full w-full object-cover transition group-hover:scale-105" /><span className="absolute inset-x-0 bottom-0 bg-slate-950/75 py-1 text-[9px] font-bold text-white">Cắt ảnh</span></button> : <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200"><ImagePlus className="h-6 w-6" /></div>}<div className="min-w-0 flex-1"><label htmlFor={`personalization-${field.id}`} className={`inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold ${uploadingFieldId === field.id ? "bg-slate-200 text-slate-500" : "bg-slate-900 text-white hover:bg-slate-800"}`}>{uploadingFieldId === field.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}{uploadingFieldId === field.id ? "Đang tải ảnh…" : image?.url ? "Đổi ảnh" : "Chọn ảnh từ máy"}</label><input id={`personalization-${field.id}`} type="file" accept={(field.accept || ["image/jpeg", "image/png", "image/webp"]).join(",")} disabled={uploadingFieldId === field.id} onChange={event => void handleImageUpload(field, event.target.files?.[0])} className="sr-only" />{image?.url && <button type="button" onClick={() => handleFieldChange(field.id, undefined)} className="ml-1 min-h-11 px-2 text-[11px] font-bold text-rose-600">Xóa</button>}</div></div><p className="mt-2 text-[10px] leading-4 text-slate-500">JPG/PNG/WebP · tối đa {field.maxFileSizeMB || 12}MB{field.minImageWidth ? ` · từ ${field.minImageWidth}px` : ""}. Nhấn “Cắt ảnh” để căn khuôn, phóng to hoặc xoay trước khi đặt hàng.</p></div>;
     } else if (field.type === "REPEAT_GROUP" && field.repeat) {
       const items = Array.isArray(value) ? value as Record<string, any>[] : [];
       control = <div className="space-y-2">{items.map((item, itemIndex) => <div key={itemIndex} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-black text-slate-700">{field.repeat?.itemLabel || "Mục"} {itemIndex + 1}</span><button type="button" aria-label="Xóa mục" onClick={() => handleFieldChange(field.id, items.filter((_, index) => index !== itemIndex))} className="grid h-8 w-8 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button></div><div className="space-y-2">{field.repeat?.fields.filter(child => isPersonalizationFieldVisible(child, item)).map(child => <label key={child.id} className="block text-[11px] font-semibold text-slate-600">{child.label}{child.required && " *"}{child.type === "SELECT" ? <select value={item[child.id] ?? ""} onChange={event => { const next = [...items]; next[itemIndex] = { ...item, [child.id]: event.target.value }; handleFieldChange(field.id, next); }} className={`${commonInput} mt-1`}><option value="">Chọn</option>{(child.options || []).map(option => <option key={option.id} value={option.value}>{option.label}</option>)}</select> : <input type={child.type === "NUMBER" ? "number" : "text"} value={item[child.id] ?? ""} maxLength={child.maxLength} onChange={event => { const next = [...items]; next[itemIndex] = { ...item, [child.id]: child.type === "NUMBER" ? Number(event.target.value) : event.target.value }; handleFieldChange(field.id, next); }} className={`${commonInput} mt-1`} />}</label>)}</div></div>)}<button type="button" disabled={items.length >= field.repeat.maxItems} onClick={() => { setTouched(current => ({ ...current, [field.id]: true })); handleFieldChange(field.id, [...items, {}]); }} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:border-orange-400 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" /> Thêm {field.repeat.itemLabel?.toLowerCase() || "mục"} ({items.length}/{field.repeat.maxItems})</button></div>;
@@ -297,6 +321,14 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
     }
 
     return <div key={field.id} data-personalization-field={field.id}>{label}{control}{field.helpText && <p id={`personalization-help-${field.id}`} className="mt-1 text-[10px] leading-4 text-slate-500">{field.helpText}</p>}{showError && <p id={`personalization-error-${field.id}`} role="alert" className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}</p>}</div>;
+  };
+
+  const cropField = cropFieldId ? fields.find(field => field.id === cropFieldId) : undefined;
+  const cropImage = cropField ? values[cropField.id] as PersonalizationImageValue | undefined : undefined;
+  const crop = cropImage?.crop || { x: 0, y: 0, zoom: 1, rotation: 0 };
+  const updateCrop = (updates: Partial<NonNullable<PersonalizationImageValue["crop"]>>) => {
+    if (!cropField || !cropImage) return;
+    handleFieldChange(cropField.id, { ...cropImage, crop: { ...crop, ...updates } });
   };
 
   return (
@@ -320,6 +352,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
           <p className="mt-2 text-center text-[9px] leading-3 text-slate-500">Màu sắc thực tế có thể chênh lệch nhẹ khi in.{!previewExportable && " Nhà cung cấp ảnh đang chặn xuất preview, ảnh gốc vẫn được lưu."}</p>
         </div>
       </div>
+      {cropField && cropImage?.url && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-label="Căn chỉnh ảnh cá nhân hóa"><div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl"><div className="mb-3 flex items-center justify-between"><div><h4 className="text-sm font-black text-slate-900">Căn chỉnh ảnh</h4><p className="text-[10px] text-slate-500">Ảnh sẽ được lưu cùng đơn hàng</p></div><button type="button" onClick={() => setCropFieldId(null)} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100">Đóng</button></div><div className="relative mx-auto aspect-square max-h-[55vh] overflow-hidden rounded-xl bg-slate-100"><img src={cropImage.url} alt="Căn chỉnh" className="h-full w-full object-contain" style={{ transform: `translate(${crop.x}%, ${crop.y}%) scale(${crop.zoom}) rotate(${crop.rotation}deg)` }} /></div><div className="mt-4 grid gap-3"><label className="text-xs font-bold text-slate-700">Phóng to <input type="range" min="0.5" max="3" step="0.05" value={crop.zoom} onChange={event => updateCrop({ zoom: Number(event.target.value) })} className="mt-1 w-full accent-orange-600" /></label><label className="text-xs font-bold text-slate-700">Dịch ngang <input type="range" min="-50" max="50" value={crop.x} onChange={event => updateCrop({ x: Number(event.target.value) })} className="mt-1 w-full accent-orange-600" /></label><label className="text-xs font-bold text-slate-700">Dịch dọc <input type="range" min="-50" max="50" value={crop.y} onChange={event => updateCrop({ y: Number(event.target.value) })} className="mt-1 w-full accent-orange-600" /></label><label className="text-xs font-bold text-slate-700">Xoay <input type="range" min="-180" max="180" value={crop.rotation} onChange={event => updateCrop({ rotation: Number(event.target.value) })} className="mt-1 w-full accent-orange-600" /></label></div><button type="button" onClick={() => setCropFieldId(null)} className="mt-4 min-h-11 w-full rounded-xl bg-orange-600 text-xs font-black text-white hover:bg-orange-700">Áp dụng</button></div></div>}
     </section>
   );
 };

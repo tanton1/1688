@@ -3,7 +3,7 @@ import { inMemoryProducts } from "./import.controller.js";
 import { ordersService } from "../services/orders.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { StorefrontConfig, StorefrontCheckoutRequest, WebProduct, CustomerOrder, CustomerOrderItem } from "@hub1688/shared-types";
-import { calculateStorefrontPricing, generateVietQRUrl, normalizeCatalogKey, validatePersonalizationValues, isStorefrontVariantAvailable } from "@hub1688/shared-utils";
+import { calculateStorefrontPricing, calculateStorefrontUnitPrice, generateVietQRUrl, normalizeCatalogKey, validatePersonalizationValues, isStorefrontVariantAvailable } from "@hub1688/shared-utils";
 import { supabaseService } from "../services/supabase.service.js";
 import { mediaMirrorService } from "../services/media-mirror.service.js";
 import crypto from "node:crypto";
@@ -369,17 +369,13 @@ export class StorefrontController {
         res.status(409).json({ error: "INSUFFICIENT_STOCK", message: `${matchedProd.titleVI} chỉ còn ${matchedVar.stockQuantity} sản phẩm` });
         return;
       }
-      const tier = [...(matchedProd.volumeDiscountTiers || [])]
-        .sort((a, b) => b.minQty - a.minQty)
-        .find(candidate => qty >= candidate.minQty);
       const addonIds = item.giftAddonsSelected || [];
       const validAddons = (matchedProd.giftAddons || []).filter(addon => addonIds.includes(addon.id));
       if (validAddons.length !== addonIds.length) {
         res.status(409).json({ error: "INVALID_ADDON", message: `Tùy chọn quà tặng của ${matchedProd.titleVI} đã thay đổi` });
         return;
       }
-      const addonPrice = validAddons.reduce((sum, addon) => sum + addon.priceVND, 0);
-      const price = Math.round(matchedVar.sellingPriceVND * (1 - (tier?.discountPercent || 0) / 100)) + addonPrice;
+      const price = calculateStorefrontUnitPrice(matchedProd, matchedVar, qty, item.customizationData || {}, addonIds);
       totalAmountVND += price * qty;
       const cost = matchedVar.costPriceVND ?? 0;
       totalCostVND += cost * qty;

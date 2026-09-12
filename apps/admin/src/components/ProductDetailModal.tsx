@@ -1842,11 +1842,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <PersonalizationBuilder
                 enabled={Boolean(formData.isPersonalized)}
                 mockupUrl={formData.customizerMockupTemplateUrl}
+                canvas={formData.customizerCanvas}
                 previewImageUrl={formData.primaryImage}
                 fields={formData.personalizationFields || []}
                 onEnabledChange={isPersonalized => handleFieldChange("isPersonalized", isPersonalized)}
                 onMockupUrlChange={customizerMockupTemplateUrl => handleFieldChange("customizerMockupTemplateUrl", customizerMockupTemplateUrl)}
                 onFieldsChange={personalizationFields => handleFieldChange("personalizationFields", personalizationFields)}
+                onCanvasChange={customizerCanvas => handleFieldChange("customizerCanvas", customizerCanvas)}
               />
             </div>
           )}

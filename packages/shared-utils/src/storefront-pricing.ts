@@ -1,4 +1,5 @@
-import { StorefrontConfig, StorefrontDiscountRule } from "@hub1688/shared-types";
+import { StorefrontConfig, StorefrontDiscountRule, WebProduct, WebProductVariant } from "@hub1688/shared-types";
+import { calculatePersonalizationPriceDelta } from "./personalization.js";
 
 export interface StorefrontPricingResult {
   subtotalVND: number;
@@ -8,6 +9,26 @@ export interface StorefrontPricingResult {
   appliedDiscountCode?: string;
   couponValid: boolean;
   freeShipping: boolean;
+}
+
+/** Authoritative per-unit price contract shared by cart, checkout and exports. */
+export function calculateStorefrontUnitPrice(
+  product: Pick<WebProduct, "volumeDiscountTiers" | "giftAddons" | "personalizationFields">,
+  variant: Pick<WebProductVariant, "sellingPriceVND">,
+  quantity: number,
+  personalizationValues: Record<string, unknown> = {},
+  addonIds: string[] = []
+): number {
+  const safeQuantity = Math.max(1, Math.floor(quantity || 1));
+  const tier = [...(product.volumeDiscountTiers || [])]
+    .sort((a, b) => b.minQty - a.minQty)
+    .find(candidate => safeQuantity >= candidate.minQty);
+  const base = Math.round(variant.sellingPriceVND * (1 - (tier?.discountPercent || 0) / 100));
+  const personalization = calculatePersonalizationPriceDelta(product.personalizationFields || [], personalizationValues);
+  const addons = (product.giftAddons || [])
+    .filter(addon => addonIds.includes(addon.id))
+    .reduce((sum, addon) => sum + Math.max(0, Math.round(addon.priceVND)), 0);
+  return Math.max(0, base + personalization + addons);
 }
 
 const normalizeMoney = (value: number | undefined): number =>

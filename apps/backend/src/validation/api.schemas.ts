@@ -178,6 +178,21 @@ export const productUpdateSchema = z.object({
   isPersonalized: z.boolean().optional(),
   personalizationFields: z.array(z.unknown()).max(100).optional(),
   customizerMockupTemplateUrl: imageRef.optional(),
+  customizerCanvas: z.object({
+    width: z.number().positive().max(20_000).optional(),
+    height: z.number().positive().max(20_000).optional(),
+    printAreas: z.array(z.object({
+      id: id,
+      label: optionalText(120),
+      xPercent: z.number().min(0).max(100),
+      yPercent: z.number().min(0).max(100),
+      widthPercent: z.number().positive().max(100),
+      heightPercent: z.number().positive().max(100),
+      rotationDeg: z.number().min(-360).max(360).optional(),
+      shape: z.enum(["RECT", "CIRCLE"]).optional(),
+      fieldIds: z.array(id).max(100).optional()
+    }).strict()).max(20)
+  }).strict().optional(),
   volumeDiscountTiers: z.array(z.unknown()).max(100).optional(),
   giftAddons: z.array(z.unknown()).max(100).optional(),
   occasionTags: z.array(z.string().max(100)).max(100).optional(),

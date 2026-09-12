@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import {
   PersonalizationField,
   PersonalizationFieldType,
-  PersonalizationOptionItem
+  PersonalizationOptionItem,
+  PersonalizationCanvas,
+  PersonalizationPrintArea
 } from "@hub1688/shared-types";
 import {
   ArrowDown,
@@ -19,10 +21,12 @@ interface PersonalizationBuilderProps {
   enabled: boolean;
   mockupUrl?: string;
   fields: PersonalizationField[];
+  canvas?: PersonalizationCanvas;
   previewImageUrl?: string;
   onEnabledChange: (enabled: boolean) => void;
   onMockupUrlChange: (url: string) => void;
   onFieldsChange: (fields: PersonalizationField[]) => void;
+  onCanvasChange: (canvas: PersonalizationCanvas | undefined) => void;
 }
 
 const FIELD_TYPES: Array<{ value: PersonalizationFieldType; label: string }> = [
@@ -30,6 +34,8 @@ const FIELD_TYPES: Array<{ value: PersonalizationFieldType; label: string }> = [
   { value: "TEXTAREA", label: "Lời nhắn dài" },
   { value: "SELECT", label: "Danh sách chọn" },
   { value: "ASSET_PICKER", label: "Thư viện design" },
+  { value: "AVATAR_BUILDER", label: "Tạo avatar nhiều lớp" },
+  { value: "PET_BUILDER", label: "Tạo thú cưng nhiều lớp" },
   { value: "COLOR_SWATCH", label: "Bảng màu" },
   { value: "IMAGE_UPLOAD", label: "Khách tải ảnh" },
   { value: "NUMBER", label: "Số" },
@@ -67,10 +73,12 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
   enabled,
   mockupUrl,
   fields,
+  canvas,
   previewImageUrl,
   onEnabledChange,
   onMockupUrlChange,
-  onFieldsChange
+  onFieldsChange,
+  onCanvasChange
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(fields[0]?.id || null);
 
@@ -93,6 +101,12 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
     options[optionIndex] = { ...options[optionIndex], ...updates };
     patchField(fieldIndex, { options });
   };
+  const printAreas = canvas?.printAreas || [];
+  const patchArea = (areaIndex: number, updates: Partial<PersonalizationPrintArea>) => {
+    const next = [...printAreas];
+    next[areaIndex] = { ...next[areaIndex], ...updates };
+    onCanvasChange({ ...(canvas || {}), printAreas: next });
+  };
 
   return (
     <div className="space-y-5">
@@ -114,6 +128,7 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
             <input id="personalization-mockup-url" type="url" value={mockupUrl || ""} onChange={event => onMockupUrlChange(event.target.value)} placeholder="https://.../mockup-tron.png" className="mc-focus-ring min-h-11 w-full rounded-xl border border-slate-300 px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
           </div>
           <p className="mt-1.5 text-[10px] text-slate-500">Khuyến nghị PNG/JPG vuông, nền sạch và vùng in nằm ở trung tâm. Design của SKU và dữ liệu khách sẽ được chồng lên mockup này.</p>
+          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-orange-950">Vùng in trên mockup</span><button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), printAreas: [...printAreas, { id: newId("area"), label: `Vùng ${printAreas.length + 1}`, xPercent: 18, yPercent: 20, widthPercent: 64, heightPercent: 62, shape: "RECT" }] })} className="text-[10px] font-bold text-orange-700">+ Thêm vùng</button></div>{printAreas.length === 0 ? <p className="text-[10px] text-orange-900/70">Đang dùng vùng mặc định. Thêm vùng để căn nhiều mặt in hoặc chỉ định field cụ thể.</p> : <div className="space-y-2">{printAreas.map((area, areaIndex) => <div key={area.id} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-[1fr_repeat(4,70px)_auto]"><input value={area.label || ""} onChange={event => patchArea(areaIndex, { label: event.target.value })} placeholder="Tên vùng" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" />{(["xPercent", "yPercent", "widthPercent", "heightPercent"] as const).map(key => <input key={key} type="number" min={0} max={100} value={area[key]} onChange={event => patchArea(areaIndex, { [key]: Number(event.target.value) })} aria-label={key} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" />)}<button type="button" onClick={() => onCanvasChange({ ...(canvas || {}), printAreas: printAreas.filter((_, index) => index !== areaIndex) })} className="text-[10px] font-bold text-rose-600">Xóa</button></div>)}</div>}</div>
         </div>
         <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
           {mockupUrl || previewImageUrl ? <img src={mockupUrl || previewImageUrl} alt="Xem trước mockup" className="h-full w-full object-contain p-2" /> : <div className="absolute inset-0 grid place-items-center p-6 text-center text-xs text-slate-400">Thêm URL mockup nền trơn để xem trước vùng thiết kế.</div>}
@@ -150,6 +165,11 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
                       <label className="text-[10px] font-bold text-slate-500">Nhóm/bước<input value={field.step || ""} onChange={event => patchField(index, { step: event.target.value })} placeholder="1. Chọn design" className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 px-2 text-xs" /></label>
                       <label className="text-[10px] font-bold text-slate-500 lg:col-span-2">Gợi ý trong ô<input value={field.placeholder || ""} onChange={event => patchField(index, { placeholder: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 px-2 text-xs" /></label>
                       <label className="text-[10px] font-bold text-slate-500 lg:col-span-2">Trợ giúp cho khách<input value={field.helpText || ""} onChange={event => patchField(index, { helpText: event.target.value })} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 px-2 text-xs" /></label>
+                      {(["TEXT", "TEXTAREA"].includes(field.type)) && <><label className="text-[10px] font-bold text-slate-500">Regex cho phép<input value={field.allowedPattern || ""} onChange={event => patchField(index, { allowedPattern: event.target.value || undefined })} placeholder="^[\\p{L} 0-9.'-]+$" className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 px-2 text-xs" /></label><label className="text-[10px] font-bold text-slate-500">Bộ ký tự cho phép<input value={field.allowedCharacters || ""} onChange={event => patchField(index, { allowedCharacters: event.target.value || undefined })} placeholder="A-Z a-z 0-9" className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 px-2 text-xs" /></label></>}
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2"><span className="text-[10px] font-extrabold text-slate-700">Nhiều điều kiện (ALL / ANY)</span><button type="button" onClick={() => { const first = field.visibleWhen || field.conditions?.rules?.[0]; patchField(index, { conditions: { mode: field.conditions?.mode || "ALL", rules: field.conditions?.rules?.length ? field.conditions.rules : first ? [first] : [] }, visibleWhen: undefined }); }} className="text-[10px] font-bold text-orange-600">{field.conditions ? "Đang bật" : "Bật nâng cao"}</button></div>
+                      {field.conditions && <div className="space-y-2"><select value={field.conditions.mode} onChange={event => patchField(index, { conditions: { ...field.conditions!, mode: event.target.value as "ALL" | "ANY" } })} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs"><option value="ALL">Tất cả điều kiện đúng</option><option value="ANY">Một trong các điều kiện đúng</option></select>{field.conditions.rules.map((rule, ruleIndex) => <div key={`${rule.fieldId}-${ruleIndex}`} className="grid gap-2 sm:grid-cols-[1fr_110px_1fr_auto]"><select value={rule.fieldId} onChange={event => { const rules = [...field.conditions!.rules]; rules[ruleIndex] = { ...rule, fieldId: event.target.value }; patchField(index, { conditions: { ...field.conditions!, rules } }); }} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-[11px]"><option value="">Chọn trường</option>{fields.filter(candidate => candidate.id !== field.id).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select><select value={rule.operator || "EQUALS"} onChange={event => { const rules = [...field.conditions!.rules]; rules[ruleIndex] = { ...rule, operator: event.target.value as any }; patchField(index, { conditions: { ...field.conditions!, rules } }); }} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-[11px]"><option value="EQUALS">Bằng</option><option value="NOT_EQUALS">Khác</option><option value="NOT_EMPTY">Đã nhập</option></select>{rule.operator !== "NOT_EMPTY" && <input value={String(rule.value ?? "")} onChange={event => { const rules = [...field.conditions!.rules]; rules[ruleIndex] = { ...rule, value: event.target.value }; patchField(index, { conditions: { ...field.conditions!, rules } }); }} placeholder="Giá trị" className="min-h-9 rounded-lg border border-slate-300 px-2 text-[11px]" />}<button type="button" onClick={() => patchField(index, { conditions: { ...field.conditions!, rules: field.conditions!.rules.filter((_, i) => i !== ruleIndex) } })} className="text-[10px] font-bold text-rose-600">Xóa</button></div>)}<button type="button" onClick={() => patchField(index, { conditions: { ...field.conditions!, rules: [...field.conditions!.rules, { fieldId: fields.find(candidate => candidate.id !== field.id)?.id || "", operator: "EQUALS", value: "" }] } })} className="text-[10px] font-bold text-orange-600">+ Thêm điều kiện</button></div>}
                     </div>
 
                     <div className="flex flex-wrap gap-4 rounded-xl bg-slate-50 p-3">
@@ -162,7 +182,7 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
                     {supportsOptions(field.type) && (
                       <div className="rounded-xl border border-slate-200 p-3">
                         <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-slate-800">Danh sách lựa chọn</span><button type="button" onClick={() => patchField(index, { options: [...(field.options || []), createOption(field.type)] })} className="inline-flex min-h-10 items-center gap-1 px-2 text-[10px] font-bold text-orange-600"><Plus className="h-3.5 w-3.5" /> Thêm lựa chọn</button></div>
-                        <div className="space-y-2">{(field.options || []).map((option, optionIndex) => <div key={option.id} className="grid gap-2 rounded-lg bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_1.5fr_auto]"><input aria-label={`Tên lựa chọn ${optionIndex + 1}`} value={option.label} onChange={event => patchOption(index, optionIndex, { label: event.target.value })} placeholder="Tên hiển thị" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Giá trị lựa chọn ${optionIndex + 1}`} value={option.value} onChange={event => patchOption(index, optionIndex, { value: event.target.value })} placeholder={field.type === "COLOR_SWATCH" ? "#f97316" : "Giá trị"} className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`URL ảnh lựa chọn ${optionIndex + 1}`} value={option.previewAssetUrl || ""} onChange={event => patchOption(index, optionIndex, { previewAssetUrl: event.target.value })} placeholder="URL ảnh design/thumbnail" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><button type="button" aria-label={`Xóa lựa chọn ${optionIndex + 1}`} onClick={() => patchField(index, { options: (field.options || []).filter((_, itemIndex) => itemIndex !== optionIndex) })} className="mc-focus-ring grid h-10 w-10 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button></div>)}</div>
+                        <div className="space-y-2">{(field.options || []).map((option, optionIndex) => <div key={option.id} className="grid gap-2 rounded-lg bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_1.2fr_110px_auto]"><input aria-label={`Tên lựa chọn ${optionIndex + 1}`} value={option.label} onChange={event => patchOption(index, optionIndex, { label: event.target.value })} placeholder="Tên hiển thị" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Giá trị lựa chọn ${optionIndex + 1}`} value={option.value} onChange={event => patchOption(index, optionIndex, { value: event.target.value })} placeholder={field.type === "COLOR_SWATCH" ? "#f97316" : "Giá trị"} className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`URL ảnh lựa chọn ${optionIndex + 1}`} value={option.previewAssetUrl || ""} onChange={event => patchOption(index, optionIndex, { previewAssetUrl: event.target.value })} placeholder="URL ảnh design/thumbnail" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Phụ thu lựa chọn ${optionIndex + 1}`} type="number" value={option.priceDeltaVND ?? ""} onChange={event => patchOption(index, optionIndex, { priceDeltaVND: event.target.value === "" ? undefined : Number(event.target.value) })} placeholder="Phụ thu (đ)" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><button type="button" aria-label={`Xóa lựa chọn ${optionIndex + 1}`} onClick={() => patchField(index, { options: (field.options || []).filter((_, itemIndex) => itemIndex !== optionIndex) })} className="mc-focus-ring grid h-10 w-10 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button></div>)}</div>
                       </div>
                     )}
 

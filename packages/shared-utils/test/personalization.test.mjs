@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validatePersonalizationValues } from "../dist/personalization.js";
+import { validatePersonalizationValues, calculatePersonalizationPriceDelta } from "../dist/personalization.js";
 
 test("personalization validates conditional fields and maximum text length", () => {
   const fields = [
@@ -40,4 +40,14 @@ test("personalization validates repeat groups and required checkboxes", () => {
   const valid = validatePersonalizationValues(fields, { people: [{ name: "An" }, { name: "Bình" }], approval: true });
   assert.equal(valid.valid, true);
   assert.equal(valid.completedRequired, 2);
+});
+
+test("personalization supports ALL/ANY conditions, patterns and option pricing", () => {
+  const fields = [
+    { id: "style", label: "Kiểu", type: "SELECT", options: [{ id: "a", label: "A", value: "a", priceDeltaVND: 15000 }, { id: "b", label: "B", value: "b", priceDeltaVND: 25000 }] },
+    { id: "name", label: "Tên", type: "TEXT", conditions: { mode: "ANY", rules: [{ fieldId: "style", value: "a" }, { fieldId: "style", value: "b" }] }, allowedPattern: "^[A-Za-z ]+$" }
+  ];
+  assert.equal(validatePersonalizationValues(fields, { style: "a", name: "An" }).valid, true);
+  assert.equal(validatePersonalizationValues(fields, { style: "a", name: "Án" }).valid, false);
+  assert.equal(calculatePersonalizationPriceDelta(fields, { style: "b", name: "An" }), 25000);
 });

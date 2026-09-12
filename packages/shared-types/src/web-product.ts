@@ -142,6 +142,31 @@ export interface PersonalizationVisibilityRule {
   values?: Array<string | number | boolean>;
 }
 
+/** A group of visibility rules. `ALL` preserves the classic single-rule behaviour. */
+export interface PersonalizationConditionGroup {
+  mode: "ALL" | "ANY";
+  rules: PersonalizationVisibilityRule[];
+}
+
+export interface PersonalizationPrintArea {
+  id: string;
+  label?: string;
+  xPercent: number;
+  yPercent: number;
+  widthPercent: number;
+  heightPercent: number;
+  rotationDeg?: number;
+  shape?: "RECT" | "CIRCLE";
+  /** Restrict a field/layer to this area. */
+  fieldIds?: string[];
+}
+
+export interface PersonalizationCanvas {
+  width?: number;
+  height?: number;
+  printAreas: PersonalizationPrintArea[];
+}
+
 export interface PersonalizationPreviewPlacement {
   xPercent?: number;
   yPercent?: number;
@@ -188,6 +213,10 @@ export interface PersonalizationField {
   step?: string;
   helpText?: string;
   visibleWhen?: PersonalizationVisibilityRule;
+  conditions?: PersonalizationConditionGroup;
+  /** Optional allow-list for text. Supports a regular expression source. */
+  allowedPattern?: string;
+  allowedCharacters?: string;
   min?: number;
   max?: number;
   accept?: string[];
@@ -287,6 +316,7 @@ export interface WebProduct {
   isPersonalized?: boolean;
   personalizationFields?: PersonalizationField[];
   customizerMockupTemplateUrl?: string;
+  customizerCanvas?: PersonalizationCanvas;
   volumeDiscountTiers?: VolumeDiscountTier[];
   giftAddons?: GiftAddonItem[];
   occasionTags?: string[]; // "christmas", "mothers-day", "fathers-day", "anniversary", "memorial", "birthday", "valentines"

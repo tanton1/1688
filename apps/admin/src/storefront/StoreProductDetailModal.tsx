@@ -8,7 +8,9 @@ import {
   getStorefrontVariantMaxQuantity,
   isStorefrontVariantAvailable,
   isStorefrontVariantOptionAvailable,
-  validatePersonalizationValues
+  validatePersonalizationValues,
+  calculateStorefrontUnitPrice,
+  calculatePersonalizationPriceDelta
 } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
@@ -245,7 +247,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   }, [product.volumeDiscountTiers, quantity]);
 
   const discountPercent = activeDiscountTier?.discountPercent || 0;
-  const currentPrice = Math.round(basePrice * (1 - discountPercent / 100));
+  const personalizationDelta = calculatePersonalizationPriceDelta(product.personalizationFields || [], customizationValues);
+  const currentPrice = calculateStorefrontUnitPrice(product, selectedVariant, quantity, customizationValues, selectedAddons);
   const maxQuantity = getStorefrontVariantMaxQuantity(selectedVariant);
   const isOutOfStock = !isStorefrontVariantAvailable(selectedVariant);
   const personalizationNeedsConfiguration = Boolean(product.isPersonalized && !(product.personalizationFields || []).length);
@@ -347,7 +350,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const handleAddToCartClick = () => { void executePurchase("cart"); };
   const handleBuyNowClick = () => { void executePurchase("buy"); };
 
-  const totalPriceCalculated = (currentPrice + addonsTotal) * quantity;
+  const totalPriceCalculated = currentPrice * quantity;
   const lightboxImageUrl = mediaView === "mockup"
     ? renderedPreviewUrl
     : activeMedia.type === "image" ? activeMedia.url : undefined;

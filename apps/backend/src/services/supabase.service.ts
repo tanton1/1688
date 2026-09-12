@@ -25,6 +25,7 @@ export class SupabaseDataService {
    */
   private inventoryTrackedColumnAvailable: boolean | null = null;
   private sourceAvailableColumnAvailable: boolean | null = null;
+  private customizerCanvasColumnAvailable: boolean | null = null;
 
   constructor() {
     const key = ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -394,6 +395,12 @@ export class SupabaseDataService {
     return code === "42703" || code === "PGRST204" || message.includes("column") || message.includes("schema cache");
   }
 
+  private isMissingProductColumn(error: any, column: string): boolean {
+    const code = String(error?.code || "");
+    const message = String(error?.message || error?.details || "").toLowerCase();
+    return message.includes(column) && (code === "42703" || code === "PGRST204" || message.includes("column") || message.includes("schema cache"));
+  }
+
   /** Insert variants with a one-time compatibility retry for old schemas. */
   private async insertVariantRows(rows: Array<Record<string, any>>): Promise<any> {
     if (!this.client || rows.length === 0) return null;
@@ -618,7 +625,7 @@ export class SupabaseDataService {
         .select("id")
         .eq("id", product.id)
         .maybeSingle();
-      const dbRow = {
+      const dbRow: Record<string, any> = {
         id: product.id,
         version: product.version || 1,
         slug: product.slug,
@@ -648,6 +655,7 @@ export class SupabaseDataService {
         is_personalized: Boolean(product.isPersonalized),
         personalization_fields: product.personalizationFields || [],
         customizer_template_url: product.customizerMockupTemplateUrl || null,
+        customizer_canvas: product.customizerCanvas || { printAreas: [] },
         volume_discount_tiers: product.volumeDiscountTiers || [],
         gift_addons: product.giftAddons || [],
         occasion_tags: product.occasionTags || [],
@@ -675,12 +683,25 @@ export class SupabaseDataService {
         created_at: product.createdAt || new Date().toISOString(),
         updated_at: product.updatedAt || new Date().toISOString()
       };
+      if (this.customizerCanvasColumnAvailable === false) delete dbRow.customizer_canvas;
 
-      const { data: createdProd, error: prodErr } = await this.client
+      let { data: createdProd, error: prodErr } = await this.client
         .from("products")
         .upsert(dbRow, { onConflict: "id" })
         .select("id")
         .single();
+
+      if (prodErr && this.isMissingProductColumn(prodErr, "customizer_canvas")) {
+        this.customizerCanvasColumnAvailable = false;
+        delete dbRow.customizer_canvas;
+        ({ data: createdProd, error: prodErr } = await this.client
+          .from("products")
+          .upsert(dbRow, { onConflict: "id" })
+          .select("id")
+          .single());
+      } else if (!prodErr) {
+        this.customizerCanvasColumnAvailable = true;
+      }
 
       if (prodErr || !createdProd) {
         console.error("[Supabase saveWebProduct error]", prodErr);
@@ -770,6 +791,7 @@ export class SupabaseDataService {
       if (updates.isPersonalized !== undefined) dbUpdates.is_personalized = updates.isPersonalized;
       if (updates.personalizationFields !== undefined) dbUpdates.personalization_fields = updates.personalizationFields;
       if (updates.customizerMockupTemplateUrl !== undefined) dbUpdates.customizer_template_url = updates.customizerMockupTemplateUrl;
+      if (updates.customizerCanvas !== undefined && this.customizerCanvasColumnAvailable !== false) dbUpdates.customizer_canvas = updates.customizerCanvas;
       if (updates.volumeDiscountTiers !== undefined) dbUpdates.volume_discount_tiers = updates.volumeDiscountTiers;
       if (updates.giftAddons !== undefined) dbUpdates.gift_addons = updates.giftAddons;
       if (updates.occasionTags !== undefined) dbUpdates.occasion_tags = updates.occasionTags;
@@ -796,7 +818,15 @@ export class SupabaseDataService {
         .update(dbUpdates)
         .eq("id", id);
       if (expectedVersion !== undefined) updateQuery = updateQuery.eq("version", expectedVersion);
-      const { data: updatedRows, error } = await updateQuery.select("id");
+      let { data: updatedRows, error } = await updateQuery.select("id");
+
+      if (error && this.isMissingProductColumn(error, "customizer_canvas")) {
+        this.customizerCanvasColumnAvailable = false;
+        delete dbUpdates.customizer_canvas;
+        updateQuery = this.client.from("products").update(dbUpdates).eq("id", id);
+        if (expectedVersion !== undefined) updateQuery = updateQuery.eq("version", expectedVersion);
+        ({ data: updatedRows, error } = await updateQuery.select("id"));
+      }
 
       if (error || !updatedRows?.length) {
         console.error("[Supabase updateWebProduct error]", error);
@@ -923,6 +953,7 @@ export class SupabaseDataService {
       isPersonalized: Boolean(row.is_personalized),
       personalizationFields: row.personalization_fields || [],
       customizerMockupTemplateUrl: row.customizer_template_url,
+      customizerCanvas: row.customizer_canvas || undefined,
       volumeDiscountTiers: row.volume_discount_tiers || [],
       giftAddons: row.gift_addons || [],
       occasionTags: row.occasion_tags || [],
