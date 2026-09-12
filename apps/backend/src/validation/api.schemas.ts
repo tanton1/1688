@@ -308,6 +308,13 @@ export const aiGenerateCopySchema = z.object({
   tone: z.enum(["TRUSTWORTHY", "CONVERSION", "PREMIUM", "FRIENDLY"]).optional(),
   model: optionalText(100)
 }).strict();
+export const aiGenerateTemplateSchema = z.object({
+  name: text(300),
+  categoryName: text(300),
+  targetPlatform: z.enum(["ALL", "SHOPIFY", "WOOCOMMERCE", "SHOPEE", "TIKTOK_SHOP"]).optional(),
+  brief: optionalText(2_000),
+  model: optionalText(100)
+}).strict();
 export const aiTranslateImageSchema = z.object({ imageUrl: httpUrl, model: optionalText(100) }).strict();
 export const aiInpaintImageSchema = z.object({
   imageUrl: httpUrl,

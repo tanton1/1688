@@ -3,6 +3,7 @@ import {
   WooCommerceConfig,
   ShopifyConfig,
   AICopywritingStyle,
+  AITemplateDraftRequest,
   WebProduct
 } from "@hub1688/shared-types";
 import { storeConnectorsService } from "../services/store-connectors.service.js";
@@ -306,6 +307,28 @@ export class StoreConnectorsController {
         language: language || "VI",
         copy: copyResult,
         mode: ENV.DEMO_MODE && !aiGatewayService.isConfigured() ? "DEMO" : "LIVE"
+      });
+    } catch (error) {
+      this.sendAiError(res, error);
+    }
+  }
+
+  /**
+   * Tạo bản nháp Content + Variation cho trình biên tập template.
+   */
+  public async generateTemplateDraft(req: Request, res: Response): Promise<void> {
+    const payload = req.body as AITemplateDraftRequest;
+    const headerModel = req.header("x-ai-model") || undefined;
+
+    try {
+      const draft = await aiGatewayService.generateTemplateDraft({
+        ...payload,
+        model: payload.model || headerModel
+      });
+      res.json({
+        success: true,
+        mode: ENV.DEMO_MODE && !aiGatewayService.isConfigured() ? "DEMO" : "LIVE",
+        draft
       });
     } catch (error) {
       this.sendAiError(res, error);

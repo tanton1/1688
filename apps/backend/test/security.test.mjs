@@ -317,6 +317,31 @@ test("AI endpoints fail explicitly when the server has no provider key", async (
   inMemoryProducts.delete(id);
 });
 
+test("AI template drafts keep unverified catalog data safe in demo mode", async () => {
+  ENV.DEMO_MODE = true;
+  try {
+    const response = await request.post("/api/v1/ai/generate-template")
+      .set("Authorization", "Bearer test-admin-token")
+      .send({
+        name: "Template thời trang nhanh",
+        categoryName: "Thời Trang & May Mặc",
+        targetPlatform: "ALL",
+        brief: "Tạo Size và Màu để duyệt trước khi đăng"
+      })
+      .expect(200);
+
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.mode, "DEMO");
+    assert.ok(response.body.draft.content.attributes.length > 0);
+    assert.ok(response.body.draft.content.attributes.every(attribute => /Cần xác minh/.test(attribute.value)));
+    assert.ok(response.body.draft.variation.predefinedVariants.length > 0);
+    assert.ok(response.body.draft.variation.predefinedVariants.every(variant => variant.stock === 0));
+    assert.ok(response.body.draft.variation.predefinedVariants.every(variant => variant.priceAdjustmentVND === 0));
+  } finally {
+    ENV.DEMO_MODE = false;
+  }
+});
+
 test("VietQR checkout fails before stock reservation when bank details are missing", async () => {
   const id = "checkout-vietqr-no-bank";
   inMemoryProducts.set(id, {

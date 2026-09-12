@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   ProductTemplate,
   TemplateContentPreset,
@@ -28,7 +29,9 @@ import {
   Sliders,
   DollarSign,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Bot,
+  Loader2
 } from "lucide-react";
 
 interface TemplatesViewProps {
@@ -46,6 +49,16 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
   const [editingTemplate, setEditingTemplate] = useState<Partial<ProductTemplate> | null>(null);
   const [activeTab, setActiveTab] = useState<"CONTENT" | "VARIATION">("CONTENT");
   const [saving, setSaving] = useState(false);
+  const [aiBrief, setAiBrief] = useState("");
+  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState(false);
+  const [aiTemplateError, setAiTemplateError] = useState<string | null>(null);
+  const [aiTemplateResult, setAiTemplateResult] = useState<{
+    mode: "DEMO" | "LIVE";
+    warnings: string[];
+    attributes: number;
+    options: number;
+    variants: number;
+  } | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const editorDialogRef = useAccessibleDialog<HTMLDivElement>(isEditorOpen && Boolean(editingTemplate), () => setIsEditorOpen(false));
 
@@ -126,6 +139,9 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     };
     setEditingTemplate(defaultTpl);
     setActiveTab("CONTENT");
+    setAiBrief("");
+    setAiTemplateError(null);
+    setAiTemplateResult(null);
     setIsEditorOpen(true);
   };
 
@@ -134,6 +150,9 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     // Deep clone to prevent direct state mutation
     setEditingTemplate(JSON.parse(JSON.stringify(tpl)));
     setActiveTab("CONTENT");
+    setAiBrief("");
+    setAiTemplateError(null);
+    setAiTemplateResult(null);
     setIsEditorOpen(true);
   };
 
@@ -202,11 +221,22 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
 
     setSaving(true);
     try {
+      const safeTemplate: Partial<ProductTemplate> = {
+        ...editingTemplate,
+        variation: editingTemplate.variation ? {
+          ...editingTemplate.variation,
+          defaultStock: 0,
+          predefinedVariants: (editingTemplate.variation.predefinedVariants || []).map(variant => ({
+            ...variant,
+            stock: 0
+          }))
+        } : editingTemplate.variation
+      };
       if (editingTemplate.id) {
-        await AdminApi.updateTemplate(editingTemplate.id, editingTemplate);
+        await AdminApi.updateTemplate(editingTemplate.id, safeTemplate);
         showToast(`Đã cập nhật template "${editingTemplate.name}"!`);
       } else {
-        await AdminApi.createTemplate(editingTemplate);
+        await AdminApi.createTemplate(safeTemplate);
         showToast(`Đã tạo template mới "${editingTemplate.name}"!`);
       }
       setIsEditorOpen(false);
@@ -216,6 +246,57 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
       showToast("Lỗi lưu template: " + err.message, "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateTemplateWithAI = async () => {
+    if (!editingTemplate?.name?.trim()) {
+      setAiTemplateError("Hãy nhập tên template trước khi tạo bản nháp AI.");
+      return;
+    }
+    if (!editingTemplate.categoryName?.trim()) {
+      setAiTemplateError("Hãy chọn ngành hàng trước khi tạo bản nháp AI.");
+      return;
+    }
+
+    setIsGeneratingTemplate(true);
+    setAiTemplateError(null);
+    setAiTemplateResult(null);
+    try {
+      const response = await AdminApi.generateAITemplate({
+        name: editingTemplate.name.trim(),
+        categoryName: editingTemplate.categoryName.trim(),
+        targetPlatform: editingTemplate.targetPlatform || "ALL",
+        brief: aiBrief.trim() || undefined
+      });
+      const draft = response.draft;
+      setEditingTemplate(current => current ? ({
+        ...current,
+        description: draft.description,
+        content: draft.content,
+        variation: {
+          ...draft.variation,
+          defaultStock: 0,
+          predefinedVariants: (draft.variation.predefinedVariants || []).map(variant => ({
+            ...variant,
+            priceAdjustmentVND: 0,
+            stock: 0
+          }))
+        }
+      }) : current);
+      setAiTemplateResult({
+        mode: response.mode,
+        warnings: draft.warnings,
+        attributes: draft.content.attributes?.length || 0,
+        options: draft.variation.options.length,
+        variants: draft.variation.predefinedVariants?.length || 0
+      });
+      setActiveTab("CONTENT");
+      showToast("AI đã tạo bản nháp. Hãy rà soát Content và Variation trước khi lưu.");
+    } catch (error: any) {
+      setAiTemplateError(error?.message || "Không thể tạo template bằng AI lúc này.");
+    } finally {
+      setIsGeneratingTemplate(false);
     }
   };
 
@@ -455,6 +536,32 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     });
   };
 
+  const addFAQRow = () => {
+    if (!editingTemplate) return;
+    const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
+    setEditingTemplate({
+      ...editingTemplate,
+      content: { ...content, faqs: [...(content.faqs || []), { question: "", answer: "" }] }
+    });
+  };
+
+  const updateFAQRow = (index: number, question: string, answer: string) => {
+    if (!editingTemplate) return;
+    const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
+    const faqs = [...(content.faqs || [])];
+    faqs[index] = { question, answer };
+    setEditingTemplate({ ...editingTemplate, content: { ...content, faqs } });
+  };
+
+  const removeFAQRow = (index: number) => {
+    if (!editingTemplate) return;
+    const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
+    setEditingTemplate({
+      ...editingTemplate,
+      content: { ...content, faqs: (content.faqs || []).filter((_, faqIndex) => faqIndex !== index) }
+    });
+  };
+
   const insertContentBlock = (blockType: "HIGHLIGHTS" | "SPECS" | "POLICY" | "USAGE") => {
     if (!editingTemplate) return;
     const content = { ...(editingTemplate.content || {}) } as TemplateContentPreset;
@@ -466,7 +573,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     } else if (blockType === "POLICY") {
       snippet = `\n\n### CHÍNH SÁCH BẢO HÀNH VÀ ĐỔI TRẢ\n- [Chỉ điền thời hạn và điều kiện đang được cửa hàng áp dụng]\n- [Nêu rõ trường hợp được và không được hỗ trợ]\n- [Nêu kênh liên hệ xử lý yêu cầu]`;
     } else if (blockType === "USAGE") {
-      snippet = `\n\n### 💡 HƯỚNG DẪN SỬ DỤNG & BẢO QUẢN\n- Bảo quản ở nơi khô ráo thoáng mát, tránh ánh nắng trực tiếp.\n- Tránh tiếp xúc với hóa chất tẩy rửa mạnh.\n- Đọc kỹ hướng dẫn kèm theo hộp sản phẩm.`;
+      snippet = `\n\n### HƯỚNG DẪN SỬ DỤNG & BẢO QUẢN\n- [Bổ sung hướng dẫn đã xác minh theo sản phẩm]\n- [Bổ sung điều kiện bảo quản thực tế]\n- [Bổ sung cảnh báo an toàn nếu có]`;
     }
 
     setEditingTemplate({
@@ -739,31 +846,33 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
       )}
 
       {/* ===================== MODAL EDITOR ===================== */}
-      {isEditorOpen && editingTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div ref={editorDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Biên tập mẫu sản phẩm" className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col my-auto animate-in fade-in zoom-in duration-150">
+      {isEditorOpen && editingTemplate && createPortal(
+        <div className="fixed inset-0 z-50 bg-slate-100">
+          <div ref={editorDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="template-editor-title" className="flex h-[100dvh] w-screen max-w-none flex-col overflow-hidden border-0 bg-white shadow-2xl animate-in fade-in duration-150">
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80 rounded-t-2xl">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/90 px-4 py-3 sm:px-6 sm:py-4">
+              <div className="min-w-0">
+                <h2 id="template-editor-title" className="flex items-center gap-2 text-lg font-bold text-slate-900">
                   <LayoutTemplate className="w-5 h-5 text-indigo-600" />
                   {editingTemplate.id ? "Chỉnh Sửa Template Mẫu" : "Tạo Mới Template Mẫu"}
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-slate-500">
                   Cấu hình nội dung sẵn (Content) và biến thể sẵn (Variation) để áp dụng nhanh
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsEditorOpen(false)}
                 aria-label="Đóng biên tập mẫu"
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 active:bg-slate-300"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto">
             {/* General Info Bar */}
-            <div className="px-6 py-3 bg-indigo-50/50 border-b border-indigo-100 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="grid shrink-0 grid-cols-1 gap-3 border-b border-indigo-100 bg-indigo-50/50 px-4 py-3 text-xs sm:px-6 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">
                   Tên Template <span className="text-red-500">*</span>
@@ -773,7 +882,8 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                   value={editingTemplate.name || ""}
                   onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
                   placeholder="Ví dụ: Quà Tặng POD In Tên..."
-                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  autoComplete="off"
+                  className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -784,7 +894,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                 <select
                   value={editingTemplate.categoryName || "Quà Tặng & In Ấn (POD)"}
                   onChange={(e) => setEditingTemplate({ ...editingTemplate, categoryName: e.target.value })}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="Quà Tặng & In Ấn (POD)">Quà Tặng & In Ấn (POD)</option>
                   <option value="Thời Trang & May Mặc">Thời Trang & May Mặc</option>
@@ -796,8 +906,28 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                 </select>
               </div>
 
-              <div className="flex items-center gap-4 pt-4">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Nền Tảng Áp Dụng
+                </label>
+                <select
+                  value={editingTemplate.targetPlatform || "ALL"}
+                  onChange={(e) => setEditingTemplate({
+                    ...editingTemplate,
+                    targetPlatform: e.target.value as ProductTemplate["targetPlatform"]
+                  })}
+                  className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="ALL">Tất cả nền tảng</option>
+                  <option value="SHOPIFY">Shopify</option>
+                  <option value="WOOCOMMERCE">WooCommerce</option>
+                  <option value="SHOPEE">Shopee</option>
+                  <option value="TIKTOK_SHOP">TikTok Shop</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <label className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-lg border border-indigo-100 bg-white px-3 transition-colors hover:border-indigo-300">
                   <input
                     type="checkbox"
                     checked={editingTemplate.isDefault || false}
@@ -809,11 +939,76 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
               </div>
             </div>
 
+            {/* AI quick-create workspace */}
+            <section aria-labelledby="ai-template-title" className="shrink-0 border-b border-slate-800 bg-slate-950 px-4 py-3 text-white sm:px-6">
+              <div className="grid gap-3 lg:grid-cols-[minmax(220px,0.7fr)_minmax(320px,1.8fr)_auto] lg:items-end">
+                <div>
+                  <h3 id="ai-template-title" className="flex items-center gap-2 text-sm font-bold">
+                    <Bot className="h-4 w-4 text-violet-300" />
+                    Tạo nhanh Content + Variation bằng AI
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-300">
+                    AI tạo bản nháp để duyệt; không tự lưu, không sinh giá hoặc tồn kho.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="ai-template-brief" className="mb-1 block text-[11px] font-semibold text-slate-200">
+                    Mục tiêu sản phẩm / yêu cầu cho template
+                  </label>
+                  <input
+                    id="ai-template-brief"
+                    type="text"
+                    value={aiBrief}
+                    onChange={(event) => setAiBrief(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !isGeneratingTemplate) {
+                        event.preventDefault();
+                        handleGenerateTemplateWithAI();
+                      }
+                    }}
+                    placeholder="Ví dụ: quà tặng cá nhân hóa, cần Size × Combo và nội dung ngắn gọn"
+                    autoComplete="off"
+                    aria-describedby={aiTemplateError ? "ai-template-error" : "ai-template-help"}
+                    className="min-h-11 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-500 focus-visible:border-violet-400 focus-visible:ring-2 focus-visible:ring-violet-400/40"
+                  />
+                  <span id="ai-template-help" className="sr-only">AI chỉ tạo bản nháp, mọi dữ liệu cần được duyệt trước khi lưu.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateTemplateWithAI}
+                  disabled={isGeneratingTemplate}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/30 transition-colors hover:bg-violet-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 active:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isGeneratingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {isGeneratingTemplate ? "Đang tạo bản nháp…" : "Tạo bản nháp bằng AI"}
+                </button>
+              </div>
+              {aiTemplateError && (
+                <p id="ai-template-error" role="alert" className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-300">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {aiTemplateError}
+                </p>
+              )}
+              {aiTemplateResult && (
+                <div role="status" className="mt-3 flex flex-col gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-[11px] text-emerald-50 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <strong>Bản nháp {aiTemplateResult.mode === "LIVE" ? "AI live" : "demo"} đã sẵn sàng:</strong>{" "}
+                    {aiTemplateResult.attributes} thuộc tính, {aiTemplateResult.options} nhóm tùy chọn, {aiTemplateResult.variants} SKU.
+                  </div>
+                  <p className="max-w-3xl text-emerald-100">{aiTemplateResult.warnings.join(" ")}</p>
+                </div>
+              )}
+            </section>
+
             {/* Tabs Selector */}
-            <div className="flex border-b border-slate-200 bg-white px-6">
+            <div role="tablist" aria-label="Phần cấu hình template" className="sticky top-0 z-20 flex overflow-x-auto border-b border-slate-200 bg-white px-4 shadow-xs sm:px-6">
               <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "CONTENT"}
+                aria-controls="template-content-panel"
                 onClick={() => setActiveTab("CONTENT")}
-                className={`py-3 px-4 font-semibold text-xs border-b-2 flex items-center gap-2 transition-all ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 ${
                   activeTab === "CONTENT"
                     ? "border-indigo-600 text-indigo-600"
                     : "border-transparent text-slate-500 hover:text-slate-700"
@@ -823,8 +1018,12 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                 1. Nội Dung Sẵn (Tiêu Đề, Mô Tả, Bảo Hành, Thuộc Tính)
               </button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "VARIATION"}
+                aria-controls="template-variation-panel"
                 onClick={() => setActiveTab("VARIATION")}
-                className={`py-3 px-4 font-semibold text-xs border-b-2 flex items-center gap-2 transition-all ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 ${
                   activeTab === "VARIATION"
                     ? "border-indigo-600 text-indigo-600"
                     : "border-transparent text-slate-500 hover:text-slate-700"
@@ -836,10 +1035,23 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
             </div>
 
             {/* Modal Body Content */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+            <div className="space-y-6 bg-slate-50/50 p-4 sm:p-6">
               {/* TAB 1: CONTENT PRESET */}
               {activeTab === "CONTENT" && (
-                <div className="space-y-6">
+                <div id="template-content-panel" role="tabpanel" className="mx-auto max-w-7xl space-y-6">
+                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4">
+                    <label htmlFor="template-description" className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                      Mục đích và phạm vi của template
+                    </label>
+                    <textarea
+                      id="template-description"
+                      rows={2}
+                      value={editingTemplate.description || ""}
+                      onChange={(event) => setEditingTemplate({ ...editingTemplate, description: event.target.value })}
+                      placeholder="Mô tả khi nào nên dùng template này để đội vận hành chọn đúng mẫu."
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
                   {/* Section: Title Prefix / Suffix & Formula */}
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                     <div className="flex items-center justify-between">
@@ -925,30 +1137,30 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                         <button
                           type="button"
                           onClick={() => insertContentBlock("HIGHLIGHTS")}
-                          className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[11px] font-medium"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:min-h-8"
                         >
-                          + 🌟 Điểm nổi bật
+                          <Sparkles className="h-3.5 w-3.5" /> Điểm nổi bật
                         </button>
                         <button
                           type="button"
                           onClick={() => insertContentBlock("SPECS")}
-                          className="px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[11px] font-medium"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-medium text-purple-700 hover:bg-purple-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 sm:min-h-8"
                         >
-                          + 📐 Thông số
+                          <Package className="h-3.5 w-3.5" /> Thông số
                         </button>
                         <button
                           type="button"
                           onClick={() => insertContentBlock("POLICY")}
-                          className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[11px] font-medium"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 sm:min-h-8"
                         >
-                          + 🛡️ Cam kết
+                          <ShieldCheck className="h-3.5 w-3.5" /> Chính sách
                         </button>
                         <button
                           type="button"
                           onClick={() => insertContentBlock("USAGE")}
-                          className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded text-[11px] font-medium"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-amber-50 px-2 text-[11px] font-medium text-amber-700 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 sm:min-h-8"
                         >
-                          + 💡 Hướng dẫn
+                          <HelpCircle className="h-3.5 w-3.5" /> Hướng dẫn
                         </button>
                       </div>
                     </div>
@@ -974,34 +1186,39 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                       <button
                         type="button"
                         onClick={addAttributeRow}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                        className="flex min-h-11 items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         Thêm Thuộc Tính
                       </button>
                     </div>
 
+                    <p className="text-[11px] leading-5 text-slate-500">
+                      Attributes là thông tin mô tả chung như chất liệu, kích thước đóng gói hoặc xuất xứ; không tạo SKU. Tab Biến Thể dùng cho lựa chọn khách mua như Size hoặc Màu và sẽ tạo ma trận SKU.
+                    </p>
+
                     <div className="space-y-2">
                       {editingTemplate.content?.attributes?.map((attr, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
+                        <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(140px,1fr)_minmax(0,2fr)_44px] sm:items-center">
                           <input
                             type="text"
                             value={attr.key}
                             onChange={(e) => updateAttributeRow(idx, e.target.value, attr.value)}
                             placeholder="Tên thuộc tính (vd: Chất liệu)"
-                            className="w-1/3 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500"
+                            className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-indigo-500"
                           />
                           <input
                             type="text"
                             value={attr.value}
                             onChange={(e) => updateAttributeRow(idx, attr.key, e.target.value)}
                             placeholder="Giá trị đã xác minh từ nguồn"
-                            className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                            className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
                           />
                           <button
                             type="button"
                             onClick={() => removeAttributeRow(idx)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                            aria-label={`Xóa thuộc tính ${attr.key || idx + 1}`}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:justify-self-auto"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1063,29 +1280,93 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                           <button
                             type="button"
                             onClick={() => removeKeyword(kw)}
-                            className="text-slate-400 hover:text-red-500"
+                            aria-label={`Xóa từ khóa ${kw}`}
+                            className="inline-flex h-11 w-11 items-center justify-center text-slate-400 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:h-7 sm:w-7"
                           >
-                            ×
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         </span>
                       ))}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         type="text"
                         value={newKeywordInput}
                         onChange={(e) => setNewKeywordInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
                         placeholder="Thêm từ khóa SEO (nhấn Enter)..."
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                        className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
                       />
                       <button
                         type="button"
                         onClick={addKeyword}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold"
+                        className="min-h-11 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
                       >
                         Thêm
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Section: FAQ */}
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-800">
+                          <HelpCircle className="h-4 w-4 text-indigo-600" />
+                          Câu hỏi thường gặp (FAQ)
+                        </h4>
+                        <p className="mt-1 text-[11px] leading-5 text-slate-500">FAQ do AI tạo phải được duyệt và đối chiếu dữ liệu trước khi lưu.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addFAQRow}
+                        className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Thêm FAQ
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {editingTemplate.content?.faqs?.map((faq, index) => (
+                        <div key={index} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.8fr)_44px] lg:items-start">
+                          <div>
+                            <label htmlFor={`template-faq-question-${index}`} className="mb-1 block text-[11px] font-semibold text-slate-600">Câu hỏi</label>
+                            <input
+                              id={`template-faq-question-${index}`}
+                              type="text"
+                              value={faq.question}
+                              onChange={(event) => updateFAQRow(index, event.target.value, faq.answer)}
+                              placeholder="Khách hàng thường hỏi gì?"
+                              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor={`template-faq-answer-${index}`} className="mb-1 block text-[11px] font-semibold text-slate-600">Câu trả lời đã xác minh</label>
+                            <textarea
+                              id={`template-faq-answer-${index}`}
+                              rows={2}
+                              value={faq.answer}
+                              onChange={(event) => updateFAQRow(index, faq.question, event.target.value)}
+                              placeholder="Nhập câu trả lời hoặc giữ placeholder cần xác minh."
+                              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFAQRow(index)}
+                            aria-label={`Xóa FAQ ${faq.question || index + 1}`}
+                            className="inline-flex h-11 w-11 items-center justify-center justify-self-end rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 lg:mt-5 lg:justify-self-auto"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      {(!editingTemplate.content?.faqs || editingTemplate.content.faqs.length === 0) && (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+                          <HelpCircle className="mx-auto h-5 w-5 text-slate-400" />
+                          <p className="mt-2 text-xs text-slate-500">Chưa có FAQ. Thêm thủ công hoặc dùng AI để tạo khung câu hỏi.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1093,7 +1374,14 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
 
               {/* TAB 2: VARIATION PRESET */}
               {activeTab === "VARIATION" && (
-                <div className="space-y-6">
+                <div id="template-variation-panel" role="tabpanel" className="mx-auto max-w-7xl space-y-6">
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    <div>
+                      <p className="font-bold">Template và AI chỉ tạo cấu trúc phân loại.</p>
+                      <p className="mt-1 leading-5">Giá chênh lệch phải được người quản trị nhập; tồn kho luôn bằng 0 cho đến khi đồng bộ từ nguồn đã xác minh.</p>
+                    </div>
+                  </div>
                   {/* Quick Preset Buttons */}
                   <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div>
@@ -1110,37 +1398,37 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                       <button
                         type="button"
                         onClick={() => loadVariationPresetPreset("POD")}
-                        className="px-3 py-1.5 bg-white hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-lg text-xs font-semibold shadow-2xs"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-3 text-xs font-semibold text-purple-800 shadow-2xs hover:bg-purple-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                       >
-                        🎁 Quà Tặng POD (Size x Combo)
+                        <Package className="h-3.5 w-3.5" /> Quà Tặng POD (Size × Combo)
                       </button>
                       <button
                         type="button"
                         onClick={() => loadVariationPresetPreset("FASHION")}
-                        className="px-3 py-1.5 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-semibold shadow-2xs"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-800 shadow-2xs hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       >
-                        👕 Thời Trang (S-2XL x Màu)
+                        <Layers className="h-3.5 w-3.5" /> Thời Trang (S–2XL × Màu)
                       </button>
                       <button
                         type="button"
                         onClick={() => loadVariationPresetPreset("APPLIANCE")}
-                        className="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold shadow-2xs"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800 shadow-2xs hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                       >
-                        🏡 Gia Dụng (Model)
+                        <Truck className="h-3.5 w-3.5" /> Gia Dụng (Model)
                       </button>
                       <button
                         type="button"
                         onClick={() => loadVariationPresetPreset("TECH")}
-                        className="px-3 py-1.5 bg-white hover:bg-cyan-100 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-semibold shadow-2xs"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-cyan-200 bg-white px-3 text-xs font-semibold text-cyan-800 shadow-2xs hover:bg-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                       >
-                        ⌚ Công Nghệ (Vỏ x Dây)
+                        <Sliders className="h-3.5 w-3.5" /> Công Nghệ (Vỏ × Dây)
                       </button>
                     </div>
                   </div>
 
                   {/* Option Group 1 Builder */}
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                       <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-indigo-600" />
                         Nhóm Tùy Chọn 1 (Option 1)
@@ -1148,16 +1436,16 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                       <span className="text-[11px] text-slate-500">Ví dụ: Kích thước, Dung tích, Size...</span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center">
                       <input
                         type="text"
                         value={editingTemplate.variation?.options?.[0]?.name || "Kích thước (Size)"}
                         onChange={(e) => updateOptionName(0, e.target.value)}
                         placeholder="Tên nhóm tùy chọn 1"
-                        className="w-1/3 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                        className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 md:w-1/3"
                       />
 
-                      <div className="flex-1 flex items-center gap-2">
+                      <div className="flex w-full flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                         <input
                           type="text"
                           value={newOption1Val}
@@ -1170,7 +1458,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                             }
                           }}
                           placeholder="Thêm giá trị phân loại (nhấn Enter)..."
-                          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                          className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
                           type="button"
@@ -1178,7 +1466,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                             addOptionValue(0, newOption1Val);
                             setNewOption1Val("");
                           }}
-                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shrink-0"
+                          className="min-h-11 shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:w-auto"
                         >
                           Thêm Tag
                         </button>
@@ -1193,9 +1481,10 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                           <button
                             type="button"
                             onClick={() => removeOptionValue(0, idx)}
-                            className="text-slate-400 hover:text-red-500"
+                            aria-label={`Xóa giá trị ${val}`}
+                            className="inline-flex h-11 w-11 items-center justify-center text-slate-400 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:h-7 sm:w-7"
                           >
-                            ×
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         </span>
                       ))}
@@ -1204,7 +1493,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
 
                   {/* Option Group 2 Builder (Optional) */}
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-purple-600" />
                         Nhóm Tùy Chọn 2 (Option 2 - Tùy chọn mở rộng)
@@ -1213,7 +1502,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                         <button
                           type="button"
                           onClick={addSecondOptionGroup}
-                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                          className="flex min-h-11 items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           Thêm Nhóm Tùy Chọn 2
@@ -1222,7 +1511,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                         <button
                           type="button"
                           onClick={removeSecondOptionGroup}
-                          className="text-xs text-red-600 hover:text-red-700 font-medium"
+                          className="min-h-11 rounded-lg px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                         >
                           Xóa Nhóm 2
                         </button>
@@ -1231,16 +1520,16 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
 
                     {editingTemplate.variation?.options && editingTemplate.variation.options.length > 1 && (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
                           <input
                             type="text"
                             value={editingTemplate.variation.options[1].name}
                             onChange={(e) => updateOptionName(1, e.target.value)}
                             placeholder="Tên nhóm tùy chọn 2 (vd: Màu sắc)"
-                            className="w-1/3 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                            className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 md:w-1/3"
                           />
 
-                          <div className="flex-1 flex items-center gap-2">
+                          <div className="flex w-full flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                             <input
                               type="text"
                               value={newOption2Val}
@@ -1253,7 +1542,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                                 }
                               }}
                               placeholder="Thêm giá trị tùy chọn 2 (nhấn Enter)..."
-                              className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                              className="min-h-11 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500"
                             />
                             <button
                               type="button"
@@ -1261,7 +1550,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                                 addOptionValue(1, newOption2Val);
                                 setNewOption2Val("");
                               }}
-                              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shrink-0"
+                              className="min-h-11 shrink-0 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 sm:w-auto"
                             >
                               Thêm Tag
                             </button>
@@ -1275,9 +1564,10 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                               <button
                                 type="button"
                                 onClick={() => removeOptionValue(1, idx)}
-                                className="text-slate-400 hover:text-red-500"
+                                aria-label={`Xóa giá trị ${val}`}
+                                className="inline-flex h-11 w-11 items-center justify-center text-slate-400 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:h-7 sm:w-7"
                               >
-                                ×
+                                <X className="h-3.5 w-3.5" />
                               </button>
                             </span>
                           ))}
@@ -1387,13 +1677,14 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                 </div>
               )}
             </div>
+            </div>
 
             {/* Modal Footer Actions */}
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50/80 rounded-b-2xl flex items-center justify-between">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
               <button
                 type="button"
                 onClick={() => setIsEditorOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold rounded-xl text-xs transition-colors"
+                className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 active:bg-slate-200"
               >
                 Hủy Bỏ
               </button>
@@ -1403,11 +1694,11 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
                   type="button"
                   onClick={handleSaveTemplate}
                   disabled={saving}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-indigo-200 flex items-center gap-1.5 transition-all transform active:scale-95 disabled:opacity-50"
+                  className="flex min-h-11 items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-200 transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 active:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Đang Lưu...
                     </>
                   ) : (
@@ -1420,7 +1711,8 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

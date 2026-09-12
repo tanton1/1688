@@ -12,6 +12,8 @@ import {
   VisualSourcingRequest,
   VisualSourcingResponse,
   ProductTemplate,
+  AITemplateDraftRequest,
+  AITemplateDraftResponse,
   StorefrontConfig,
   StorefrontCheckoutRequest,
   CustomerOrder,
@@ -347,6 +349,13 @@ export const AdminApi = {
     return request("/api/v1/ai/generate-copy", {
       method: "POST",
       body: JSON.stringify({ productId, ...options })
+    });
+  },
+
+  async generateAITemplate(data: AITemplateDraftRequest): Promise<AITemplateDraftResponse> {
+    return request("/api/v1/ai/generate-template", {
+      method: "POST",
+      body: JSON.stringify(data)
     });
   },
 

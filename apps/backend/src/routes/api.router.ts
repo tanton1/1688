@@ -16,6 +16,7 @@ import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import {
   aiGenerateCopySchema,
+  aiGenerateTemplateSchema,
   aiInpaintImageSchema,
   aiTranslateImageSchema,
   bulkImportSchema,
@@ -148,6 +149,7 @@ apiRouter.post("/connectors/telegram/send-alert", requireRole("ADMIN"), validate
 apiRouter.get("/ai/config", requireRole("ADMIN"), (req, res) => connectorsCtrl.getAiConfig(req, res));
 apiRouter.post("/ai/config", requireRole("ADMIN"), (req, res) => connectorsCtrl.updateAiConfig(req, res));
 apiRouter.post("/ai/generate-copy", aiLimiter, requireRole("ADMIN"), validateBody(aiGenerateCopySchema), (req, res) => connectorsCtrl.generateAICopy(req, res));
+apiRouter.post("/ai/generate-template", aiLimiter, requireRole("ADMIN"), validateBody(aiGenerateTemplateSchema), (req, res) => connectorsCtrl.generateTemplateDraft(req, res));
 apiRouter.post("/ai/translate-image", aiLimiter, requireRole("ADMIN", "SOURCING"), validateBody(aiTranslateImageSchema), (req, res) => connectorsCtrl.translateImage(req, res));
 apiRouter.post("/ai/inpaint-image", aiLimiter, requireRole("ADMIN"), validateBody(aiInpaintImageSchema), (req, res) => connectorsCtrl.inpaintImage(req, res));
 

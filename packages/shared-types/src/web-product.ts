@@ -464,6 +464,27 @@ export interface ProductTemplate {
   updatedAt: string;
 }
 
+export interface AITemplateDraftRequest {
+  name: string;
+  categoryName: string;
+  targetPlatform?: "ALL" | "SHOPIFY" | "WOOCOMMERCE" | "SHOPEE" | "TIKTOK_SHOP";
+  brief?: string;
+  model?: string;
+}
+
+export interface AITemplateDraft {
+  description: string;
+  content: TemplateContentPreset;
+  variation: TemplateVariationPreset;
+  warnings: string[];
+}
+
+export interface AITemplateDraftResponse {
+  success: boolean;
+  mode: "LIVE" | "DEMO";
+  draft: AITemplateDraft;
+}
+
 export interface BulkSearchItem {
   offerId: string;
   title: string;
