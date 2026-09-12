@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
 import DOMPurify from "dompurify";
 import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
-import { validatePersonalizationValues } from "@hub1688/shared-utils";
+import {
+  buildStorefrontVariantGroups,
+  findStorefrontVariant,
+  getStorefrontVariantValue,
+  isStorefrontVariantOptionAvailable,
+  validatePersonalizationValues
+} from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { LiveCustomizerEngine } from "./LiveCustomizerEngine";
 import { VariantMockupPreview, getVariantVisual } from "./VariantMockupPreview";
@@ -18,11 +24,17 @@ import {
   Sparkles,
   Gift,
   Star,
-  Layers
+  Layers,
+  Maximize2,
+  ImageOff
 } from "lucide-react";
 
 interface StoreProductDetailModalProps {
   product: WebProduct;
+  fullPage?: boolean;
+  demoMode?: boolean;
+  relatedProducts?: WebProduct[];
+  onSelectRelated?: (product: WebProduct) => void;
   onClose: () => void;
   onAddToCart: (
     variant: WebProductVariant,
@@ -48,11 +60,15 @@ interface StoreProductDetailModalProps {
 
 export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = ({
   product,
+  fullPage = false,
+  demoMode = false,
+  relatedProducts = [],
+  onSelectRelated,
   onClose,
   onAddToCart,
   onBuyNow
 }) => {
-  const dialogRef = useAccessibleDialog<HTMLDivElement>(true, onClose);
+  const dialogRef = useAccessibleDialog<HTMLDivElement>(!fullPage, onClose);
 
   const validVariants = (product.variants || []).filter(v => v.selectedForSale !== false);
   const [selectedVariant, setSelectedVariant] = useState<WebProductVariant>(validVariants[0] || product.variants[0]);
@@ -66,6 +82,45 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const [variantPreviewActive, setVariantPreviewActive] = useState(validVariants.length <= 1);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<"desc" | "specs" | "reviews">("desc");
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [mediaLoadError, setMediaLoadError] = useState(false);
+  const [showMobilePurchaseBar, setShowMobilePurchaseBar] = useState(false);
+  const purchaseActionsRef = React.useRef<HTMLDivElement>(null);
+  const lightboxRef = useAccessibleDialog<HTMLDivElement>(isLightboxOpen, () => setIsLightboxOpen(false));
+
+  useEffect(() => {
+    if (!fullPage) return;
+    const previousTitle = document.title;
+    document.title = `${product.titleVI} — Macorner`;
+    window.scrollTo({ top: 0, behavior: "auto" });
+    return () => { document.title = previousTitle; };
+  }, [fullPage, product.titleVI]);
+
+  useEffect(() => setMediaLoadError(false), [activeMedia.url, activeMedia.type, mediaView]);
+
+  useEffect(() => {
+    const target = purchaseActionsRef.current;
+    if (!target) return;
+    let animationFrame = 0;
+    const update = () => setShowMobilePurchaseBar(target.getBoundingClientRect().bottom < 0);
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(update);
+    };
+    const observer = typeof IntersectionObserver === "undefined"
+      ? null
+      : new IntersectionObserver(scheduleUpdate, { threshold: 0 });
+    observer?.observe(target);
+    document.addEventListener("scroll", scheduleUpdate, true);
+    window.addEventListener("resize", scheduleUpdate);
+    update();
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer?.disconnect();
+      document.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [product.id]);
 
   // Customization & Add-ons state
   const [customizationValues, setCustomizationValues] = useState<Record<string, any>>({});
@@ -127,27 +182,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     return parts.length > 0 ? parts.join(" - ") : (v.sourceSkuId || "Phân loại chuẩn");
   };
 
-  const colorOptions = useMemo(() => {
-    const options = new Map<string, { label: string; imageUrl?: string }>();
-    validVariants.forEach(variant => {
-      const label = variant.colorName?.trim();
-      if (label && !options.has(label)) options.set(label, { label, imageUrl: variant.imageUrl });
-    });
-    return Array.from(options.values());
-  }, [product.variants]);
+  const variantGroups = useMemo(() => buildStorefrontVariantGroups(validVariants), [validVariants]);
 
-  const sizeOptions = useMemo(() => Array.from(new Set(
-    validVariants.map(variant => variant.sizeName?.trim()).filter(Boolean) as string[]
-  )), [product.variants]);
-
-  const selectVariantOption = (field: "colorName" | "sizeName", value: string) => {
-    const counterpart = field === "colorName" ? "sizeName" : "colorName";
-    const preferredCounterpart = selectedVariant?.[counterpart]?.trim();
-    const exact = validVariants.find(variant =>
-      variant[field]?.trim() === value && (!preferredCounterpart || variant[counterpart]?.trim() === preferredCounterpart)
-    );
-    const fallback = validVariants.find(variant => variant[field]?.trim() === value);
-    const next = exact || fallback;
+  const selectVariantOption = (field: string, value: string) => {
+    const next = findStorefrontVariant(validVariants, variantGroups, selectedVariant, field, value);
     if (next) handleSelectVariant(next);
   };
 
@@ -261,6 +299,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const resolvePersistentPreview = async (): Promise<string | undefined> => {
     if (!renderedPreviewUrl?.startsWith("data:")) return renderedPreviewUrl;
+    // Demo catalogs have no persistence backend. Keep the customer's field data
+    // in the cart, but use the product image instead of storing a large data URL.
+    if (demoMode) return undefined;
     if (persistedPreviewUrl) return persistedPreviewUrl;
     const response = await AdminApi.uploadCustomizationImage({
       dataUrl: renderedPreviewUrl,
@@ -298,34 +339,55 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const handleBuyNowClick = () => { void executePurchase("buy"); };
 
   const totalPriceCalculated = (currentPrice + addonsTotal) * quantity;
+  const lightboxImageUrl = mediaView === "mockup"
+    ? renderedPreviewUrl
+    : activeMedia.type === "image" ? activeMedia.url : undefined;
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const tabs = ["desc", "specs", "reviews"] as const;
+    const index = tabs.indexOf(activeTab);
+    const nextIndex = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index - 1 + tabs.length) % tabs.length : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const next = tabs[nextIndex];
+    setActiveTab(next);
+    document.getElementById(`product-tab-${next}`)?.focus();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/75 backdrop-blur-xs flex items-center justify-center sm:p-4 lg:p-6 animate-in fade-in duration-200">
+    <div className={fullPage ? "min-h-screen bg-[var(--mc-color-surface-canvas)]" : "fixed inset-0 z-50 overflow-y-auto bg-stone-950/75 backdrop-blur-xs flex items-center justify-center sm:p-4 lg:p-6 animate-in fade-in duration-200"}>
       <div
         ref={dialogRef}
         tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
+        role={fullPage ? "main" : "dialog"}
+        aria-modal={fullPage ? undefined : "true"}
         aria-label={product.titleVI}
-        className="relative bg-white w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] sm:rounded-3xl shadow-2xl max-w-5xl overflow-y-auto border border-stone-200 flex flex-col"
+        className={fullPage ? "relative mx-auto min-h-screen w-full max-w-7xl overflow-x-hidden bg-white border-x border-[var(--mc-color-border-default)]/10" : "relative bg-white w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] sm:rounded-3xl shadow-2xl max-w-5xl overflow-y-auto border border-stone-200 flex flex-col"}
       >
         {/* Close Button */}
         <button
           onClick={onClose}
-          aria-label="Đóng chi tiết sản phẩm"
-          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-full bg-white/90 hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors shadow-md border border-stone-200 cursor-pointer"
+          aria-label={fullPage ? "Quay lại danh sách sản phẩm" : "Đóng chi tiết sản phẩm"}
+          className={fullPage ? "mc-focus-ring absolute left-4 top-4 z-20 inline-flex min-h-11 items-center gap-2 rounded-full border border-stone-200 bg-white/95 px-4 text-xs font-bold text-stone-700 shadow-sm transition-colors hover:bg-stone-100 sm:left-6 sm:top-6" : "absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-full bg-white/90 hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors shadow-md border border-stone-200 cursor-pointer"}
         >
-          <X className="w-5 h-5" />
+          {fullPage ? <><X className="h-4 w-4" aria-hidden="true" /> Danh sách sản phẩm</> : <X className="w-5 h-5" />}
         </button>
 
-        <div className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 flex-1">
+        {fullPage && <nav aria-label="Breadcrumb" className="px-4 pb-0 pt-20 text-xs text-stone-500 sm:px-8 lg:px-10"><a href="#store-catalog" onClick={event => { event.preventDefault(); onClose(); }} className="mc-focus-ring rounded hover:text-[var(--mc-color-accent-strong)]">Trang chủ</a><span className="px-2" aria-hidden="true">/</span><span className="text-stone-900">{product.categoryName || "Sản phẩm"}</span><span className="px-2" aria-hidden="true">/</span><span className="line-clamp-1 inline-block max-w-[45%] align-bottom">{product.titleVI}</span></nav>}
+
+        <div className={fullPage ? "grid flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-12 lg:gap-10 lg:p-10" : "p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 flex-1"}>
           {/* Cột Trái: Media Gallery & Video */}
           <div className="lg:col-span-6 space-y-3 sm:space-y-4">
             {/* Active Display Window */}
             <div className="relative aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-200/90 shadow-inner group">
-              {mediaView === "mockup" && hasMockup ? (
+              {mediaLoadError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 bg-stone-100 px-6 text-center text-stone-500" role="img" aria-label="Không thể tải ảnh sản phẩm">
+                  <ImageOff className="h-8 w-8" aria-hidden="true" />
+                  <span className="text-xs font-semibold">Không thể tải ảnh này</span>
+                </div>
+              ) : mediaView === "mockup" && hasMockup ? (
                 renderedPreviewUrl
-                  ? <img src={renderedPreviewUrl} alt={`Bản xem trước ${product.titleVI}`} className="h-full w-full object-contain bg-slate-100" />
+                  ? <img src={renderedPreviewUrl} onError={() => setMediaLoadError(true)} alt={`Bản xem trước ${product.titleVI}`} className="h-full w-full object-contain bg-slate-100" />
                   : <VariantMockupPreview product={product} variant={variantPreviewActive ? selectedVariant : undefined} className="h-full rounded-none" />
               ) : activeMedia.type === "video" ? (
                 <video
@@ -338,6 +400,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 <img
                   src={activeMedia.url}
                   alt={product.titleVI}
+                  onError={() => setMediaLoadError(true)}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
               )}
@@ -345,7 +408,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               {/* Badges */}
               <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-10">
                 {product.isPersonalized && (
-                  <span className="bg-orange-600/95 backdrop-blur-xs text-white font-black text-[10px] px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 uppercase tracking-wider">
+                  <span className="bg-[var(--mc-color-action-primary)] backdrop-blur-xs text-white font-black text-[10px] px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 uppercase tracking-wider">
                     <Sparkles size={11} /> Có thể cá nhân hóa
                   </span>
                 )}
@@ -355,6 +418,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   </span>
                 )}
               </div>
+              <button type="button" onClick={() => lightboxImageUrl && setIsLightboxOpen(true)} disabled={!lightboxImageUrl || mediaLoadError} aria-label="Phóng to ảnh sản phẩm" className="mc-focus-ring absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/90 text-stone-700 shadow-md transition-colors hover:bg-white active:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"><Maximize2 className="h-4 w-4" aria-hidden="true" /></button>
             </div>
 
             {/* Thumbnails list */}
@@ -364,6 +428,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   type="button"
                   onClick={() => setMediaView("mockup")}
                   aria-label="Xem mockup nền trơn của biến thể"
+                  aria-pressed={mediaView === "mockup"}
                   className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-gradient-to-br from-slate-50 via-white to-slate-200 ${
                     mediaView === "mockup"
                       ? "border-orange-600 ring-2 ring-orange-500/20"
@@ -384,6 +449,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     setMediaView("source");
                     setActiveMedia({ type: "video", url: product.videoUrl! });
                   }}
+                  aria-label="Xem video sản phẩm"
+                  aria-pressed={mediaView === "source" && activeMedia.type === "video"}
                   className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all flex flex-col items-center justify-center bg-stone-900 text-white cursor-pointer ${
                     activeMedia.type === "video"
                       ? "border-orange-600 ring-2 ring-orange-500/20"
@@ -403,6 +470,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     setMediaView("source");
                     setActiveMedia({ type: "image", url: img });
                   }}
+                  aria-label={`Xem ảnh sản phẩm ${idx + 1}`}
+                  aria-pressed={mediaView === "source" && activeMedia.type === "image" && activeMedia.url === img}
                   className={`relative shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                     mediaView === "source" && activeMedia.type === "image" && activeMedia.url === img
                       ? "border-orange-600 ring-2 ring-orange-500/20"
@@ -417,7 +486,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             {/* Verified availability and policies */}
             <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-3 sm:p-3.5 space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-bold text-orange-950">
-                <ShoppingBag size={15} className="text-orange-600 shrink-0" />
+                <ShoppingBag size={15} className="shrink-0 text-[var(--mc-color-accent-strong)]" />
                 <span>{isOutOfStock ? "Phân loại này đang tạm hết hàng" : `Tồn kho hiện tại: ${currentStock.toLocaleString("vi-VN")} sản phẩm`}</span>
               </div>
               {product.shippingPolicy && (
@@ -436,11 +505,11 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           </div>
 
           {/* Cột Phải: Thông Tin, Trình Customizer & Đặt Mua */}
-          <div className="lg:col-span-6 flex flex-col justify-between space-y-4 sm:space-y-5">
+          <div className={`lg:col-span-6 flex flex-col justify-between space-y-4 sm:space-y-5 ${fullPage ? "lg:sticky lg:top-24 lg:self-start" : ""}`}>
             <div>
               {/* Category & Ratings */}
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                <span className="bg-orange-50 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--mc-color-accent-strong)] rounded-full">
                   {product.categoryName}
                 </span>
 
@@ -468,7 +537,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
               {/* Price Display */}
               <div className="mt-2.5 flex items-baseline gap-2.5 p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
-                <span className="text-2xl sm:text-3xl font-black text-orange-600 tracking-tight">
+                <span className="text-2xl sm:text-3xl font-black text-[var(--mc-color-accent-strong)] tracking-tight">
                   {currentPrice.toLocaleString("vi-VN")}đ
                 </span>
                 {discountPercent > 0 && (
@@ -477,6 +546,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   </span>
                 )}
               </div>
+              {currentStock > 0 && currentStock <= 10 && <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />Chỉ còn {currentStock.toLocaleString("vi-VN")} sản phẩm cho phân loại này</div>}
 
               {/* Volume Discount Tiers */}
               {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
@@ -492,6 +562,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                           key={idx}
                           type="button"
                           onClick={() => setQuantity(tier.minQty)}
+                          aria-pressed={isTierActive}
                           className={`p-2 rounded-xl text-left border transition-all text-xs flex flex-col justify-between cursor-pointer ${
                             isTierActive
                               ? "border-orange-500 bg-orange-50 text-orange-950 ring-2 ring-orange-500/20 font-bold"
@@ -512,7 +583,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               {/* Structured variant selector */}
               {validVariants.length > 1 && (
                 <div className="mt-4 space-y-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3" aria-live="polite">
                     <span className="text-xs font-bold text-stone-900">Chọn phân loại</span>
                     <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-bold text-orange-700">
                       <span className="truncate">{getVariantDisplayName(selectedVariant)}</span>
@@ -522,47 +593,26 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     </span>
                   </div>
 
-                  {colorOptions.length > 0 && (
-                    <div>
-                      <span className="mb-2 block text-[11px] font-semibold text-stone-500">Màu sắc / Mẫu ({colorOptions.length})</span>
-                      <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto pr-1">
-                        {colorOptions.map(option => {
-                          const selected = selectedVariant?.colorName?.trim() === option.label;
+                  {variantGroups.length > 0 ? variantGroups.map(group => (
+                    <fieldset key={group.key} className="m-0 min-w-0 border-0 p-0">
+                      <legend className="mb-2 block text-[11px] font-semibold text-stone-500">{group.label} ({group.options.length})</legend>
+                      <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                        {group.options.map(option => {
+                          const selected = getStorefrontVariantValue(selectedVariant, group.key) === option.label;
+                          const available = isStorefrontVariantOptionAvailable(validVariants, variantGroups, selectedVariant, group.key, option.label);
                           return (
-                            <button key={option.label} type="button" onClick={() => selectVariantOption("colorName", option.label)} className={`flex min-w-0 items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-left text-[11px] font-semibold transition-all ${selected ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-400/15" : "border-stone-200 bg-white text-stone-700 hover:border-stone-400"}`}>
-                              {option.imageUrl && <img src={option.imageUrl} alt={option.label} className="h-9 w-9 shrink-0 rounded-lg border border-stone-200 object-cover" />}
-                              <span className="max-w-32 truncate">{option.label}</span>
-                              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-orange-600" />}
+                            <button key={option.label} type="button" disabled={!available} aria-pressed={selected} onClick={() => selectVariantOption(group.key, option.label)} className={`mc-focus-ring flex min-h-11 min-w-0 items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-left text-[11px] font-semibold transition-all active:scale-[0.98] ${selected ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-400/15" : available ? "border-stone-200 bg-white text-stone-700 hover:border-orange-400" : "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400 line-through"}`}>
+                              {option.imageUrl && <img src={option.imageUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-stone-200 object-cover" />}
+                              <span className="max-w-36 truncate">{option.label}</span>
+                              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--mc-color-accent-strong)]" aria-hidden="true" />}
                             </button>
                           );
                         })}
                       </div>
-                    </div>
-                  )}
-
-                  {sizeOptions.length > 0 && (
-                    <div>
-                      <span className="mb-2 block text-[11px] font-semibold text-stone-500">Kích thước / Quy cách ({sizeOptions.length})</span>
-                      <div className="flex flex-wrap gap-2">
-                        {sizeOptions.map(size => {
-                          const selected = selectedVariant?.sizeName?.trim() === size;
-                          const available = validVariants.some(variant => variant.sizeName?.trim() === size && (!selectedVariant?.colorName || variant.colorName === selectedVariant.colorName) && (variant.stockQuantity ?? 0) > 0);
-                          return (
-                            <button key={size} type="button" onClick={() => selectVariantOption("sizeName", size)} className={`min-w-11 rounded-lg border px-3 py-2 text-[11px] font-bold transition-all ${selected ? "border-orange-500 bg-orange-600 text-white shadow-sm" : available ? "border-stone-300 bg-white text-stone-700 hover:border-orange-400" : "border-stone-200 bg-stone-100 text-stone-400"}`}>
-                              {size}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {colorOptions.length === 0 && sizeOptions.length === 0 && (
+                    </fieldset>
+                  )) : (
                     <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
-                      {validVariants.map(variant => {
-                        const selected = selectedVariant?.sourceSkuId === variant.sourceSkuId;
-                        return <button key={variant.sourceSkuId} type="button" onClick={() => handleSelectVariant(variant)} className={`rounded-lg border px-3 py-2 text-[11px] font-semibold ${selected ? "border-orange-500 bg-orange-50 text-orange-700" : "border-stone-200 bg-white text-stone-700"}`}>{getVariantDisplayName(variant)}</button>;
-                      })}
+                      {validVariants.map(variant => <button key={variant.sourceSkuId} type="button" aria-pressed={selectedVariant?.sourceSkuId === variant.sourceSkuId} onClick={() => handleSelectVariant(variant)} className={`mc-focus-ring min-h-11 rounded-lg border px-3 py-2 text-[11px] font-semibold active:scale-[0.98] ${selectedVariant?.sourceSkuId === variant.sourceSkuId ? "border-orange-500 bg-orange-50 text-orange-700" : "border-stone-200 bg-white text-stone-700 hover:border-orange-400"}`}>{getVariantDisplayName(variant)}</button>)}
                     </div>
                   )}
                 </div>
@@ -614,7 +664,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                               )}
                             </div>
                           </div>
-                          <span className="font-bold text-orange-600">
+                          <span className="font-bold text-[var(--mc-color-accent-strong)]">
                             +{addon.priceVND.toLocaleString("vi-VN")}đ
                           </span>
                         </label>
@@ -657,18 +707,18 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               </div>
             </div>
 
-            {/* Desktop Action CTA Buttons */}
-            <div className="hidden sm:block pt-4 border-t border-stone-100 space-y-2.5">
+            {/* Primary purchase actions; the mobile sticky bar takes over after this block scrolls away. */}
+            <div ref={purchaseActionsRef} className="space-y-2.5 border-t border-stone-100 pt-4" aria-busy={isPreparingPurchase}>
               {purchaseError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{purchaseError}</div>}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   disabled={isOutOfStock || isPreparingPurchase}
                   onClick={handleAddToCartClick}
-                  className={`py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
+                  className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
                     isOutOfStock || isPreparingPurchase
                       ? "bg-stone-100 text-stone-400 cursor-not-allowed"
-                      : "bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 shadow-xs"
+                      : "bg-orange-50 hover:bg-orange-100 text-[var(--mc-color-accent-strong)] border border-orange-200 shadow-xs"
                   }`}
                 >
                   <ShoppingBag className="w-4 h-4" />
@@ -679,10 +729,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   type="button"
                   disabled={isOutOfStock || isPreparingPurchase}
                   onClick={handleBuyNowClick}
-                  className={`py-3.5 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
+                  className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
                     isOutOfStock || isPreparingPurchase
                       ? "bg-stone-300 cursor-not-allowed"
-                      : "bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 shadow-orange-600/30"
+                      : "bg-[var(--mc-color-action-primary)] hover:bg-[var(--mc-color-action-primary-hover)] shadow-orange-950/20"
                   }`}
                 >
                   <Zap className="w-4 h-4 fill-current" />
@@ -695,32 +745,53 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
         {/* Tabs: Description, Specs, Reviews */}
         <div className="border-t border-stone-200 px-4 sm:px-8 py-5 sm:py-6 bg-stone-50/60 pb-24 sm:pb-6">
-          <div className="flex items-center gap-3 sm:gap-4 border-b border-stone-200 pb-2.5 mb-4 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-3 sm:gap-4 border-b border-stone-200 pb-2.5 mb-4 overflow-x-auto no-scrollbar" role="tablist" aria-label="Thông tin sản phẩm">
             <button
+              id="product-tab-desc"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "desc"}
+              aria-controls="product-panel-desc"
+              tabIndex={activeTab === "desc" ? 0 : -1}
               onClick={() => setActiveTab("desc")}
-              className={`text-xs font-bold pb-1 transition-all whitespace-nowrap cursor-pointer ${
+              onKeyDown={handleTabKeyDown}
+              className={`mc-focus-ring rounded-sm text-xs font-bold pb-1 transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === "desc"
-                  ? "text-orange-600 border-b-2 border-orange-600"
+                  ? "text-[var(--mc-color-accent-strong)] border-b-2 border-[var(--mc-color-accent-strong)]"
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
               Mô Tả Sản Phẩm & Chính Sách
             </button>
             <button
+              id="product-tab-specs"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "specs"}
+              aria-controls="product-panel-specs"
+              tabIndex={activeTab === "specs" ? 0 : -1}
               onClick={() => setActiveTab("specs")}
-              className={`text-xs font-bold pb-1 transition-all whitespace-nowrap cursor-pointer ${
+              onKeyDown={handleTabKeyDown}
+              className={`mc-focus-ring rounded-sm text-xs font-bold pb-1 transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === "specs"
-                  ? "text-orange-600 border-b-2 border-orange-600"
+                  ? "text-[var(--mc-color-accent-strong)] border-b-2 border-[var(--mc-color-accent-strong)]"
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
               Thông Số Kỹ Thuật ({product.attributes?.length || 0})
             </button>
             <button
+              id="product-tab-reviews"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "reviews"}
+              aria-controls="product-panel-reviews"
+              tabIndex={activeTab === "reviews" ? 0 : -1}
               onClick={() => setActiveTab("reviews")}
-              className={`text-xs font-bold pb-1 transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
+              onKeyDown={handleTabKeyDown}
+              className={`mc-focus-ring rounded-sm text-xs font-bold pb-1 transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer ${
                 activeTab === "reviews"
-                  ? "text-orange-600 border-b-2 border-orange-600"
+                  ? "text-[var(--mc-color-accent-strong)] border-b-2 border-[var(--mc-color-accent-strong)]"
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
@@ -731,7 +802,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
           {/* Tab contents */}
           {activeTab === "desc" && (
-            <div className="max-h-[28rem] space-y-5 overflow-y-auto pr-2">
+            <div id="product-panel-desc" role="tabpanel" aria-labelledby="product-tab-desc" tabIndex={0} className="mc-focus-ring max-h-[28rem] space-y-5 overflow-y-auto pr-2">
               <div className="prose prose-sm max-w-none whitespace-pre-line text-xs leading-6 text-stone-700" dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
               {(product.detailImages || []).length > 0 && (
                 <div className="space-y-3 border-t border-stone-200 pt-5">
@@ -747,7 +818,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           )}
 
           {activeTab === "specs" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div id="product-panel-specs" role="tabpanel" aria-labelledby="product-tab-specs" tabIndex={0} className="mc-focus-ring grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               {(!product.attributes || product.attributes.length === 0) && (
                 <div className="sm:col-span-2 p-3 text-center text-stone-500 bg-white border border-stone-200 rounded-xl">Chưa có thông số kỹ thuật.</div>
               )}
@@ -761,7 +832,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           )}
 
           {activeTab === "reviews" && (
-            <div className="space-y-2.5 max-h-60 sm:max-h-72 overflow-y-auto pr-2">
+            <div id="product-panel-reviews" role="tabpanel" aria-labelledby="product-tab-reviews" tabIndex={0} className="mc-focus-ring space-y-2.5 max-h-60 sm:max-h-72 overflow-y-auto pr-2">
               <div className="p-4 bg-white rounded-xl border border-stone-200 text-center space-y-1">
                 {hasReviews ? (
                   <>
@@ -777,12 +848,19 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           )}
         </div>
 
-        {/* Sticky Mobile Bottom Bar (Always available when scrolling on mobile) */}
-        <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200/90 p-3 flex items-center justify-between gap-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+        {fullPage && relatedProducts.length > 0 && <section className="border-t border-stone-200 bg-white px-4 py-8 sm:px-8 lg:px-10" aria-labelledby="related-products-heading">
+          <div className="mb-4 flex items-end justify-between gap-3"><div><p className="mc-eyebrow">Gợi ý cho bạn</p><h2 id="related-products-heading" className="mt-1 text-xl font-black tracking-tight text-stone-900">Có thể bạn cũng thích</h2></div></div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {relatedProducts.slice(0, 4).map(related => <button key={related.id || related.slug} type="button" onClick={() => onSelectRelated?.(related)} className="mc-focus-ring group overflow-hidden rounded-2xl border border-stone-200 bg-white text-left transition-shadow hover:shadow-lg"><div className="aspect-square overflow-hidden bg-stone-100">{related.primaryImage ? <img src={related.primaryImage} alt={related.titleVI} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" /> : <div className="grid h-full place-items-center text-xs text-stone-400">Chưa có ảnh</div>}</div><div className="p-3"><p className="line-clamp-2 min-h-10 text-xs font-bold leading-5 text-stone-800">{related.titleVI}</p><span className="mt-2 block text-sm font-black text-[var(--mc-color-accent-strong)]">{(related.minPriceVND || 0).toLocaleString("vi-VN")}đ</span></div></button>)}
+          </div>
+        </section>}
+
+        {/* Sticky mobile purchase bar appears only after the primary actions scroll above the viewport. */}
+        {showMobilePurchaseBar && <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200/90 p-3 flex items-center justify-between gap-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]" aria-busy={isPreparingPurchase}>
           {purchaseError && <div role="alert" className="absolute inset-x-3 bottom-full mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-semibold text-rose-700 shadow-lg">{purchaseError}</div>}
           <div className="min-w-0 flex-1">
             <div className="text-[10px] text-stone-500 truncate">{getVariantDisplayName(selectedVariant)}</div>
-            <div className="text-base font-black text-orange-600 leading-tight">
+            <div className="text-base font-black text-[var(--mc-color-accent-strong)] leading-tight">
               {totalPriceCalculated.toLocaleString("vi-VN")}đ
             </div>
           </div>
@@ -791,22 +869,29 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               type="button"
               disabled={isOutOfStock || isPreparingPurchase}
               onClick={handleAddToCartClick}
-              className="px-3.5 py-2.5 rounded-xl font-bold text-xs bg-orange-50 text-orange-600 border border-orange-200 flex items-center gap-1 active:scale-95 cursor-pointer"
+              className="mc-focus-ring min-h-11 px-3.5 py-2.5 rounded-xl font-bold text-xs bg-orange-50 text-[var(--mc-color-accent-strong)] border border-orange-200 flex items-center gap-1 transition-colors hover:bg-orange-100 active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400 cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Thêm Giỏ</span>
+              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : "Thêm Giỏ"}</span>
             </button>
             <button
               type="button"
               disabled={isOutOfStock || isPreparingPurchase}
               onClick={handleBuyNowClick}
-              className="px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-orange-600 to-amber-600 shadow-md shadow-orange-500/25 flex items-center gap-1 active:scale-95 cursor-pointer"
+              className="mc-focus-ring min-h-11 px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-[var(--mc-color-action-primary)] shadow-md shadow-orange-950/20 flex items-center gap-1 transition-colors hover:bg-[var(--mc-color-action-primary-hover)] active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none cursor-pointer"
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>Mua Ngay</span>
+              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : "Mua Ngay"}</span>
             </button>
           </div>
-        </div>
+        </div>}
+
+        {isLightboxOpen && lightboxImageUrl && (
+          <div ref={lightboxRef} tabIndex={-1} className="fixed inset-0 z-[70] grid place-items-center bg-stone-950/90 p-4" role="dialog" aria-modal="true" aria-label="Ảnh sản phẩm phóng to">
+            <button type="button" onClick={() => setIsLightboxOpen(false)} className="mc-focus-ring absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white text-stone-900 shadow-lg" aria-label="Đóng ảnh phóng to"><X className="h-5 w-5" aria-hidden="true" /></button>
+            <img src={lightboxImageUrl} alt={product.titleVI} className="max-h-[90dvh] max-w-[94vw] rounded-xl object-contain shadow-2xl" />
+          </div>
+        )}
       </div>
     </div>
   );

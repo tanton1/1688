@@ -21,6 +21,18 @@ const TemplatesView = React.lazy(() => import("./components/TemplatesView").then
 const StorefrontView = React.lazy(() => import("./storefront/StorefrontView").then(module => ({ default: module.StorefrontView })));
 const StoreSettingsModal = React.lazy(() => import("./storefront/StoreSettingsModal").then(module => ({ default: module.StoreSettingsModal })));
 const LoadingPanel = () => <div role="status" className="grid min-h-40 place-items-center text-sm font-semibold text-slate-500">Đang tải phân hệ…</div>;
+const getStorefrontRoute = () => {
+  if (typeof window === "undefined") return { isStorefront: false, product: null as string | null, collection: null as string | null };
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const params = new URLSearchParams(window.location.search);
+  const productPath = path.match(/\/(?:store\/)?products\/([^/]+)/i)?.[1] || null;
+  const collectionPath = path.match(/\/(?:store\/)?collections\/([^/]+)/i)?.[1] || null;
+  return {
+    isStorefront: path.startsWith("/shop") || path.startsWith("/store") || path.startsWith("/products") || path.startsWith("/collections") || params.get("view") === "store" || params.get("view") === "shop",
+    product: productPath || params.get("product"),
+    collection: collectionPath || params.get("collection")
+  };
+};
 const hasPasswordRecoveryLink = (): boolean => {
   if (typeof window === "undefined") return false;
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -42,32 +54,24 @@ export const App: React.FC = () => {
 
   // Web Bán Hàng Trực Tiếp (Storefront State)
   const [viewMode, setViewMode] = useState<"admin" | "storefront">(() => {
-    if (typeof window !== "undefined") {
-      const path = window.location.pathname.toLowerCase();
-      const params = new URLSearchParams(window.location.search);
-      if (path.startsWith("/shop") || path.startsWith("/store") || params.get("view") === "store" || params.get("view") === "shop") {
-        return "storefront";
-      }
-    }
-    return "admin";
+    return getStorefrontRoute().isStorefront ? "storefront" : "admin";
   });
   const [storefrontProductId, setStorefrontProductId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("product") || null;
-    }
-    return null;
+    return getStorefrontRoute().product;
   });
+  const [storefrontCollection, setStorefrontCollection] = useState<string | null>(() => getStorefrontRoute().collection);
   const [showStoreSettingsModal, setShowStoreSettingsModal] = useState(false);
 
   const openStorefront = (productId?: string) => {
     setStorefrontProductId(productId || null);
+    setStorefrontCollection(null);
     setViewMode("storefront");
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("view", "store");
       if (productId) url.searchParams.set("product", productId);
       else url.searchParams.delete("product");
+      url.pathname = "/store";
       window.history.pushState({}, "", url.toString());
     } catch {}
   };
@@ -78,9 +82,21 @@ export const App: React.FC = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete("view");
       url.searchParams.delete("product");
+      url.pathname = "/";
       window.history.pushState({}, "", url.toString());
     } catch {}
   };
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const route = getStorefrontRoute();
+      setViewMode(route.isStorefront ? "storefront" : "admin");
+      setStorefrontProductId(route.product);
+      setStorefrontCollection(route.collection);
+    };
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
 
   // Authentication & Role State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
@@ -403,6 +419,7 @@ export const App: React.FC = () => {
           onBackToAdmin={openAdmin}
           onShowToast={showToast}
           initialProductId={storefrontProductId}
+          initialCollection={storefrontCollection}
         /></React.Suspense>
 
         <React.Suspense fallback={null}><StoreSettingsModal
@@ -526,6 +543,7 @@ export const App: React.FC = () => {
                   onBackToAdmin={() => setCurrentTab("PRODUCTS")}
                   onShowToast={showToast}
                   initialProductId={storefrontProductId}
+                  initialCollection={storefrontCollection}
                 />
               </React.Suspense>
             </div>

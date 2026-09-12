@@ -3,7 +3,7 @@ import { inMemoryProducts } from "./import.controller.js";
 import { ordersService } from "../services/orders.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { StorefrontConfig, StorefrontCheckoutRequest, WebProduct, CustomerOrder, CustomerOrderItem } from "@hub1688/shared-types";
-import { calculateStorefrontPricing, generateVietQRUrl, validatePersonalizationValues } from "@hub1688/shared-utils";
+import { calculateStorefrontPricing, generateVietQRUrl, normalizeCatalogKey, validatePersonalizationValues } from "@hub1688/shared-utils";
 import { supabaseService } from "../services/supabase.service.js";
 import { mediaMirrorService } from "../services/media-mirror.service.js";
 import crypto from "node:crypto";
@@ -174,7 +174,7 @@ export class StorefrontController {
    * Lấy danh sách sản phẩm đang bán (status === PUBLISHED) cho khách hàng
    */
   public async listPublicProducts(req: Request, res: Response): Promise<void> {
-    const { category, search, sort, minPrice, maxPrice, page: rawPage, limit: rawLimit } = req.query as Record<string, string>;
+    const { category, collection, search, sort, minPrice, maxPrice, occasion, recipient, personalized, page: rawPage, limit: rawLimit } = req.query as Record<string, string>;
     const page = Math.max(1, Number.parseInt(rawPage || "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(rawLimit || "50", 10) || 50));
     let published: WebProduct[];
@@ -190,6 +190,23 @@ export class StorefrontController {
     // Lọc theo danh mục
     if (category && category !== "ALL") {
       published = published.filter(p => p.categoryName?.toLowerCase() === category.toLowerCase());
+    } else if (collection) {
+      const wantedCollection = normalizeCatalogKey(collection);
+      published = published.filter(p => normalizeCatalogKey(p.categoryName || "") === wantedCollection);
+    }
+
+    // Lọc theo ngữ cảnh mua quà. Các tag được chuẩn hóa ở lớp import/editor,
+    // nhưng vẫn so sánh không phân biệt hoa thường để giữ contract ổn định với dữ liệu cũ.
+    if (occasion && occasion !== "all") {
+      const wanted = occasion.trim().toLowerCase();
+      published = published.filter(p => (p.occasionTags || []).some(tag => tag.toLowerCase() === wanted));
+    }
+    if (recipient && recipient !== "all") {
+      const wanted = recipient.trim().toLowerCase();
+      published = published.filter(p => (p.recipientTags || []).some(tag => tag.toLowerCase() === wanted));
+    }
+    if (personalized === "1" || personalized === "true") {
+      published = published.filter(p => p.isPersonalized === true);
     }
 
     // Tìm kiếm theo từ khóa

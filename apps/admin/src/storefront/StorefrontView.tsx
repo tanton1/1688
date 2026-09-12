@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { WebProduct, WebProductVariant, StorefrontConfig, CustomerOrder } from "@hub1688/shared-types";
+import { normalizeCatalogKey } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { StoreHeader } from "./StoreHeader";
 import { StoreHeroBanner } from "./StoreHeroBanner";
 import { StoreProductCard } from "./StoreProductCard";
 import { StoreProductDetailModal } from "./StoreProductDetailModal";
+import { StoreCollectionFilters } from "./StoreCollectionFilters";
 import { StoreCartDrawer, CartItem } from "./StoreCartDrawer";
 import { StoreCheckoutModal } from "./StoreCheckoutModal";
 import { StoreOrderSuccessModal } from "./StoreOrderSuccessModal";
@@ -16,7 +18,6 @@ import { DEMO_MACORNER_PRODUCTS } from "./demoMacornerCatalog";
 import { createCustomizationId } from "./personalizationImage";
 import {
   Filter,
-  ArrowUpDown,
   ShoppingBag,
   Layers,
   Sparkles,
@@ -32,14 +33,17 @@ interface StorefrontViewProps {
   onBackToAdmin: () => void;
   onShowToast: (message: string, type?: "success" | "error") => void;
   initialProductId?: string | null;
+  initialCollection?: string | null;
 }
 
 const STOREFRONT_DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+const STORE_PAGE_SIZE = 24;
 
 export const StorefrontView: React.FC<StorefrontViewProps> = ({
   onBackToAdmin,
   onShowToast,
-  initialProductId
+  initialProductId,
+  initialCollection
 }) => {
   // Store Config
   const [config, setConfig] = useState<StorefrontConfig>({
@@ -57,12 +61,21 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   // Products & Categories
   const [products, setProducts] = useState<WebProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("ALL");
-  const [activeOccasion, setActiveOccasion] = useState<string>("all");
-  const [activeRecipient, setActiveRecipient] = useState<string>("all");
+  const queryParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const [selectedCategory, setSelectedCategory] = useState(queryParams.get("category") || "ALL");
+  const [activeOccasion, setActiveOccasion] = useState<string>(queryParams.get("occasion") || "all");
+  const [activeRecipient, setActiveRecipient] = useState<string>(queryParams.get("recipient") || "all");
+  const [personalizedOnly, setPersonalizedOnly] = useState(queryParams.get("personalized") === "1");
+  const [priceBand, setPriceBand] = useState<"ALL" | "UNDER_300K" | "UNDER_500K" | "OVER_500K">((queryParams.get("price") as any) || "ALL");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [appliedDiscountCode, setAppliedDiscountCode] = useState<string>("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState<"NEWEST" | "PRICE_ASC" | "PRICE_DESC">("NEWEST");
+  const [searchTerm, setSearchTerm] = useState(queryParams.get("search") || "");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(queryParams.get("search") || "");
+  const [sortBy, setSortBy] = useState<"NEWEST" | "PRICE_ASC" | "PRICE_DESC">((queryParams.get("sort") as any) || "NEWEST");
+  const [visibleCount, setVisibleCount] = useState(24);
+  const [catalogTotal, setCatalogTotal] = useState(0);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [catalogMode, setCatalogMode] = useState<"LIVE" | "DEMO">("LIVE");
@@ -94,6 +107,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   // Modals State
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<WebProduct | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<WebProduct[]>([]);
+  const [isProductRoute, setIsProductRoute] = useState(Boolean(initialProductId));
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [lastCreatedOrder, setLastCreatedOrder] = useState<CustomerOrder | null>(null);
   const [lastQrCodeUrl, setLastQrCodeUrl] = useState<string | undefined>(undefined);
@@ -102,6 +117,32 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
 
   const catalogRef = useRef<HTMLDivElement | null>(null);
+
+  const collectionCategory = useMemo(
+    () => initialCollection
+      ? categories.find(category => normalizeCatalogKey(category) === normalizeCatalogKey(initialCollection))
+      : undefined,
+    [categories, initialCollection]
+  );
+
+  const priceQuery = useMemo(() => {
+    if (priceBand === "UNDER_300K") return { maxPrice: 299999 };
+    if (priceBand === "UNDER_500K") return { maxPrice: 499999 };
+    if (priceBand === "OVER_500K") return { minPrice: 500000 };
+    return {};
+  }, [priceBand]);
+
+  const catalogRequestParams = useMemo(() => ({
+    category: selectedCategory !== "ALL" ? selectedCategory : undefined,
+    collection: initialCollection || undefined,
+    search: debouncedSearchTerm.trim() || undefined,
+    occasion: activeOccasion !== "all" ? activeOccasion : undefined,
+    recipient: activeRecipient !== "all" ? activeRecipient : undefined,
+    personalized: personalizedOnly || undefined,
+    ...priceQuery,
+    sort: sortBy,
+    limit: STORE_PAGE_SIZE
+  }), [selectedCategory, initialCollection, debouncedSearchTerm, activeOccasion, activeRecipient, personalizedOnly, priceQuery, sortBy]);
 
   // Sync Cart to localStorage
   useEffect(() => {
@@ -113,34 +154,44 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   }, [cart]);
 
   // Load Store Info & Products
-  const loadStoreData = async () => {
+  const loadStoreData = useCallback(async () => {
     setIsLoading(true);
     setLoadError("");
     try {
-      const loadCatalog = async () => {
-        const first = await AdminApi.getStoreProducts({ page: 1, limit: 100 });
-        const all = [...(first.products || [])];
-        const pages = Math.ceil((first.total || 0) / 100);
-        if (pages > 1) {
-          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, index) =>
-            AdminApi.getStoreProducts({ page: index + 2, limit: 100 })
-          ));
-          for (const response of rest) all.push(...(response.products || []));
-        }
-        return { ...first, products: all };
-      };
-      const [infoResult, productsResult] = await Promise.allSettled([
+      const dataRequest = initialProductId
+        ? AdminApi.getStoreProductDetail(initialProductId)
+        : AdminApi.getStoreProducts({ ...catalogRequestParams, page: 1 });
+      const [infoResult, dataResult] = await Promise.allSettled([
         AdminApi.getStoreInfo(),
-        loadCatalog()
+        dataRequest
       ]);
 
       const infoRes = infoResult.status === "fulfilled" ? infoResult.value : null;
-      if (productsResult.status === "rejected") throw productsResult.reason;
-      const prodRes = productsResult.value;
 
       if (infoRes?.config) {
         setConfig(infoRes.config);
       }
+
+      // Direct PDP routes use the detail endpoint, so a product is still
+      // addressable even when it is not present in the first listing page.
+      if (initialProductId) {
+        if (dataResult.status === "rejected") throw dataResult.reason;
+        const detail = dataResult.value as Awaited<ReturnType<typeof AdminApi.getStoreProductDetail>>;
+        if (!detail?.product) throw new Error("Sản phẩm không tồn tại hoặc chưa được mở bán");
+        setCatalogMode("LIVE");
+        setProducts([detail.product, ...(detail.relatedProducts || [])]);
+        setCatalogTotal(0);
+        setCatalogPage(1);
+        setCategories([]);
+        setRelatedProducts(detail.relatedProducts || []);
+        setDetailProduct(detail.product);
+        setIsProductRoute(true);
+        setLoadError("");
+        return;
+      }
+
+      if (dataResult.status === "rejected") throw dataResult.reason;
+      const prodRes = dataResult.value as Awaited<ReturnType<typeof AdminApi.getStoreProducts>>;
 
       let loadedProducts: WebProduct[] = prodRes?.products || [];
 
@@ -156,42 +207,99 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         }
       }
 
-      const finalCatalog: WebProduct[] = STOREFRONT_DEMO_MODE && loadedProducts.length === 0
+      const useDemoCatalog = STOREFRONT_DEMO_MODE && loadedProducts.length === 0;
+      const finalCatalog: WebProduct[] = useDemoCatalog
         ? [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()]
         : loadedProducts;
-      setCatalogMode(STOREFRONT_DEMO_MODE && loadedProducts.length === 0 ? "DEMO" : "LIVE");
+      setCatalogMode(useDemoCatalog ? "DEMO" : "LIVE");
 
       setProducts(finalCatalog);
+      setCatalogTotal(useDemoCatalog ? finalCatalog.length : (prodRes?.total || 0));
+      setCatalogPage(1);
+      setRelatedProducts([]);
+      setDetailProduct(null);
+      setIsProductRoute(false);
       setCart(current => current.map(item => {
         const product = finalCatalog.find(candidate => candidate.id === item.productId);
         const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
         return variant ? { ...item, image: item.image || variant.imageUrl || product?.primaryImage, maxQuantity: Math.max(0, variant.stockQuantity ?? 0) } : item;
       }));
-      const catSet = new Set(finalCatalog.map(p => p.categoryName).filter(Boolean));
+      const catSet = new Set((prodRes?.categories || finalCatalog.map(p => p.categoryName)).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
-
-      if (initialProductId) {
-        const match = finalCatalog.find(p => p.id === initialProductId || p.slug === initialProductId);
-        if (match) setDetailProduct(match);
-      }
     } catch (err: any) {
       console.error("Lỗi khi tải dữ liệu cửa hàng:", err);
       const fallbackCatalog = STOREFRONT_DEMO_MODE
         ? [...DEMO_MACORNER_PRODUCTS, ...getDemoStoreProducts()]
         : [];
       setCatalogMode(STOREFRONT_DEMO_MODE ? "DEMO" : "LIVE");
+      setCatalogTotal(fallbackCatalog.length);
+      setCatalogPage(1);
       setLoadError(STOREFRONT_DEMO_MODE ? "API chưa sẵn sàng; đang hiển thị catalog mô phỏng." : (err?.message || "Không thể tải catalog từ máy chủ."));
       setProducts(fallbackCatalog);
+      setRelatedProducts([]);
       const catSet = new Set(fallbackCatalog.map(p => p.categoryName).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
+      const match = initialProductId
+        ? fallbackCatalog.find(p => p.id === initialProductId || p.slug === initialProductId)
+        : null;
+      setDetailProduct(match || null);
+      setIsProductRoute(Boolean(match));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [initialProductId, catalogRequestParams]);
 
   useEffect(() => {
-    loadStoreData();
-  }, [initialProductId]);
+    void loadStoreData();
+  }, [loadStoreData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Keep filters shareable and restorable through the browser URL.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const setOrDelete = (key: string, value: string, empty: string) => {
+      if (value && value !== empty) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    };
+    setOrDelete("category", selectedCategory, "ALL");
+    setOrDelete("occasion", activeOccasion, "all");
+    setOrDelete("recipient", activeRecipient, "all");
+    setOrDelete("price", priceBand, "ALL");
+    setOrDelete("sort", sortBy, "NEWEST");
+    setOrDelete("search", debouncedSearchTerm.trim(), "");
+    if (personalizedOnly) url.searchParams.set("personalized", "1");
+    else url.searchParams.delete("personalized");
+    window.history.replaceState({}, "", url.toString());
+  }, [selectedCategory, activeOccasion, activeRecipient, priceBand, sortBy, personalizedOnly, debouncedSearchTerm]);
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [selectedCategory, activeOccasion, activeRecipient, priceBand, personalizedOnly, searchTerm, sortBy]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const url = new URL(window.location.href);
+      const productRoute = url.searchParams.get("product") || url.pathname.match(/\/(?:store\/)?products\/([^/]+)/i)?.[1];
+      if (productRoute) {
+        const match = products.find(product => product.id === productRoute || product.slug === productRoute);
+        if (match) {
+          setDetailProduct(match);
+          setIsProductRoute(true);
+          return;
+        }
+      }
+      if (!productRoute) {
+        setDetailProduct(null);
+        setIsProductRoute(false);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [products]);
 
   // Giá hiển thị dùng cùng contract với checkout phía server.
   const calculateUnitPrice = (product: WebProduct, variant: WebProductVariant, quantity: number, addonIds: string[] = []) => {
@@ -325,10 +433,16 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     setIsSuccessOpen(true);
   };
 
-  // Filtered & Sorted Products
+  // Demo mode has no server, so it retains client-side filtering. Live catalog
+  // responses have already been filtered, sorted and paginated by the API.
   const filteredProducts = useMemo(() => {
+    if (catalogMode === "LIVE") return products;
+    const collectionCategory = initialCollection
+      ? categories.find(category => normalizeCatalogKey(category) === normalizeCatalogKey(initialCollection))
+      : undefined;
     return products
       .filter(p => {
+        if (collectionCategory && p.categoryName !== collectionCategory) return false;
         // Category filter
         if (selectedCategory !== "ALL" && p.categoryName !== selectedCategory) {
           return false;
@@ -341,6 +455,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         if (activeRecipient !== "all" && !p.recipientTags?.includes(activeRecipient)) {
           return false;
         }
+        if (personalizedOnly && !p.isPersonalized) {
+          return false;
+        }
+        const minPrice = p.minPriceVND || 0;
+        if (priceBand === "UNDER_300K" && minPrice >= 300000) return false;
+        if (priceBand === "UNDER_500K" && minPrice >= 500000) return false;
+        if (priceBand === "OVER_500K" && minPrice < 500000) return false;
         // Search filter
         if (searchTerm.trim()) {
           const q = searchTerm.toLowerCase();
@@ -356,7 +477,66 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         if (sortBy === "PRICE_DESC") return (b.minPriceVND || 0) - (a.minPriceVND || 0);
         return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
       });
-  }, [products, selectedCategory, activeOccasion, activeRecipient, searchTerm, sortBy]);
+  }, [products, categories, initialCollection, selectedCategory, activeOccasion, activeRecipient, personalizedOnly, priceBand, searchTerm, sortBy, catalogMode]);
+
+  const navigateToProduct = (product: WebProduct, replaceCurrent = false) => {
+    setDetailProduct(product);
+    setRelatedProducts(products.filter(candidate => candidate.id !== product.id && candidate.categoryName === product.categoryName).slice(0, 4));
+    setIsProductRoute(true);
+    const url = new URL(window.location.href);
+    const currentProductRoute = url.pathname.match(/\/(?:store\/)?products\/([^/]+)/i)?.[1] || url.searchParams.get("product");
+    const existingReturnUrl = typeof window.history.state?.storefrontReturnUrl === "string"
+      ? window.history.state.storefrontReturnUrl
+      : undefined;
+    const storefrontReturnUrl = existingReturnUrl || (!currentProductRoute
+      ? `${url.pathname}${url.search}${url.hash}`
+      : "/store?view=store");
+    url.pathname = `/store/products/${encodeURIComponent(product.slug || product.id || "product")}`;
+    url.searchParams.delete("product");
+    const state = { ...window.history.state, storefrontReturnUrl };
+    if (replaceCurrent) window.history.replaceState(state, "", url.toString());
+    else window.history.pushState(state, "", url.toString());
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  const closeProduct = () => {
+    setDetailProduct(null);
+    setIsProductRoute(false);
+    const storedReturnUrl = typeof window.history.state?.storefrontReturnUrl === "string"
+      ? window.history.state.storefrontReturnUrl
+      : "/store?view=store";
+    window.history.replaceState({}, "", storedReturnUrl);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  const visibleProducts = catalogMode === "DEMO" ? filteredProducts.slice(0, visibleCount) : filteredProducts;
+  const displayedTotal = catalogMode === "DEMO" ? filteredProducts.length : catalogTotal;
+  const hasMoreProducts = catalogMode === "DEMO"
+    ? visibleCount < filteredProducts.length
+    : products.length < catalogTotal;
+
+  const loadMoreProducts = async () => {
+    if (catalogMode === "DEMO") {
+      setVisibleCount(count => count + STORE_PAGE_SIZE);
+      return;
+    }
+    if (isLoadingMore || !hasMoreProducts) return;
+    setIsLoadingMore(true);
+    try {
+      const nextPage = catalogPage + 1;
+      const response = await AdminApi.getStoreProducts({ ...catalogRequestParams, page: nextPage });
+      setProducts(current => {
+        const existingIds = new Set(current.map(product => product.id || product.slug));
+        return [...current, ...(response.products || []).filter(product => !existingIds.has(product.id || product.slug))];
+      });
+      setCatalogTotal(response.total || 0);
+      setCatalogPage(nextPage);
+    } catch (error: any) {
+      onShowToast(error?.message || "Không thể tải thêm sản phẩm", "error");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -397,78 +577,52 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         onBackToAdmin={onBackToAdmin}
       />
 
-      {/* 2. Hero Banner */}
-      <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />
+      {!isProductRoute && <>
+        {/* 2. Hero Banner */}
+        {!initialCollection && <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />}
 
-      {(catalogMode === "DEMO" || loadError) && (
-        <div className={`${catalogMode === "DEMO" ? "bg-[var(--mc-color-surface-muted)] text-[var(--mc-color-text-tertiary)]" : "bg-[var(--mc-color-danger)] text-white"} border-y border-[var(--mc-color-border-default)]/20 px-4 py-2.5 text-center text-xs font-semibold`} role="status">
-          {catalogMode === "DEMO" ? "Bạn đang xem catalog mô phỏng — toàn bộ hành trình mua hàng vẫn hoạt động để bạn trải nghiệm." : loadError}
-        </div>
-      )}
+        {(catalogMode === "DEMO" || loadError) && (
+          <div className={`${catalogMode === "DEMO" ? "bg-[var(--mc-color-surface-muted)] text-[var(--mc-color-text-tertiary)]" : "bg-[var(--mc-color-danger)] text-white"} border-y border-[var(--mc-color-border-default)]/20 px-4 py-2.5 text-center text-xs font-semibold`} role="status">
+            {catalogMode === "DEMO" ? "Bạn đang xem catalog mô phỏng — toàn bộ hành trình mua hàng vẫn hoạt động để bạn trải nghiệm." : loadError}
+          </div>
+        )}
 
-      {/* 2.5 Occasions & Recipients Filter Bar (Macorner Feature) */}
-      <StoreOccasionsNav
-        activeOccasion={activeOccasion}
-        onSelectOccasion={setActiveOccasion}
-        activeRecipient={activeRecipient}
-        onSelectRecipient={setActiveRecipient}
-        totalProductsCount={products.length}
-      />
+        {/* 2.5 Occasions & Recipients Filter Bar (Macorner Feature) */}
+        <StoreOccasionsNav
+          activeOccasion={activeOccasion}
+          onSelectOccasion={setActiveOccasion}
+          activeRecipient={activeRecipient}
+          onSelectRecipient={setActiveRecipient}
+          totalProductsCount={products.length}
+        />
+      </>}
 
       {/* 3. Main Catalog Section */}
-      <main id="store-catalog" ref={catalogRef} className="mc-content-width mx-auto w-full max-w-7xl flex-1 space-y-8 px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-        {/* Category Filters & Sort */}
+      {!isProductRoute && <main id="store-catalog" ref={catalogRef} className="mc-content-width mx-auto w-full max-w-7xl flex-1 space-y-8 px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+        {/* Collection toolbar and responsive filters */}
         <div className="flex flex-col gap-4 border-b border-[var(--mc-color-border-default)]/15 pb-5 md:flex-row md:items-end md:justify-between">
-          {/* Category Pills */}
           <div className="min-w-0">
             <p className="mc-eyebrow">Bộ sưu tập</p>
-            <div className="mc-no-scrollbar mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-            <button
-              type="button"
-              aria-pressed={selectedCategory === "ALL"}
-              onClick={() => setSelectedCategory("ALL")}
-              className={`mc-focus-ring min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold whitespace-nowrap transition-colors ${
-                selectedCategory === "ALL"
-                  ? "border-[var(--mc-color-surface-base)] bg-[var(--mc-color-surface-base)] text-white"
-                  : "border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-text-secondary)] hover:border-[var(--mc-color-accent)]/50 hover:text-[var(--mc-color-accent-strong)]"
-              }`}
-            >
-              Tất cả sản phẩm <span className="ml-1 opacity-60">{products.length}</span>
-            </button>
-
-            {categories.map((cat, idx) => (
-              <button
-                type="button"
-                key={idx}
-                aria-pressed={selectedCategory === cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`mc-focus-ring min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold whitespace-nowrap transition-colors ${
-                  selectedCategory === cat
-                    ? "border-[var(--mc-color-accent)] bg-[var(--mc-color-accent)] text-white"
-                    : "border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-text-secondary)] hover:border-[var(--mc-color-accent)]/50 hover:text-[var(--mc-color-accent-strong)]"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            <div className="mt-1 flex items-center gap-2">
+              {initialCollection
+                ? <h1 className="text-xl font-black tracking-tight text-[var(--mc-color-text-primary)]">{collectionCategory || initialCollection.replace(/[-_]/g, " ")}</h1>
+                : <h2 className="text-xl font-black tracking-tight text-[var(--mc-color-text-primary)]">Tất cả quà tặng</h2>}
+              <span className="rounded-full bg-[var(--mc-color-surface-subtle)] px-2 py-0.5 text-[11px] font-bold text-[var(--mc-color-text-secondary)]">{displayedTotal}</span>
+            </div>
+            <div className="mc-no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
+              <button type="button" onClick={() => setIsFilterOpen(true)} className="mc-focus-ring flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-[var(--mc-color-border-default)]/20 bg-[var(--mc-color-surface-strong)] px-4 text-xs font-bold"><Filter className="h-3.5 w-3.5" aria-hidden="true" />Bộ lọc{(selectedCategory !== "ALL" || activeOccasion !== "all" || activeRecipient !== "all" || personalizedOnly || priceBand !== "ALL") && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[var(--mc-color-accent)] px-1 text-[10px] text-white">{(selectedCategory !== "ALL" ? 1 : 0) + (activeOccasion !== "all" ? 1 : 0) + (activeRecipient !== "all" ? 1 : 0) + (personalizedOnly ? 1 : 0) + (priceBand !== "ALL" ? 1 : 0)}</span>}</button>
+              <button type="button" onClick={() => { setSelectedCategory("ALL"); setActiveOccasion("all"); setActiveRecipient("all"); setPersonalizedOnly(false); setPriceBand("ALL"); }} className="mc-focus-ring min-h-10 shrink-0 rounded-full border border-transparent px-3 text-xs font-semibold text-[var(--mc-color-text-secondary)] hover:bg-[var(--mc-color-surface-subtle)]">Xóa bộ lọc</button>
             </div>
           </div>
 
-          {/* Sort Dropdown */}
           <div className="flex shrink-0 items-center gap-2 self-end md:self-auto">
-            <label htmlFor="store-sort" className="text-xs font-semibold text-[var(--mc-color-text-secondary)]">Sắp xếp</label>
-            <div className="relative">
-              <select
-                id="store-sort"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="mc-focus-ring min-h-10 cursor-pointer rounded-full border border-[var(--mc-color-border-default)]/20 bg-[var(--mc-color-surface-strong)] px-3.5 text-xs font-semibold text-[var(--mc-color-text-primary)]"
-              >
-                <option value="NEWEST">Mới Nhất</option>
-                <option value="PRICE_ASC">Giá: Thấp đến Cao</option>
-                <option value="PRICE_DESC">Giá: Cao đến Thấp</option>
-              </select>
-            </div>
+            <span className="hidden text-xs font-semibold text-[var(--mc-color-text-secondary)] sm:inline">Sắp xếp</span>
+            <label htmlFor="store-sort" className="sr-only">Sắp xếp sản phẩm</label>
+            <select id="store-sort" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="mc-focus-ring min-h-10 cursor-pointer rounded-full border border-[var(--mc-color-border-default)]/20 bg-[var(--mc-color-surface-strong)] px-3.5 text-xs font-semibold text-[var(--mc-color-text-primary)]">
+              <option value="NEWEST">Mới nhất</option>
+              <option value="PRICE_ASC">Giá thấp đến cao</option>
+              <option value="PRICE_DESC">Giá cao đến thấp</option>
+            </select>
           </div>
         </div>
 
@@ -497,18 +651,51 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             <button type="button" onClick={onBackToAdmin} className="mc-focus-ring mt-2 min-h-11 rounded-full bg-[var(--mc-color-accent)] px-5 text-sm font-bold text-white transition-colors hover:bg-[var(--mc-color-accent-strong)]">Mở quản trị sản phẩm</button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
-            {filteredProducts.map(product => (
-              <StoreProductCard
-                key={product.id}
-                product={product}
-                onSelect={(p) => setDetailProduct(p)}
-                onQuickAdd={handleQuickAdd}
-              />
-            ))}
+          <div className="flex items-start gap-6">
+            <StoreCollectionFilters
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onCategoryChange={setSelectedCategory}
+              activeOccasion={activeOccasion}
+              onOccasionChange={setActiveOccasion}
+              activeRecipient={activeRecipient}
+              onRecipientChange={setActiveRecipient}
+              personalizedOnly={personalizedOnly}
+              onPersonalizedChange={setPersonalizedOnly}
+              priceBand={priceBand}
+              onPriceBandChange={setPriceBand}
+              mobileOpen={isFilterOpen}
+              onMobileClose={() => setIsFilterOpen(false)}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 lg:gap-5">
+                {visibleProducts.map(product => (
+                  <StoreProductCard
+                    key={product.id}
+                    product={product}
+                    onSelect={(p) => {
+                      navigateToProduct(p);
+                    }}
+                    onQuickAdd={handleQuickAdd}
+                  />
+                ))}
+              </div>
+              {hasMoreProducts && <div className="mt-8 flex justify-center"><button type="button" disabled={isLoadingMore} aria-busy={isLoadingMore} onClick={() => void loadMoreProducts()} className="mc-focus-ring min-h-11 rounded-full border border-[var(--mc-color-border-default)]/20 bg-[var(--mc-color-surface-strong)] px-6 text-sm font-bold text-[var(--mc-color-text-primary)] transition-colors hover:border-[var(--mc-color-accent)] hover:text-[var(--mc-color-accent-strong)] active:bg-[var(--mc-color-surface-subtle)] disabled:cursor-wait disabled:opacity-60">{isLoadingMore ? "Đang tải thêm…" : "Xem thêm sản phẩm"}</button></div>}
+            </div>
           </div>
         )}
-      </main>
+      </main>}
+
+      {detailProduct && <StoreProductDetailModal
+        product={detailProduct}
+        fullPage={isProductRoute}
+        demoMode={catalogMode === "DEMO"}
+        relatedProducts={relatedProducts.length > 0 ? relatedProducts : products.filter(product => product.id !== detailProduct.id).slice(0, 4)}
+        onSelectRelated={product => navigateToProduct(product, true)}
+        onClose={closeProduct}
+        onAddToCart={handleAddToCart}
+        onBuyNow={handleBuyNow}
+      />}
 
       {/* 4. Footer */}
       <footer className="mt-10 border-t border-[var(--mc-color-border-default)] bg-[var(--mc-color-surface-base)] pb-8 pt-12 text-xs text-white/60">
@@ -608,13 +795,6 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
         onApplyDiscountCode={setAppliedDiscountCode}
       />
 
-      {detailProduct && <StoreProductDetailModal
-        product={detailProduct}
-        onClose={() => setDetailProduct(null)}
-        onAddToCart={handleAddToCart}
-        onBuyNow={handleBuyNow}
-      />}
-
       <StoreCheckoutModal
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
@@ -658,7 +838,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           setIsTrackerOpen(true);
         }}
         onOpenCart={() => setIsCartOpen(true)}
-        activeFilterCount={(activeOccasion !== "all" ? 1 : 0) + (activeRecipient !== "all" ? 1 : 0) + (selectedCategory !== "ALL" ? 1 : 0)}
+        activeFilterCount={(activeOccasion !== "all" ? 1 : 0) + (activeRecipient !== "all" ? 1 : 0) + (selectedCategory !== "ALL" ? 1 : 0) + (personalizedOnly ? 1 : 0) + (priceBand !== "ALL" ? 1 : 0)}
       />
     </div>
   );

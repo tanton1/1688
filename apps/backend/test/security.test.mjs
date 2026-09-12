@@ -199,6 +199,45 @@ test("order tracking requires both order number and phone", async () => {
   assert.equal(response.body.error, "VALIDATION_ERROR");
 });
 
+test("storefront catalog filters and paginates personalized gift dimensions", async () => {
+  const fixtures = [
+    {
+      id: "catalog-filter-1", slug: "bien-mica-ca-nhan-hoa", skuCode: "CAT-1", titleVI: "Biển mica cá nhân hóa",
+      categoryName: "Biển Mica Đèn LED", occasionTags: ["anniversary"], recipientTags: ["for-couples"], isPersonalized: true,
+      minPriceVND: 289000, maxPriceVND: 289000
+    },
+    {
+      id: "catalog-filter-2", slug: "bien-mica-thuong", skuCode: "CAT-2", titleVI: "Biển mica tiêu chuẩn",
+      categoryName: "Biển Mica Đèn LED", occasionTags: ["birthday"], recipientTags: ["for-dad"], isPersonalized: false,
+      minPriceVND: 590000, maxPriceVND: 590000
+    }
+  ].map(product => ({
+    ...product,
+    version: 1,
+    primaryImage: "https://example.com/product.jpg", galleryImages: [], status: "PUBLISHED", qualityScore: 100,
+    isTitleLocked: false, isDescLocked: false, isImagesLocked: false, isPriceAutoSync: false, isStockAutoSync: false,
+    sourceProductId: `source-${product.id}`, sourceUrl: `https://detail.1688.com/offer/${product.id}.html`, supplierName: "Test",
+    variants: [{ sourceSkuId: `${product.skuCode}-VAR`, costPriceVND: 100000, sellingPriceVND: product.minPriceVND, stockQuantity: 5, sourceAvailable: true, selectedForSale: true }]
+  }));
+  fixtures.forEach(product => inMemoryProducts.set(product.id, product));
+
+  const filtered = await request.get("/api/v1/store/products")
+    .query({ collection: "bien-mica-den-led", occasion: "anniversary", recipient: "for-couples", personalized: "1", maxPrice: "299999", page: "1", limit: "1" })
+    .expect(200);
+  assert.equal(filtered.body.total, 1);
+  assert.equal(filtered.body.page, 1);
+  assert.equal(filtered.body.limit, 1);
+  assert.deepEqual(filtered.body.products.map(product => product.id), ["catalog-filter-1"]);
+
+  const paged = await request.get("/api/v1/store/products")
+    .query({ collection: "bien-mica-den-led", sort: "PRICE_DESC", page: "2", limit: "1" })
+    .expect(200);
+  assert.equal(paged.body.total, 2);
+  assert.equal(paged.body.products[0].id, "catalog-filter-1");
+
+  fixtures.forEach(product => inMemoryProducts.delete(product.id));
+});
+
 test("checkout ignores client prices and hides internal sourcing costs", async () => {
   const id = "checkout-source-product";
   inMemoryProducts.set(id, {

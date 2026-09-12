@@ -585,11 +585,30 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
     });
   };
 
+  const handleTemplateTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = Array.from(event.currentTarget.closest('[role="tablist"]')?.querySelectorAll<HTMLButtonElement>('[role="tab"]') || []);
+    if (tabs.length === 0) return;
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : event.key === "ArrowRight"
+          ? (currentIndex + 1) % tabs.length
+          : (currentIndex - 1 + tabs.length) % tabs.length;
+    event.preventDefault();
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Toast Notification */}
       {notification && (
         <div
+          role={notification.type === "error" ? "alert" : "status"}
+          aria-live={notification.type === "error" ? "assertive" : "polite"}
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium transition-all animate-in slide-in-from-bottom-5 ${
             notification.type === "success"
               ? "bg-emerald-50 border-emerald-200 text-emerald-800"
@@ -1005,8 +1024,11 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
               <button
                 type="button"
                 role="tab"
+                id="template-tab-content"
                 aria-selected={activeTab === "CONTENT"}
                 aria-controls="template-content-panel"
+                tabIndex={activeTab === "CONTENT" ? 0 : -1}
+                onKeyDown={handleTemplateTabKeyDown}
                 onClick={() => setActiveTab("CONTENT")}
                 className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 ${
                   activeTab === "CONTENT"
@@ -1020,8 +1042,11 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
               <button
                 type="button"
                 role="tab"
+                id="template-tab-variation"
                 aria-selected={activeTab === "VARIATION"}
                 aria-controls="template-variation-panel"
+                tabIndex={activeTab === "VARIATION" ? 0 : -1}
+                onKeyDown={handleTemplateTabKeyDown}
                 onClick={() => setActiveTab("VARIATION")}
                 className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 ${
                   activeTab === "VARIATION"
@@ -1038,7 +1063,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
             <div className="space-y-6 bg-slate-50/50 p-4 sm:p-6">
               {/* TAB 1: CONTENT PRESET */}
               {activeTab === "CONTENT" && (
-                <div id="template-content-panel" role="tabpanel" className="mx-auto max-w-7xl space-y-6">
+                <div id="template-content-panel" role="tabpanel" aria-labelledby="template-tab-content" tabIndex={0} className="mx-auto max-w-7xl space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">
                   <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4">
                     <label htmlFor="template-description" className="text-xs font-bold uppercase tracking-wider text-slate-800">
                       Mục đích và phạm vi của template
@@ -1374,7 +1399,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onSelectTemplateTo
 
               {/* TAB 2: VARIATION PRESET */}
               {activeTab === "VARIATION" && (
-                <div id="template-variation-panel" role="tabpanel" className="mx-auto max-w-7xl space-y-6">
+                <div id="template-variation-panel" role="tabpanel" aria-labelledby="template-tab-variation" tabIndex={0} className="mx-auto max-w-7xl space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">
                   <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                     <div>

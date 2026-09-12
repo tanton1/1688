@@ -148,6 +148,7 @@ export const AdminApi = {
   async getProducts(params?: {
     status?: string;
     category?: string;
+    collection?: string;
     search?: string;
     minQuality?: number;
     maxQuality?: number;
@@ -466,7 +467,11 @@ export const AdminApi = {
 
   async getStoreProducts(params?: {
     category?: string;
+    collection?: string;
     search?: string;
+    occasion?: string;
+    recipient?: string;
+    personalized?: boolean;
     minPrice?: number;
     maxPrice?: number;
     sort?: string;
@@ -482,7 +487,11 @@ export const AdminApi = {
   }> {
     const q = new URLSearchParams();
     if (params?.category) q.set("category", params.category);
+    if (params?.collection) q.set("collection", params.collection);
     if (params?.search) q.set("search", params.search);
+    if (params?.occasion) q.set("occasion", params.occasion);
+    if (params?.recipient) q.set("recipient", params.recipient);
+    if (params?.personalized) q.set("personalized", "1");
     if (params?.minPrice) q.set("minPrice", params.minPrice.toString());
     if (params?.maxPrice) q.set("maxPrice", params.maxPrice.toString());
     if (params?.sort) q.set("sort", params.sort);

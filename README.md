@@ -11,6 +11,10 @@ Hệ thống sourcing và quản trị catalog gồm Chrome Extension Manifest V
 - WooCommerce, Shopify và Telegram dùng credential phía máy chủ; secret không đi qua Admin UI.
 - Supabase RLS khóa browser roles; mọi data-plane write đi qua backend service role.
 
+## Hợp đồng giao diện Macorner
+
+`DESIGN.md` là nguồn quy tắc triển khai cho storefront: token semantic, tách Variation / Personalization / Attributes, trạng thái component, responsive behavior, WCAG 2.2 AA và checklist QA. Các route storefront chính là `/store`, `/collections/:handle` và `/store/products/:slug`.
+
 ## Chạy cục bộ
 
 Yêu cầu Node.js tương thích với Vite 8 và npm workspaces.

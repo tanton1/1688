@@ -578,6 +578,24 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return JSON.stringify(generateProductJsonLd(formData), null, 2);
   }, [formData]);
 
+  const handleEditorTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabList = event.currentTarget.closest('[role="tablist"]');
+    const tabs = Array.from(tabList?.querySelectorAll<HTMLButtonElement>('[role="tab"]') || []);
+    if (tabs.length === 0) return;
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : event.key === "ArrowRight"
+          ? (currentIndex + 1) % tabs.length
+          : (currentIndex - 1 + tabs.length) % tabs.length;
+    event.preventDefault();
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/65">
       <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="flex h-[100dvh] w-screen max-w-none flex-col overflow-hidden border-0 bg-[#f8fafc] shadow-2xl animate-in fade-in duration-150">
@@ -721,8 +739,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Modal Navigation Tabs */}
-        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white select-none overflow-x-auto">
+        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white select-none overflow-x-auto" role="tablist" aria-label="Khu vực biên tập sản phẩm">
           <button
+            id="product-editor-tab-content"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "content"}
+            aria-controls="product-editor-panel-content"
+            tabIndex={activeTab === "content" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("content")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "content"
@@ -735,6 +760,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <button
+            id="product-editor-tab-variants"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "variants"}
+            aria-controls="product-editor-panel-variants"
+            tabIndex={activeTab === "variants" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("variants")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "variants"
@@ -747,6 +779,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <button
+            id="product-editor-tab-media"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "media"}
+            aria-controls="product-editor-panel-media"
+            tabIndex={activeTab === "media" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("media")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "media"
@@ -759,6 +798,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <button
+            id="product-editor-tab-personalization"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "personalization"}
+            aria-controls="product-editor-panel-personalization"
+            tabIndex={activeTab === "personalization" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("personalization")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "personalization"
@@ -772,6 +818,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB: TỐI ƯU SEO & SERP */}
           <button
+            id="product-editor-tab-seo"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "seo"}
+            aria-controls="product-editor-panel-seo"
+            tabIndex={activeTab === "seo" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => { setActiveTab("seo"); setCopyLang(editLang); }}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "seo"
@@ -790,6 +843,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB MỚI: AI MARKETING COPYWRITER */}
           <button
+            id="product-editor-tab-copywriter"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "copywriter"}
+            aria-controls="product-editor-panel-copywriter"
+            tabIndex={activeTab === "copywriter" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("copywriter")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "copywriter"
@@ -805,6 +865,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <button
+            id="product-editor-tab-quality"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "quality"}
+            aria-controls="product-editor-panel-quality"
+            tabIndex={activeTab === "quality" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => setActiveTab("quality")}
             className={`py-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
               activeTab === "quality"
@@ -818,6 +885,13 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB: VISUAL SOURCING 1688 */}
           <button
+            id="product-editor-tab-sourcing"
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "sourcing"}
+            aria-controls="product-editor-panel-sourcing"
+            tabIndex={activeTab === "sourcing" ? 0 : -1}
+            onKeyDown={handleEditorTabKeyDown}
             onClick={() => {
               setActiveTab("sourcing");
               if (!visualMatches) {
@@ -873,7 +947,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {/* TAB 1: NỘI DUNG & THÔNG SỐ */}
           {activeTab === "content" && (
-            <div className="space-y-5">
+            <div id="product-editor-panel-content" role="tabpanel" aria-labelledby="product-editor-tab-content" tabIndex={0} className="space-y-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               <div className="grid gap-4 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 via-white to-orange-50 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-600/20">
@@ -1227,7 +1301,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB 2: MA TRẬN SKU & BIẾN THỂ */}
           {activeTab === "variants" && (
-            <div className="space-y-4">
+            <div id="product-editor-panel-variants" role="tabpanel" aria-labelledby="product-editor-tab-variants" tabIndex={0} className="space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                 <div>
@@ -1392,7 +1466,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB 3: MEDIA & VIDEO */}
           {activeTab === "media" && (
-            <div className="space-y-6">
+            <div id="product-editor-panel-media" role="tabpanel" aria-labelledby="product-editor-tab-media" tabIndex={0} className="space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               {/* 0. Mockup nền trơn & vùng đặt design */}
               <div className="overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 shadow-sm">
                 <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
@@ -1764,20 +1838,22 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           )}
 
           {activeTab === "personalization" && (
-            <PersonalizationBuilder
-              enabled={Boolean(formData.isPersonalized)}
-              mockupUrl={formData.customizerMockupTemplateUrl}
-              previewImageUrl={formData.primaryImage}
-              fields={formData.personalizationFields || []}
-              onEnabledChange={isPersonalized => handleFieldChange("isPersonalized", isPersonalized)}
-              onMockupUrlChange={customizerMockupTemplateUrl => handleFieldChange("customizerMockupTemplateUrl", customizerMockupTemplateUrl)}
-              onFieldsChange={personalizationFields => handleFieldChange("personalizationFields", personalizationFields)}
-            />
+            <div id="product-editor-panel-personalization" role="tabpanel" aria-labelledby="product-editor-tab-personalization" tabIndex={0} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
+              <PersonalizationBuilder
+                enabled={Boolean(formData.isPersonalized)}
+                mockupUrl={formData.customizerMockupTemplateUrl}
+                previewImageUrl={formData.primaryImage}
+                fields={formData.personalizationFields || []}
+                onEnabledChange={isPersonalized => handleFieldChange("isPersonalized", isPersonalized)}
+                onMockupUrlChange={customizerMockupTemplateUrl => handleFieldChange("customizerMockupTemplateUrl", customizerMockupTemplateUrl)}
+                onFieldsChange={personalizationFields => handleFieldChange("personalizationFields", personalizationFields)}
+              />
+            </div>
           )}
 
           {/* TAB 4: TỐI ƯU SEO & SERP */}
           {activeTab === "seo" && (
-            <div className="space-y-6">
+            <div id="product-editor-panel-seo" role="tabpanel" aria-labelledby="product-editor-tab-seo" tabIndex={0} className="space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               {/* AI SEO workspace */}
               <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-white shadow-xl shadow-slate-900/10">
                 <div className="grid gap-0 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
@@ -2315,7 +2391,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB 5: CHẤT LƯỢNG LISTING */}
           {activeTab === "quality" && (
-            <div className="space-y-6">
+            <div id="product-editor-panel-quality" role="tabpanel" aria-labelledby="product-editor-tab-quality" tabIndex={0} className="space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               <div className="flex items-center gap-4 bg-orange-50/60 border border-orange-200 p-4 rounded-xl">
                 <div className="w-16 h-16 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl font-black">
                   {qualityAudit.totalScore}
@@ -2393,7 +2469,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB 6: AI MARKETING COPYWRITER */}
           {activeTab === "copywriter" && (
-            <div className="space-y-6">
+            <div id="product-editor-panel-copywriter" role="tabpanel" aria-labelledby="product-editor-tab-copywriter" tabIndex={0} className="space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               {/* Header Box */}
               <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 border border-pink-200/80 rounded-2xl p-5">
                 <div className="flex items-center justify-between">
@@ -2611,7 +2687,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* TAB 7: VISUAL SOURCING 1688 (TÌM XƯỞNG GỐC) */}
           {activeTab === "sourcing" && (
-            <div className="space-y-6 animate-fadeIn">
+            <div id="product-editor-panel-sourcing" role="tabpanel" aria-labelledby="product-editor-tab-sourcing" tabIndex={0} className="space-y-6 animate-fadeIn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">

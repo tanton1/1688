@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateVietQRUrl } from "../dist/store-export-builder.js";
 import { calculateStorefrontPricing } from "../dist/storefront-pricing.js";
+import {
+  buildStorefrontVariantGroups,
+  findStorefrontVariant,
+  isStorefrontVariantOptionAvailable,
+  normalizeCatalogKey
+} from "../dist/storefront-catalog.js";
 
 test("Storefront Suite - VietQR URL Generation & Checkout Contracts", async (t) => {
   await t.test("1. generateVietQRUrl produces valid Napas 247 QuickLink", () => {
@@ -59,5 +65,35 @@ test("Storefront Suite - VietQR URL Generation & Checkout Contracts", async (t) 
     assert.equal(invalid.couponValid, false);
     assert.equal(invalid.appliedDiscountCode, undefined);
     assert.equal(invalid.finalTotalVND, 125000);
+  });
+});
+
+test("Storefront Suite - catalog route and variation contracts", async (t) => {
+  await t.test("normalizes Vietnamese collection names to stable route handles", () => {
+    assert.equal(normalizeCatalogKey("Biển Mica Đèn LED"), "bien-mica-den-led");
+  });
+
+  await t.test("builds generic variation groups including specDetails", () => {
+    const variants = [
+      { sourceSkuId: "WHITE-12-MATTE", colorName: "Trắng", sizeName: "12oz", specDetails: { Finish: "Nhám" }, sellingPriceVND: 200000, costPriceVND: 100000, stockQuantity: 3 },
+      { sourceSkuId: "WHITE-16-GLOSS", colorName: "Trắng", sizeName: "16oz", specDetails: { Finish: "Bóng" }, sellingPriceVND: 220000, costPriceVND: 100000, stockQuantity: 0 },
+      { sourceSkuId: "BLACK-16-GLOSS", colorName: "Đen", sizeName: "16oz", specDetails: { Finish: "Bóng" }, sellingPriceVND: 230000, costPriceVND: 100000, stockQuantity: 5 }
+    ];
+    const groups = buildStorefrontVariantGroups(variants);
+    assert.deepEqual(groups.map(group => group.key), ["colorName", "sizeName", "Finish"]);
+    assert.deepEqual(groups[0].options.map(option => option.label), ["Trắng", "Đen"]);
+  });
+
+  await t.test("keeps SKU combinations valid and marks unavailable combinations disabled", () => {
+    const variants = [
+      { sourceSkuId: "WHITE-12", colorName: "Trắng", sizeName: "12oz", sellingPriceVND: 200000, costPriceVND: 100000, stockQuantity: 3 },
+      { sourceSkuId: "WHITE-16", colorName: "Trắng", sizeName: "16oz", sellingPriceVND: 220000, costPriceVND: 100000, stockQuantity: 0 },
+      { sourceSkuId: "BLACK-16", colorName: "Đen", sizeName: "16oz", sellingPriceVND: 230000, costPriceVND: 100000, stockQuantity: 5 }
+    ];
+    const groups = buildStorefrontVariantGroups(variants);
+    assert.equal(isStorefrontVariantOptionAvailable(variants, groups, variants[0], "sizeName", "16oz"), false);
+    const selected = findStorefrontVariant(variants, groups, variants[0], "colorName", "Đen");
+    assert.equal(selected?.sourceSkuId, "BLACK-16");
+    assert.equal(isStorefrontVariantOptionAvailable(variants, groups, selected, "sizeName", "16oz"), true);
   });
 });

@@ -10,8 +10,10 @@ interface StoreProductCardProps {
 
 export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onSelect, onQuickAdd }) => {
   const [imageFailed, setImageFailed] = useState(false);
+  const [secondaryImageFailed, setSecondaryImageFailed] = useState(false);
   const minPrice = product.minPriceVND || 0;
   const maxPrice = product.maxPriceVND || minPrice;
+  const secondaryImage = product.galleryImages?.find(image => image && image !== product.primaryImage) || product.variants?.find(variant => variant.imageUrl && variant.imageUrl !== product.primaryImage)?.imageUrl;
   const firstDiscountTier = [...(product.volumeDiscountTiers || [])]
     .filter(tier => tier.discountPercent > 0)
     .sort((left, right) => left.minQty - right.minQty)[0];
@@ -23,19 +25,10 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
 
   return (
     <article
-      tabIndex={0}
-      role="group"
       data-state={isOutOfStock ? "disabled" : "default"}
-      aria-label={`${product.titleVI}${isOutOfStock ? ", hết hàng" : ""}`}
-      onClick={openDetails}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openDetails();
-        }
-      }}
-      className="mc-focus-ring group relative flex h-full cursor-pointer select-none flex-col overflow-hidden rounded-[var(--mc-radius-xs)] border border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] transition-[box-shadow,border-color,transform] duration-[var(--mc-motion-instant)] hover:-translate-y-1 hover:border-[var(--mc-color-accent)]/60 hover:shadow-[var(--mc-shadow-lift)] active:translate-y-0 data-[state=disabled]:cursor-not-allowed data-[state=disabled]:opacity-70"
+      className="group relative flex h-full select-none flex-col overflow-hidden rounded-[var(--mc-radius-xs)] border border-[var(--mc-color-border-default)]/15 bg-[var(--mc-color-surface-strong)] transition-[box-shadow,border-color,transform] duration-[var(--mc-motion-instant)] hover:-translate-y-1 hover:border-[var(--mc-color-accent)]/60 hover:shadow-[var(--mc-shadow-lift)] active:translate-y-0 data-[state=disabled]:opacity-70"
     >
+      <button type="button" onClick={openDetails} className="mc-focus-ring absolute inset-0 z-10 cursor-pointer rounded-[var(--mc-radius-xs)]" aria-label={`Xem chi tiết ${product.titleVI}${isOutOfStock ? ", hiện đã hết hàng" : ""}`} />
       <div className="relative aspect-square overflow-hidden bg-[var(--mc-color-surface-subtle)]">
         {product.primaryImage && !imageFailed ? (
           <img loading="lazy" decoding="async" src={product.primaryImage} alt={product.titleVI} onError={() => setImageFailed(true)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -44,6 +37,16 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
             <ImageOff className="h-6 w-6" aria-hidden="true" />
             <span className="text-xs font-semibold">Chưa có ảnh</span>
           </div>
+        )}
+        {secondaryImage && !secondaryImageFailed && (
+          <img
+            loading="lazy"
+            decoding="async"
+            src={secondaryImage}
+            alt={`${product.titleVI} — ảnh phụ`}
+            onError={() => setSecondaryImageFailed(true)}
+            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-[var(--mc-motion-instant)] group-hover:opacity-100"
+          />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent opacity-0 transition-opacity duration-[var(--mc-motion-instant)] group-hover:opacity-100" aria-hidden="true" />
 
@@ -74,7 +77,7 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
               {maxPrice > minPrice && <span className="text-[11px] font-semibold text-[var(--mc-color-text-secondary)]">– {maxPrice.toLocaleString("vi-VN")}đ</span>}
             </div>
           </div>
-          <button type="button" disabled={isOutOfStock} onClick={(event) => { event.stopPropagation(); onQuickAdd(product); }} className="mc-focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--mc-color-accent)]/30 bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)] transition-colors hover:border-[var(--mc-color-accent)] hover:bg-[var(--mc-color-accent)] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-[var(--mc-color-border-default)]/10 disabled:bg-[var(--mc-color-surface-subtle)] disabled:text-[var(--mc-color-text-secondary)]" title={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"} aria-label={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"}>
+          <button type="button" disabled={isOutOfStock} onClick={() => onQuickAdd(product)} className="mc-focus-ring relative z-20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--mc-color-accent)]/30 bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)] transition-colors hover:border-[var(--mc-color-accent)] hover:bg-[var(--mc-color-accent)] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-[var(--mc-color-border-default)]/10 disabled:bg-[var(--mc-color-surface-subtle)] disabled:text-[var(--mc-color-text-secondary)]" title={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"} aria-label={isOutOfStock ? "Sản phẩm đã hết hàng" : `Thêm nhanh ${product.titleVI} vào giỏ hàng`}>
             <ShoppingBag className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>

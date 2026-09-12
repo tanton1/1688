@@ -16,8 +16,11 @@
   --mc-color-text-inverse: #665e5c;
   --mc-color-accent: #ed6a22;
   --mc-color-accent-strong: #c94f11;
+  --mc-color-action-primary: var(--mc-color-accent-strong);
+  --mc-color-action-primary-hover: var(--mc-color-surface-muted);
   --mc-color-success: #166534;
   --mc-color-danger: #b42318;
+  --mc-color-focus-ring: var(--mc-color-accent);
   --mc-space-1: 4px;
   --mc-space-2: 6px;
   --mc-space-3: 8px;
@@ -38,12 +41,13 @@ body {
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0b1628;
-  font-family: "Be Vietnam Pro", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-  font-size: 14px;
+  font-family: Geist, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 :focus-visible {
-  outline: 3px solid var(--mc-color-accent);
+  outline: 3px solid var(--mc-color-focus-ring);
   outline-offset: 3px;
 }
 
