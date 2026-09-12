@@ -296,7 +296,9 @@ export class SupabaseDataService {
       }
       if (params?.collection && params.collection !== "ALL") {
         const collectionLabel = params.collection.trim().replace(/[-_]+/g, " ");
-        query = query.ilike("category_name", `%${collectionLabel}%`);
+        if (collectionLabel && collectionLabel.toLowerCase() !== "all") {
+          query = query.ilike("category_name", `%${collectionLabel}%`);
+        }
       }
       if (params?.occasion) query = query.contains("occasion_tags", [params.occasion]);
       if (params?.recipient) query = query.contains("recipient_tags", [params.recipient]);
