@@ -25,6 +25,8 @@ export interface WebProductVariant {
   sellingPriceVND: number;
   stockQuantity: number;
   imageUrl?: string;
+  /** True when the source exposes a numeric inventory quantity. */
+  inventoryTracked?: boolean;
   sourceAvailable: boolean;
   selectedForSale: boolean;
 }
@@ -322,6 +324,9 @@ export interface ClonedVariantPreview {
   originalPrice: number;
   priceVND: number;
   stock: number;
+  /** Source availability can be known even when inventory is not numerically tracked. */
+  available?: boolean;
+  inventoryTracked?: boolean;
   imageUrl?: string;
 }
 

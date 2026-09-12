@@ -17,6 +17,13 @@ import { ENV } from "../config/env.js";
 export class SupabaseDataService {
   private client: SupabaseClient | null = null;
   private configured: boolean = false;
+  /**
+   * Production projects can lag behind the repository schema during a rolling
+   * deploy. Keep the service usable while the optional inventory_tracked
+   * column is being migrated, and remember the capability after the first
+   * write so subsequent saves do not repeat a failing request.
+   */
+  private inventoryTrackedColumnAvailable: boolean | null = null;
 
   constructor() {
     const key = ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -260,7 +267,13 @@ export class SupabaseDataService {
   public async getProducts(params?: {
     status?: string;
     category?: string;
+    collection?: string;
     search?: string;
+    occasion?: string;
+    recipient?: string;
+    personalized?: boolean;
+    minPrice?: number;
+    maxPrice?: number;
     minQuality?: number;
     maxQuality?: number;
     media?: string;
@@ -281,6 +294,15 @@ export class SupabaseDataService {
       if (params?.category && params.category !== "ALL") {
         query = query.eq("category_name", params.category);
       }
+      if (params?.collection && params.collection !== "ALL") {
+        const collectionLabel = params.collection.trim().replace(/[-_]+/g, " ");
+        query = query.ilike("category_name", `%${collectionLabel}%`);
+      }
+      if (params?.occasion) query = query.contains("occasion_tags", [params.occasion]);
+      if (params?.recipient) query = query.contains("recipient_tags", [params.recipient]);
+      if (params?.personalized) query = query.eq("is_personalized", true);
+      if (params?.minPrice !== undefined) query = query.gte("max_price_vnd", params.minPrice);
+      if (params?.maxPrice !== undefined) query = query.lte("min_price_vnd", params.maxPrice);
       if (params?.minQuality) {
         query = query.gte("quality_score", params.minQuality);
       }
@@ -322,6 +344,68 @@ export class SupabaseDataService {
       console.error("[Supabase getProducts exception]", err);
       return null;
     }
+  }
+
+  /** Lightweight category list for storefront facets; filtering remains in DB. */
+  public async getPublishedCategories(): Promise<string[]> {
+    if (!this.client) return [];
+    try {
+      const { data, error } = await this.client
+        .from("products")
+        .select("category_name")
+        .eq("status", "PUBLISHED");
+      if (error || !data) return [];
+      return Array.from(new Set(data.map(row => String(row.category_name || "").trim()).filter(Boolean)));
+    } catch (error) {
+      console.error("[Supabase getPublishedCategories exception]", error);
+      return [];
+    }
+  }
+
+  public async getPublishedCategoryDetails(): Promise<Array<{ name: string; count: number }>> {
+    if (!this.client) return [];
+    try {
+      const { data, error } = await this.client
+        .from("products")
+        .select("category_name")
+        .eq("status", "PUBLISHED");
+      if (error || !data) return [];
+      const counts = new Map<string, number>();
+      data.forEach(row => {
+        const name = String(row.category_name || "").trim();
+        if (name) counts.set(name, (counts.get(name) || 0) + 1);
+      });
+      return Array.from(counts, ([name, count]) => ({ name, count }));
+    } catch (error) {
+      console.error("[Supabase getPublishedCategoryDetails exception]", error);
+      return [];
+    }
+  }
+
+  private isMissingInventoryTrackedColumn(error: any): boolean {
+    const code = String(error?.code || "");
+    const message = String(error?.message || error?.details || "").toLowerCase();
+    return code === "42703" && message.includes("inventory_tracked");
+  }
+
+  /** Insert variants with a one-time compatibility retry for old schemas. */
+  private async insertVariantRows(rows: Array<Record<string, any>>): Promise<any> {
+    if (!this.client || rows.length === 0) return null;
+
+    const writeRows = this.inventoryTrackedColumnAvailable === false
+      ? rows.map(({ inventory_tracked: _ignored, ...legacyRow }) => legacyRow)
+      : rows;
+    let result = await this.client.from("product_variants").insert(writeRows);
+
+    if (result.error && this.inventoryTrackedColumnAvailable !== false && this.isMissingInventoryTrackedColumn(result.error)) {
+      this.inventoryTrackedColumnAvailable = false;
+      const legacyRows = rows.map(({ inventory_tracked: _ignored, ...legacyRow }) => legacyRow);
+      result = await this.client.from("product_variants").insert(legacyRows);
+    } else if (!result.error && this.inventoryTrackedColumnAvailable === null) {
+      this.inventoryTrackedColumnAvailable = true;
+    }
+
+    return result;
   }
 
   /**
@@ -606,13 +690,13 @@ export class SupabaseDataService {
         selling_price_vnd: v.sellingPriceVND,
         stock_quantity: v.stockQuantity,
         image_url: v.imageUrl || null,
+        inventory_tracked: v.inventoryTracked ?? true,
+        source_available: v.sourceAvailable,
         selected_for_sale: v.selectedForSale
       }));
 
       if (variantRows.length > 0) {
-        const { error: varErr } = await this.client
-          .from("product_variants")
-          .insert(variantRows);
+        const { error: varErr } = await this.insertVariantRows(variantRows);
         if (varErr) {
           console.error("[Supabase saveVariants error]", varErr);
           if (previousVariants?.length) await this.client.from("product_variants").insert(previousVariants);
@@ -720,11 +804,13 @@ export class SupabaseDataService {
           selling_price_vnd: v.sellingPriceVND,
           stock_quantity: v.stockQuantity,
           image_url: v.imageUrl || null,
+          inventory_tracked: v.inventoryTracked ?? true,
+          source_available: v.sourceAvailable,
           selected_for_sale: v.selectedForSale
         }));
 
         if (variantRows.length > 0) {
-          const { error: insertVariantsError } = await this.client.from("product_variants").insert(variantRows);
+          const { error: insertVariantsError } = await this.insertVariantRows(variantRows);
           if (insertVariantsError) {
             if (previousVariants?.length) await this.client.from("product_variants").insert(previousVariants);
             return false;
@@ -763,6 +849,8 @@ export class SupabaseDataService {
   }
 
   private mapDbRowToWebProduct(row: any): WebProduct {
+    const sourcePlatform = String(row.source_platform || "1688").toUpperCase();
+    const legacyUntrackedSource = sourcePlatform === "SHOPIFY" || sourcePlatform === "MACORNER";
     const variants: WebProductVariant[] = (row.product_variants || []).map((v: any) => ({
       id: v.id,
       sourceSkuId: v.source_sku_id,
@@ -775,6 +863,11 @@ export class SupabaseDataService {
       sellingPriceVND: Number(v.selling_price_vnd) || 0,
       stockQuantity: Number(v.stock_quantity) || 0,
       imageUrl: v.image_url,
+      // Before the inventory_tracked migration, Shopify/Macorner rows had
+      // source_available=true with inventory_quantity represented as 0/null.
+      // Preserve that explicit availability instead of showing a false sold
+      // out state while the old schema is still in use.
+      inventoryTracked: v.inventory_tracked ?? !(legacyUntrackedSource && v.source_available === true && Number(v.stock_quantity || 0) <= 0),
       // Older production schemas did not persist source_available. Stock is
       // the authoritative fallback until that optional column is migrated.
       sourceAvailable: v.source_available ?? Number(v.stock_quantity || 0) > 0,

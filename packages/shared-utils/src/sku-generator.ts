@@ -35,6 +35,10 @@ export function generateCartesianCombinations(
     };
 
     const pricing = calculateVerifiedPrice(safeSingleSkuItem.priceCNY, pricingRule);
+    const inventoryTracked = safeSingleSkuItem.inventoryTracked ?? true;
+    const sourceAvailable = typeof safeSingleSkuItem.available === "boolean"
+      ? safeSingleSkuItem.available
+      : inventoryTracked && safeSingleSkuItem.stock > 0;
 
     return [
       {
@@ -44,7 +48,8 @@ export function generateCartesianCombinations(
         costPriceVND: pricing.totalCostVND,
         sellingPriceVND: pricing.finalSellingPriceVND,
         stockQuantity: safeSingleSkuItem.stock,
-        sourceAvailable: safeSingleSkuItem.stock > 0,
+        inventoryTracked,
+        sourceAvailable,
         selectedForSale: Boolean(singleSkuItem)
       }
     ];
@@ -66,6 +71,10 @@ export function generateCartesianCombinations(
       const stock = matchingSku?.stock ?? 0;
       const skuId = matchingSku?.skuId || matchingSku?.specId || `SKU_${val.valueId || idx}`;
       const imageUrl = val.imageUrl || matchingSku?.imageUrl;
+      const inventoryTracked = matchingSku?.inventoryTracked ?? true;
+      const sourceAvailable = typeof matchingSku?.available === "boolean"
+        ? matchingSku.available
+        : inventoryTracked && stock > 0;
 
       const pricing = calculateVerifiedPrice(priceCNY, pricingRule);
       const translatedName = val.valueCN === "Mặc định" ? "Mặc định" : applyGlossary(val.valueCN, customGlossary);
@@ -79,7 +88,8 @@ export function generateCartesianCombinations(
         sellingPriceVND: pricing.finalSellingPriceVND,
         stockQuantity: stock,
         imageUrl,
-        sourceAvailable: stock > 0,
+        inventoryTracked,
+        sourceAvailable,
         selectedForSale: Boolean(matchingSku)
       };
     });
@@ -124,6 +134,10 @@ export function generateCartesianCombinations(
       // Ảnh variation có thể thuộc bất kỳ trục nào (Macorner thường đặt ảnh
       // ở trục thứ hai "Choose Your Option", sau trục số lượng).
       const imageUrl = v1.imageUrl || v2.imageUrl || matchingSku?.imageUrl;
+      const inventoryTracked = matchingSku?.inventoryTracked ?? true;
+      const sourceAvailable = typeof matchingSku?.available === "boolean"
+        ? matchingSku.available
+        : inventoryTracked && stock > 0;
 
       const pricing = calculateVerifiedPrice(priceCNY, pricingRule);
 
@@ -147,7 +161,8 @@ export function generateCartesianCombinations(
         sellingPriceVND: pricing.finalSellingPriceVND,
         stockQuantity: stock,
         imageUrl,
-        sourceAvailable: stock > 0,
+        inventoryTracked,
+        sourceAvailable,
         selectedForSale: Boolean(matchingSku)
       });
     }

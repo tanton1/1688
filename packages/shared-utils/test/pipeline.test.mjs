@@ -163,6 +163,24 @@ test("3. SKU Matrix Cartesian Product Generator", (t) => {
   assert.equal(customVariants.length, 4, "Tổ hợp 2 kiểu x 2 gói phải tạo ra 4 biến thể");
   assert.ok(customVariants.some(v => v.sizeName.includes("Bộ 2 món")));
   assert.ok(customVariants.some(v => v.sizeName.includes("Bộ 3 món")));
+
+  const untrackedVariants = generateCartesianCombinations([{
+    propId: "quantity",
+    propNameCN: "Buy More Save More",
+    values: [{ valueId: "one", valueCN: "1 PC" }]
+  }], {
+    one: {
+      skuId: "shopify-1-pc",
+      attributes: { "Buy More Save More": "1 PC" },
+      priceCNY: 200,
+      stock: 0,
+      available: true,
+      inventoryTracked: false
+    }
+  }, DEFAULT_PRICING_RULE);
+  assert.equal(untrackedVariants.length, 1);
+  assert.equal(untrackedVariants[0].sourceAvailable, true, "Shopify available=true phải được giữ khi inventory không track");
+  assert.equal(untrackedVariants[0].inventoryTracked, false, "Không được biến tồn kho null thành tồn kho 0 có track");
 });
 
 test("4. Quality Readiness Score Evaluator", (t) => {

@@ -5,6 +5,8 @@ import { calculateStorefrontPricing } from "../dist/storefront-pricing.js";
 import {
   buildStorefrontVariantGroups,
   findStorefrontVariant,
+  getStorefrontVariantMaxQuantity,
+  isStorefrontVariantAvailable,
   isStorefrontVariantOptionAvailable,
   normalizeCatalogKey
 } from "../dist/storefront-catalog.js";
@@ -95,5 +97,33 @@ test("Storefront Suite - catalog route and variation contracts", async (t) => {
     const selected = findStorefrontVariant(variants, groups, variants[0], "colorName", "Đen");
     assert.equal(selected?.sourceSkuId, "BLACK-16");
     assert.equal(isStorefrontVariantOptionAvailable(variants, groups, selected, "sizeName", "16oz"), true);
+  });
+
+  await t.test("treats explicitly available untracked inventory as sellable without inventing stock", () => {
+    const variant = {
+      sourceSkuId: "MAC-1-PC",
+      sellingPriceVND: 700000,
+      costPriceVND: 400000,
+      stockQuantity: 0,
+      sourceAvailable: true,
+      inventoryTracked: false,
+      selectedForSale: true
+    };
+    assert.equal(isStorefrontVariantAvailable(variant), true);
+    assert.equal(getStorefrontVariantMaxQuantity(variant), 20);
+  });
+
+  await t.test("keeps tracked zero stock unavailable", () => {
+    const variant = {
+      sourceSkuId: "TRACKED-EMPTY",
+      sellingPriceVND: 100000,
+      costPriceVND: 50000,
+      stockQuantity: 0,
+      sourceAvailable: true,
+      inventoryTracked: true,
+      selectedForSale: true
+    };
+    assert.equal(isStorefrontVariantAvailable(variant), false);
+    assert.equal(getStorefrontVariantMaxQuantity(variant), 0);
   });
 });

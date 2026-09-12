@@ -5,6 +5,8 @@ import {
   buildStorefrontVariantGroups,
   findStorefrontVariant,
   getStorefrontVariantValue,
+  getStorefrontVariantMaxQuantity,
+  isStorefrontVariantAvailable,
   isStorefrontVariantOptionAvailable,
   validatePersonalizationValues
 } from "@hub1688/shared-utils";
@@ -71,7 +73,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const dialogRef = useAccessibleDialog<HTMLDivElement>(!fullPage, onClose);
 
   const validVariants = (product.variants || []).filter(v => v.selectedForSale !== false);
-  const [selectedVariant, setSelectedVariant] = useState<WebProductVariant>(validVariants[0] || product.variants[0]);
+  const [selectedVariant, setSelectedVariant] = useState<WebProductVariant>(validVariants.find(isStorefrontVariantAvailable) || validVariants[0] || product.variants[0]);
   const [activeMedia, setActiveMedia] = useState<{ type: "image" | "video"; url: string }>({
     type: "image",
     url: product.primaryImage || ""
@@ -137,7 +139,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   // Initialize defaults on product load
   useEffect(() => {
     if (product) {
-      const firstVar = validVariants[0] || product.variants[0];
+      const firstVar = validVariants.find(isStorefrontVariantAvailable) || validVariants[0] || product.variants[0];
       setSelectedVariant(firstVar);
       setActiveMedia({
         type: "image",
@@ -204,6 +206,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       }
     }
     setSelectedVariant(variant);
+    setQuantity(1);
     setVariantPreviewActive(true);
     if (variant.imageUrl) {
       setActiveMedia({ type: "image", url: variant.imageUrl });
@@ -243,8 +246,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
   const discountPercent = activeDiscountTier?.discountPercent || 0;
   const currentPrice = Math.round(basePrice * (1 - discountPercent / 100));
-  const currentStock = selectedVariant?.stockQuantity ?? 0;
-  const isOutOfStock = currentStock <= 0;
+  const maxQuantity = getStorefrontVariantMaxQuantity(selectedVariant);
+  const isOutOfStock = !isStorefrontVariantAvailable(selectedVariant);
   const personalizationNeedsConfiguration = Boolean(product.isPersonalized && !(product.personalizationFields || []).length);
   const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
   const hasMockup = Boolean(
@@ -493,7 +496,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-3 sm:p-3.5 space-y-1.5">
               <div className="flex items-center gap-2 text-xs font-bold text-orange-950">
                 <ShoppingBag size={15} className="shrink-0 text-[var(--mc-color-accent-strong)]" />
-                <span>{isOutOfStock ? "Phân loại này đang tạm hết hàng" : `Tồn kho hiện tại: ${currentStock.toLocaleString("vi-VN")} sản phẩm`}</span>
+                <span>{isOutOfStock ? "Phân loại này đang tạm hết hàng" : selectedVariant?.inventoryTracked === false ? "Phân loại này đang còn hàng" : `Tồn kho hiện tại: ${maxQuantity.toLocaleString("vi-VN")} sản phẩm`}</span>
               </div>
               {product.shippingPolicy && (
                 <div className="flex items-start gap-2 text-[11px] text-stone-700">
@@ -552,7 +555,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   </span>
                 )}
               </div>
-              {currentStock > 0 && currentStock <= 10 && <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />Chỉ còn {currentStock.toLocaleString("vi-VN")} sản phẩm cho phân loại này</div>}
+              {selectedVariant?.inventoryTracked !== false && maxQuantity > 0 && maxQuantity <= 10 && <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />Chỉ còn {maxQuantity.toLocaleString("vi-VN")} sản phẩm cho phân loại này</div>}
 
               {/* Volume Discount Tiers */}
               {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
@@ -698,8 +701,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     </span>
                     <button
                       type="button"
-                      disabled={isOutOfStock || quantity >= currentStock}
-                      onClick={() => setQuantity((q) => Math.min(currentStock, q + 1))}
+                      disabled={isOutOfStock || quantity >= maxQuantity}
+                      onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
                       aria-label="Tăng số lượng"
                       className="px-3 py-1.5 hover:bg-stone-200 font-bold text-stone-700 transition-colors text-sm cursor-pointer"
                     >
@@ -707,7 +710,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                     </button>
                   </div>
                   <span className="text-[11px] text-stone-400">
-                    {isOutOfStock ? "Tạm hết hàng" : `(Còn ${currentStock.toLocaleString()} cái)`}
+                    {isOutOfStock ? "Tạm hết hàng" : selectedVariant?.inventoryTracked === false ? "Còn hàng" : `(Còn ${maxQuantity.toLocaleString()} cái)`}
                   </span>
                 </div>
               </div>

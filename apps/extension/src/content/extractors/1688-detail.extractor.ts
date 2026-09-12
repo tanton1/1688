@@ -44,6 +44,18 @@ export class Detail1688Extractor {
       });
       title = productHeading?.innerText.trim() || headings[0]?.innerText.trim() || "";
     }
+    // 1688 frequently ships hashed class names in the new detail shell. If
+    // the stable selectors above are absent, choose the most descriptive title
+    // candidate instead of failing the whole extraction.
+    if (!title) {
+      const titleCandidates = Array.from(document.querySelectorAll(
+        "[class*='title'], [class*='Title'], [data-testid*='title'], [data-spm*='title']"
+      )) as HTMLElement[];
+      title = titleCandidates
+        .map(element => element.innerText.trim())
+        .filter(text => text.length >= 8 && text.length <= 240 && !/(company|有限公司|供应商|shop)/i.test(text))
+        .sort((a, b) => b.length - a.length)[0] || "";
+    }
     if (!title) title = document.title.replace(/- 1688.*/, "").trim();
     if (!title || title.length < 3) throw new Error("EXTRACTION_FAILED: không tìm thấy tiêu đề sản phẩm");
 
@@ -73,6 +85,19 @@ export class Detail1688Extractor {
         const val = parseFloat(text);
         if (!isNaN(val) && val > 0) pricesFound.push(val);
       });
+      if (pricesFound.length > 0) {
+        minPriceCNY = Math.min(...pricesFound);
+        maxPriceCNY = Math.max(...pricesFound);
+      }
+    }
+    if (minPriceCNY <= 0) {
+      // Fallback for hashed/new layouts where the price node has no stable
+      // class. Read visible currency tokens from the product summary only.
+      const summary = document.querySelector("main, [role='main'], #ice-container, .detail-main, [class*='detail']") as HTMLElement | null;
+      const summaryText = summary?.innerText || document.body?.innerText || "";
+      const pricesFound = Array.from(summaryText.matchAll(/[¥￥]\s*([0-9]+(?:[.,][0-9]+)?)/g))
+        .map(match => Number(String(match[1]).replace(",", ".")))
+        .filter(value => Number.isFinite(value) && value > 0);
       if (pricesFound.length > 0) {
         minPriceCNY = Math.min(...pricesFound);
         maxPriceCNY = Math.max(...pricesFound);
@@ -180,6 +205,31 @@ export class Detail1688Extractor {
         if (!images.includes(src)) images.push(src);
       }
     });
+
+    // Last-resort media fallback for 1688's hashed gallery components. Keep
+    // only meaningful product-sized images and ignore UI sprites/icons.
+    if (images.length === 0) {
+      document.querySelectorAll("main img, [role='main'] img, img").forEach(img => {
+        const image = img as HTMLImageElement;
+        const src = image.getAttribute("data-src") || image.getAttribute("data-lazyload-src") || image.currentSrc || image.src || "";
+        if (!src || /(?:icon|logo|sprite|avatar|placeholder|loading|\.svg(?:$|[?]))/i.test(src)) return;
+        if ((image.naturalWidth || image.width || 0) < 180 && (image.naturalHeight || image.height || 0) < 180) return;
+        let clean = src.startsWith("//") ? `https:${src}` : src;
+        clean = clean.replace(/_\d+x\d+.*$/, "").replace(/\.(\d+)x(\d+)\./g, ".800x800.");
+        if (/^https?:\/\//i.test(clean) && !images.includes(clean)) images.push(clean);
+      });
+    }
+
+    // Some anti-bot-safe layouts expose media only inside serialized state.
+    if (images.length === 0) {
+      document.querySelectorAll("script:not([src])").forEach(script => {
+        const text = script.textContent || "";
+        const urls = text.match(/https?:\/\/[^"'\\s]+\.(?:jpg|jpeg|png|webp)(?:[?][^"'\\s]*)?/gi) || [];
+        urls.forEach(url => {
+          if (!/(?:icon|logo|sprite|avatar|placeholder|loading)/i.test(url) && !images.includes(url)) images.push(url);
+        });
+      });
+    }
 
     // 5c. Bổ sung ảnh mẫu biến thể (Sample images) vào gallery nếu gallery ít ảnh
     if (skuProps && skuProps.length > 0) {

@@ -11,6 +11,15 @@ import {
 import { detectProductPlatform, extractProductIdFromUrl } from "@hub1688/shared-utils";
 import { Detail1688Extractor } from "./1688-detail.extractor.js";
 
+const getSourceInventoryState = (variant: any): { stock: number; available: boolean; inventoryTracked: boolean } => {
+  const inventoryTracked = Number.isFinite(variant?.inventory_quantity);
+  const stock = inventoryTracked ? Math.max(0, Math.trunc(Number(variant.inventory_quantity))) : 0;
+  const available = typeof variant?.available === "boolean"
+    ? variant.available
+    : inventoryTracked && stock > 0;
+  return { stock, available, inventoryTracked };
+};
+
 export class UniversalPlatformExtractor {
   /**
    * Tự động nhận diện nền tảng (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Web)
@@ -706,6 +715,7 @@ export class UniversalPlatformExtractor {
           let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
           if (img && img.startsWith("//")) img = "https:" + img;
 
+          const inventory = getSourceInventoryState(v);
           const skuItem: Raw1688SkuItem = {
             skuId: String(v.id),
             attributes: {
@@ -713,7 +723,9 @@ export class UniversalPlatformExtractor {
               "Quy cách": v.option2 || ""
             },
             priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
-            stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+            stock: inventory.stock,
+            available: inventory.available,
+            inventoryTracked: inventory.inventoryTracked,
             imageUrl: img
           };
 
@@ -750,11 +762,14 @@ export class UniversalPlatformExtractor {
           let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
           if (img && img.startsWith("//")) img = "https:" + img;
 
+          const inventory = getSourceInventoryState(v);
           const skuItem: Raw1688SkuItem = {
             skuId: String(v.id),
             attributes: { "Phân loại": v.title || v.name || "Phân loại" },
             priceCNY: vPriceCNY > 0 ? vPriceCNY : basePriceCNY,
-            stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+            stock: inventory.stock,
+            available: inventory.available,
+            inventoryTracked: inventory.inventoryTracked,
             imageUrl: img
           };
 

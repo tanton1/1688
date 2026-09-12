@@ -171,15 +171,17 @@ export class OrdersService {
       for (const reservation of reservations) {
         const product = inMemoryProducts.get(reservation.productId);
         const variant = product?.variants.find(item => item.sourceSkuId === reservation.sourceSkuId);
-        if (!product || !variant || variant.sellingPriceVND !== reservation.expectedBasePriceVND || variant.stockQuantity < reservation.quantity) {
+        if (!product || !variant || variant.sellingPriceVND !== reservation.expectedBasePriceVND || (variant.inventoryTracked !== false && variant.stockQuantity < reservation.quantity)) {
           throw new Error("STOCK_OR_PRICE_CHANGED");
         }
       }
       for (const reservation of reservations) {
         const product = inMemoryProducts.get(reservation.productId)!;
         const variant = product.variants.find(item => item.sourceSkuId === reservation.sourceSkuId)!;
-        variant.stockQuantity -= reservation.quantity;
-        variant.sourceAvailable = variant.stockQuantity > 0;
+        if (variant.inventoryTracked !== false) {
+          variant.stockQuantity -= reservation.quantity;
+          variant.sourceAvailable = variant.stockQuantity > 0;
+        }
       }
     }
     inMemoryOrders.set(id, newOrder);

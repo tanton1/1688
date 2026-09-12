@@ -3,7 +3,7 @@ import { inMemoryProducts } from "./import.controller.js";
 import { ordersService } from "../services/orders.service.js";
 import { telegramAlertService } from "../services/telegram-alert.service.js";
 import { StorefrontConfig, StorefrontCheckoutRequest, WebProduct, CustomerOrder, CustomerOrderItem } from "@hub1688/shared-types";
-import { calculateStorefrontPricing, generateVietQRUrl, normalizeCatalogKey, validatePersonalizationValues } from "@hub1688/shared-utils";
+import { calculateStorefrontPricing, generateVietQRUrl, normalizeCatalogKey, validatePersonalizationValues, isStorefrontVariantAvailable } from "@hub1688/shared-utils";
 import { supabaseService } from "../services/supabase.service.js";
 import { mediaMirrorService } from "../services/media-mirror.service.js";
 import crypto from "node:crypto";
@@ -177,92 +177,96 @@ export class StorefrontController {
     const { category, collection, search, sort, minPrice, maxPrice, occasion, recipient, personalized, page: rawPage, limit: rawLimit } = req.query as Record<string, string>;
     const page = Math.max(1, Number.parseInt(rawPage || "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(rawLimit || "50", 10) || 50));
-    let published: WebProduct[];
+    const parsedMinPrice = minPrice ? Number.parseInt(minPrice, 10) : undefined;
+    const parsedMaxPrice = maxPrice ? Number.parseInt(maxPrice, 10) : undefined;
+    let published: WebProduct[] = [];
+    let total = 0;
+    let categories: string[] = [];
+    let categoryDetails: Array<{ name: string; count: number }> = [];
     try {
-      published = await this.getPublishedProducts();
+      if (supabaseService.isConfigured()) {
+        // Keep filtering, sorting and pagination in Supabase. The previous
+        // implementation loaded the entire published catalog into memory,
+        // which does not scale with the storefront's expected density.
+        const result = await supabaseService.getProducts({
+          status: "PUBLISHED",
+          category: category && category !== "ALL" ? category : undefined,
+          collection: !category || category === "ALL" ? collection : undefined,
+          search: search?.trim() || undefined,
+          occasion: occasion && occasion !== "all" ? occasion.trim().toLowerCase() : undefined,
+          recipient: recipient && recipient !== "all" ? recipient.trim().toLowerCase() : undefined,
+          personalized: personalized === "1" || personalized === "true",
+          minPrice: Number.isFinite(parsedMinPrice) ? parsedMinPrice : undefined,
+          maxPrice: Number.isFinite(parsedMaxPrice) ? parsedMaxPrice : undefined,
+          sort,
+          page,
+          pageSize: limit
+        });
+        if (!result) throw new Error("PERSISTENCE_FAILED");
+        published = result.items;
+        total = result.total;
+        categoryDetails = await supabaseService.getPublishedCategoryDetails();
+        categories = categoryDetails.map(item => item.name);
+      } else {
+        published = Array.from(inMemoryProducts.values()).filter(product => product.status === "PUBLISHED");
+
+        if (category && category !== "ALL") {
+          published = published.filter(p => p.categoryName?.toLowerCase() === category.toLowerCase());
+        } else if (collection) {
+          const wantedCollection = normalizeCatalogKey(collection);
+          published = published.filter(p => normalizeCatalogKey(p.categoryName || "") === wantedCollection);
+        }
+        if (occasion && occasion !== "all") {
+          const wanted = occasion.trim().toLowerCase();
+          published = published.filter(p => (p.occasionTags || []).some(tag => tag.toLowerCase() === wanted));
+        }
+        if (recipient && recipient !== "all") {
+          const wanted = recipient.trim().toLowerCase();
+          published = published.filter(p => (p.recipientTags || []).some(tag => tag.toLowerCase() === wanted));
+        }
+        if (personalized === "1" || personalized === "true") {
+          published = published.filter(p => p.isPersonalized === true);
+        }
+        if (search && search.trim()) {
+          const q = search.trim().toLowerCase();
+          published = published.filter(p =>
+            p.titleVI.toLowerCase().includes(q) ||
+            (p.titleEN && p.titleEN.toLowerCase().includes(q)) ||
+            p.skuCode.toLowerCase().includes(q) ||
+            (p.categoryName && p.categoryName.toLowerCase().includes(q))
+          );
+        }
+        if (Number.isFinite(parsedMinPrice)) published = published.filter(p => p.maxPriceVND >= parsedMinPrice!);
+        if (Number.isFinite(parsedMaxPrice)) published = published.filter(p => p.minPriceVND <= parsedMaxPrice!);
+        if (sort === "PRICE_ASC") published.sort((a, b) => a.minPriceVND - b.minPriceVND);
+        else if (sort === "PRICE_DESC") published.sort((a, b) => b.minPriceVND - a.minPriceVND);
+        else if (sort === "QUALITY_DESC") published.sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0));
+        else published.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+        total = published.length;
+        const categoryCounts: Record<string, number> = {};
+        published.forEach(p => {
+          const name = p.categoryName || "Khác";
+          categoryCounts[name] = (categoryCounts[name] || 0) + 1;
+        });
+        categoryDetails = Object.entries(categoryCounts).map(([name, count]) => ({ name, count }));
+        categories = categoryDetails.map(item => item.name);
+        published = published.slice((page - 1) * limit, page * limit);
+      }
     } catch (error) {
       console.error("[Storefront list products]", error);
       res.status(503).json({ error: "PERSISTENCE_FAILED" });
       return;
     }
-    const allPublished = [...published];
-
-    // Lọc theo danh mục
-    if (category && category !== "ALL") {
-      published = published.filter(p => p.categoryName?.toLowerCase() === category.toLowerCase());
-    } else if (collection) {
-      const wantedCollection = normalizeCatalogKey(collection);
-      published = published.filter(p => normalizeCatalogKey(p.categoryName || "") === wantedCollection);
-    }
-
-    // Lọc theo ngữ cảnh mua quà. Các tag được chuẩn hóa ở lớp import/editor,
-    // nhưng vẫn so sánh không phân biệt hoa thường để giữ contract ổn định với dữ liệu cũ.
-    if (occasion && occasion !== "all") {
-      const wanted = occasion.trim().toLowerCase();
-      published = published.filter(p => (p.occasionTags || []).some(tag => tag.toLowerCase() === wanted));
-    }
-    if (recipient && recipient !== "all") {
-      const wanted = recipient.trim().toLowerCase();
-      published = published.filter(p => (p.recipientTags || []).some(tag => tag.toLowerCase() === wanted));
-    }
-    if (personalized === "1" || personalized === "true") {
-      published = published.filter(p => p.isPersonalized === true);
-    }
-
-    // Tìm kiếm theo từ khóa
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      published = published.filter(p =>
-        p.titleVI.toLowerCase().includes(q) ||
-        (p.titleEN && p.titleEN.toLowerCase().includes(q)) ||
-        p.skuCode.toLowerCase().includes(q) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(q))
-      );
-    }
-
-    // Lọc theo khoảng giá VNĐ
-    if (minPrice) {
-      const min = parseInt(minPrice, 10);
-      if (!isNaN(min)) published = published.filter(p => p.minPriceVND >= min);
-    }
-    if (maxPrice) {
-      const max = parseInt(maxPrice, 10);
-      if (!isNaN(max)) published = published.filter(p => p.minPriceVND <= max);
-    }
-
-    // Sắp xếp
-    if (sort === "PRICE_ASC") {
-      published.sort((a, b) => a.minPriceVND - b.minPriceVND);
-    } else if (sort === "PRICE_DESC") {
-      published.sort((a, b) => b.minPriceVND - a.minPriceVND);
-    } else if (sort === "QUALITY_DESC") {
-      published.sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0));
-    } else {
-      // Mặc định mới nhất
-      published.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-    }
-
-    // Thống kê danh mục có sẵn
-    const categoryCounts: Record<string, number> = {};
-    allPublished.forEach(p => {
-      const cat = p.categoryName || "Khác";
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-    });
-
-    const categoryDetails = Object.entries(categoryCounts).map(([name, count]) => ({
-      name,
-      count
-    }));
-
-    const total = published.length;
 
     res.json({
       success: true,
       total,
       page,
       limit,
-      products: published.slice((page - 1) * limit, page * limit).map(product => this.toPublicProduct(product)),
-      categories: categoryDetails.map(item => item.name),
+      hasNextPage: page * limit < total,
+      products: published.map(product => this.toPublicProduct(product)),
+      categories,
       categoryDetails,
       storeInfo: currentStorefrontConfig
     });
@@ -339,7 +343,7 @@ export class StorefrontController {
         variant.sourceSkuId === item.skuCode ||
         item.skuCode.startsWith(`${variant.sourceSkuId}-CUST-`)
       );
-      if (!matchedVar || !matchedVar.selectedForSale || !matchedVar.sourceAvailable) {
+      if (!matchedVar || !isStorefrontVariantAvailable(matchedVar)) {
         res.status(409).json({ error: "VARIANT_UNAVAILABLE", message: `Phân loại của ${matchedProd.titleVI} không còn bán` });
         return;
       }
@@ -361,7 +365,7 @@ export class StorefrontController {
           return;
         }
       }
-      if (matchedVar.stockQuantity < qty) {
+      if (matchedVar.inventoryTracked !== false && matchedVar.stockQuantity < qty) {
         res.status(409).json({ error: "INSUFFICIENT_STOCK", message: `${matchedProd.titleVI} chỉ còn ${matchedVar.stockQuantity} sản phẩm` });
         return;
       }
@@ -379,7 +383,11 @@ export class StorefrontController {
       totalAmountVND += price * qty;
       const cost = matchedVar.costPriceVND ?? 0;
       totalCostVND += cost * qty;
-      reservations.push({ productId: matchedProd.id!, sourceSkuId: matchedVar.sourceSkuId, quantity: qty, expectedBasePriceVND: matchedVar.sellingPriceVND });
+      // Untracked source inventory is intentionally not reserved/decremented:
+      // its numeric stock is a placeholder and must never be treated as zero.
+      if (matchedVar.inventoryTracked !== false) {
+        reservations.push({ productId: matchedProd.id!, sourceSkuId: matchedVar.sourceSkuId, quantity: qty, expectedBasePriceVND: matchedVar.sellingPriceVND });
+      }
       orderItems.push({
         skuCode: item.skuCode,
         variantName: item.variantName,

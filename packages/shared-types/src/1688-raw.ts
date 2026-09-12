@@ -42,6 +42,10 @@ export interface Raw1688SkuItem {
   priceCNY: number;
   retailPriceCNY?: number;
   stock: number;
+  /** True when the source exposes a numeric inventory quantity. */
+  inventoryTracked?: boolean;
+  /** Availability flag exposed by sources such as Shopify. */
+  available?: boolean;
   imageUrl?: string;
 }
 

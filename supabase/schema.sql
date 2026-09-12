@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
     selling_price_vnd NUMERIC(12, 0) NOT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
     image_url TEXT,
+    inventory_tracked BOOLEAN NOT NULL DEFAULT TRUE,
     source_available BOOLEAN DEFAULT TRUE,
     selected_for_sale BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -200,6 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_product_variants_prod_id ON product_variants(prod
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color_name_en VARCHAR(100);
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size_name_en VARCHAR(100);
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS source_price NUMERIC(14, 2);
+ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS inventory_tracked BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS source_available BOOLEAN DEFAULT TRUE;
 ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS selected_for_sale BOOLEAN DEFAULT TRUE;
 
@@ -314,14 +316,20 @@ BEGIN
     FOR reservation IN SELECT value FROM jsonb_array_elements(p_reservations)
     LOOP
         UPDATE product_variants AS variant
-        SET stock_quantity = variant.stock_quantity - (reservation->>'quantity')::INTEGER,
-            source_available = (variant.stock_quantity - (reservation->>'quantity')::INTEGER) > 0,
+        SET stock_quantity = CASE
+                WHEN variant.inventory_tracked THEN variant.stock_quantity - (reservation->>'quantity')::INTEGER
+                ELSE variant.stock_quantity
+            END,
+            source_available = CASE
+                WHEN variant.inventory_tracked THEN (variant.stock_quantity - (reservation->>'quantity')::INTEGER) > 0
+                ELSE variant.source_available
+            END,
             updated_at = NOW()
         WHERE variant.product_id = (reservation->>'productId')::UUID
           AND variant.source_sku_id = reservation->>'sourceSkuId'
           AND variant.selected_for_sale = TRUE
           AND variant.source_available = TRUE
-          AND variant.stock_quantity >= (reservation->>'quantity')::INTEGER
+          AND (NOT variant.inventory_tracked OR variant.stock_quantity >= (reservation->>'quantity')::INTEGER)
           AND variant.selling_price_vnd = (reservation->>'expectedBasePriceVND')::NUMERIC
           AND EXISTS (SELECT 1 FROM products p WHERE p.id = variant.product_id AND p.status = 'PUBLISHED')
         RETURNING variant.stock_quantity INTO remaining_stock;

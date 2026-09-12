@@ -22,6 +22,8 @@ const formatCustomizationValue = (value: unknown): string => {
 
 export interface CartItem {
   productId: string;
+  /** Stable cart-line identity; never sent as a commercial SKU. */
+  lineId?: string;
   skuCode: string;
   sourceSkuId: string;
   variantName: string;
@@ -246,7 +248,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                       <div className="flex items-center border border-stone-300 rounded-lg overflow-hidden bg-stone-50">
                         <button
                           type="button"
-                          onClick={() => onUpdateQuantity(item.skuCode, item.quantity - 1)}
+                          onClick={() => onUpdateQuantity(item.lineId || item.skuCode, item.quantity - 1)}
                           aria-label={`Giảm số lượng ${item.productTitle}`}
                           className="w-11 h-11 hover:bg-stone-200 text-stone-700 font-bold text-base cursor-pointer"
                         >
@@ -257,7 +259,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => onUpdateQuantity(item.skuCode, item.quantity + 1)}
+                          onClick={() => onUpdateQuantity(item.lineId || item.skuCode, item.quantity + 1)}
                           disabled={item.quantity >= item.maxQuantity}
                           aria-label={`Tăng số lượng ${item.productTitle}`}
                           className="w-11 h-11 hover:bg-stone-200 text-stone-700 font-bold text-base cursor-pointer disabled:text-stone-300 disabled:cursor-not-allowed"
@@ -272,7 +274,7 @@ export const StoreCartDrawer: React.FC<StoreCartDrawerProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => onRemoveItem(item.skuCode)}
+                          onClick={() => onRemoveItem(item.lineId || item.skuCode)}
                           aria-label={`Xóa ${item.productTitle} khỏi giỏ hàng`}
                           className="w-11 h-11 text-stone-400 hover:text-rose-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
                           title="Xóa món"

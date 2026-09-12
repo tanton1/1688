@@ -25,6 +25,9 @@ export interface NormalizedVariant {
   specVI?: string;
   priceCNY: number;
   stock: number;
+  /** Source availability can be known even when inventory is not numerically tracked. */
+  available?: boolean;
+  inventoryTracked?: boolean;
   imageUrl?: string;
 }
 

@@ -482,6 +482,7 @@ export const AdminApi = {
     total: number;
     page: number;
     limit: number;
+    hasNextPage?: boolean;
     categories: string[];
     products: WebProduct[];
   }> {

@@ -201,6 +201,12 @@ export class ImportController {
           ? settings.selectedSkuIds.includes(nv.sourceSkuId)
           : true;
 
+        const stockQuantity = normalizeSourceStock(nv.stock);
+        const inventoryTracked = nv.inventoryTracked ?? true;
+        const sourceAvailable = typeof nv.available === "boolean"
+          ? nv.available
+          : inventoryTracked && stockQuantity > 0;
+
         return {
           id: `v_${Date.now()}_${idx}`,
           sourceSkuId: nv.sourceSkuId,
@@ -211,9 +217,10 @@ export class ImportController {
           costPriceVND: costVND,
           sourcePrice: nv.priceCNY ?? raw.prices?.minPriceCNY,
           sellingPriceVND: sellVND,
-          stockQuantity: normalizeSourceStock(nv.stock),
+          stockQuantity,
           imageUrl: nv.imageUrl || normalized.media.images[0] || "",
-          sourceAvailable: normalizeSourceStock(nv.stock) > 0,
+          sourceAvailable,
+          inventoryTracked,
           selectedForSale: isSelected
         };
       });
@@ -425,7 +432,8 @@ export class ImportController {
             }),
             ...(previous.isStockAutoSync ? {} : {
               stockQuantity: oldVariant.stockQuantity,
-              sourceAvailable: oldVariant.sourceAvailable
+              sourceAvailable: oldVariant.sourceAvailable,
+              inventoryTracked: oldVariant.inventoryTracked
             }),
             ...(previous.isImagesLocked ? { imageUrl: oldVariant.imageUrl } : {})
           };

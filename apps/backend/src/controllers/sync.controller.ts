@@ -104,7 +104,8 @@ export class SyncController {
           costPriceVND: priced.totalCostVND,
           sellingPriceVND: priced.finalSellingPriceVND,
           stockQuantity: source.stock ?? 0,
-          sourceAvailable: (source.stock ?? 0) > 0
+          sourceAvailable: source.available ?? ((source.inventoryTracked ?? true) && (source.stock ?? 0) > 0),
+          inventoryTracked: source.inventoryTracked ?? true
         };
       }) };
       const prices = updatedProduct.variants.map(variant => variant.sellingPriceVND);

@@ -17,6 +17,8 @@ const rawSku = z.object({
   skuId: id,
   priceCNY: z.number().finite().positive().max(10_000_000),
   stock: z.number().int().nonnegative().max(1_000_000_000).nullable().optional(),
+  available: z.boolean().optional(),
+  inventoryTracked: z.boolean().optional(),
   attributes: z.record(z.string(), z.string()).optional(),
   imageUrl: imageRef.optional()
 }).passthrough();
@@ -39,6 +41,8 @@ const normalizedVariant = z.object({
   specVI: optionalText(500),
   priceCNY: z.number().finite().positive().max(10_000_000),
   stock: z.number().int().nonnegative().max(1_000_000_000),
+  available: z.boolean().optional(),
+  inventoryTracked: z.boolean().optional(),
   imageUrl: imageRef.optional()
 }).strict();
 
@@ -138,6 +142,7 @@ const webVariant = z.object({
   sellingPriceVND: money,
   stockQuantity: z.number().int().nonnegative().max(1_000_000_000),
   imageUrl: imageRef.optional(),
+  inventoryTracked: z.boolean().optional(),
   sourceAvailable: z.boolean(),
   selectedForSale: z.boolean()
 }).strict();

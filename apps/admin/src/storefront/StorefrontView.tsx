@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { WebProduct, WebProductVariant, StorefrontConfig, CustomerOrder } from "@hub1688/shared-types";
-import { normalizeCatalogKey } from "@hub1688/shared-utils";
+import { getStorefrontVariantMaxQuantity, isStorefrontVariantAvailable, normalizeCatalogKey } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
 import { StoreHeader } from "./StoreHeader";
 import { StoreHeroBanner } from "./StoreHeroBanner";
@@ -222,7 +222,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       setCart(current => current.map(item => {
         const product = finalCatalog.find(candidate => candidate.id === item.productId);
         const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
-        return variant ? { ...item, image: item.image || variant.imageUrl || product?.primaryImage, maxQuantity: Math.max(0, variant.stockQuantity ?? 0) } : item;
+        return variant ? { ...item, image: item.image || variant.imageUrl || product?.primaryImage, maxQuantity: getStorefrontVariantMaxQuantity(variant, item.maxQuantity || 20) } : item;
       }));
       const catSet = new Set((prodRes?.categories || finalCatalog.map(p => p.categoryName)).filter(Boolean));
       setCategories(Array.from(catSet) as string[]);
@@ -324,35 +324,42 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     customizationId?: string,
     customizationSchemaVersion?: number
   ) => {
+    if (!isStorefrontVariantAvailable(variant)) {
+      onShowToast("Phân loại này hiện không khả dụng.", "error");
+      return;
+    }
+    const maxQuantity = getStorefrontVariantMaxQuantity(variant);
+    const safeQuantity = Math.min(Math.max(1, quantity), maxQuantity);
     const hasCustom = Boolean(customizationId) || Boolean(customizationData && Object.keys(customizationData).length > 0);
     const baseSku = variant.sourceSkuId || product.skuCode || `SKU-${Date.now()}`;
-    const sku = hasCustom ? `${baseSku.slice(0, 80)}-CUST-${customizationId || "draft"}` : baseSku;
+    const lineId = hasCustom ? `${baseSku.slice(0, 80)}-line-${customizationId || "draft"}` : baseSku;
     const vName = [variant.colorName, variant.sizeName].filter(Boolean).join(" - ") || variant.sourceSkuId || "Mặc định";
-    const price = calculateUnitPrice(product, variant, quantity, giftAddonsSelected);
+    const price = calculateUnitPrice(product, variant, safeQuantity, giftAddonsSelected);
 
     setCart(prev => {
-      const existingIdx = prev.findIndex(item => item.skuCode === sku);
+      const existingIdx = prev.findIndex(item => (item.lineId || item.skuCode) === lineId);
       if (existingIdx >= 0) {
         const next = [...prev];
-        const nextQuantity = Math.min(variant.stockQuantity, next[existingIdx].quantity + quantity);
+        const nextQuantity = Math.min(maxQuantity, next[existingIdx].quantity + safeQuantity);
         next[existingIdx] = {
           ...next[existingIdx],
           quantity: nextQuantity,
-          maxQuantity: variant.stockQuantity,
+          maxQuantity,
           priceVND: calculateUnitPrice(product, variant, nextQuantity, giftAddonsSelected)
         };
         return next;
       } else {
         const newItem: CartItem = {
           productId: product.id!,
-          skuCode: sku,
+          lineId,
+          skuCode: baseSku,
           sourceSkuId: variant.sourceSkuId,
           variantName: vName,
           productTitle: product.titleVI,
           image: customizedPreviewUrl || variant.imageUrl || product.primaryImage,
           priceVND: price,
-          quantity: Math.min(quantity, variant.stockQuantity),
-          maxQuantity: variant.stockQuantity,
+          quantity: safeQuantity,
+          maxQuantity,
           customizationData,
           customizedPreviewUrl,
           customizationId,
@@ -363,7 +370,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
       }
     });
 
-    onShowToast(`Đã thêm ${quantity}x "${product.titleVI}" vào giỏ hàng!`);
+    onShowToast(`Đã thêm ${safeQuantity}x "${product.titleVI}" vào giỏ hàng!`);
     setIsCartOpen(true);
   };
 
@@ -378,6 +385,10 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     customizationId?: string,
     customizationSchemaVersion?: number
   ) => {
+    if (!isStorefrontVariantAvailable(variant)) {
+      onShowToast("Phân loại này hiện không khả dụng.", "error");
+      return;
+    }
     handleAddToCart(variant, quantity, product, customizationData, customizedPreviewUrl, giftAddonsSelected, customizationId, customizationSchemaVersion);
     setDetailProduct(null);
     setIsCartOpen(false);
@@ -386,8 +397,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
   // Quick Add from Product Card
   const handleQuickAdd = (product: WebProduct) => {
-    const defaultVariant = product.variants?.find(v => v.selectedForSale !== false) || product.variants?.[0];
-    if (defaultVariant && !product.isPersonalized) {
+    const defaultVariant = product.variants?.find(isStorefrontVariantAvailable) || product.variants?.find(v => v.selectedForSale !== false) || product.variants?.[0];
+    if (defaultVariant && !product.isPersonalized && isStorefrontVariantAvailable(defaultVariant)) {
       handleAddToCart(defaultVariant, 1, product);
     } else {
       setDetailProduct(product);
@@ -395,16 +406,16 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   };
 
   // Cart Operations
-  const handleUpdateCartQty = (skuCode: string, qty: number) => {
+  const handleUpdateCartQty = (lineId: string, qty: number) => {
     if (qty <= 0) {
-      handleRemoveCartItem(skuCode);
+      handleRemoveCartItem(lineId);
       return;
     }
     setCart(prev => prev.map(item => {
-      if (item.skuCode !== skuCode) return item;
+      if ((item.lineId || item.skuCode) !== lineId) return item;
       const product = products.find(candidate => candidate.id === item.productId);
       const variant = product?.variants.find(candidate => candidate.sourceSkuId === item.sourceSkuId);
-      const maxQuantity = Math.max(0, variant?.stockQuantity ?? item.maxQuantity);
+      const maxQuantity = variant ? getStorefrontVariantMaxQuantity(variant, item.maxQuantity || 20) : item.maxQuantity;
       const nextQuantity = Math.min(qty, maxQuantity);
       return {
         ...item,
@@ -415,8 +426,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     }));
   };
 
-  const handleRemoveCartItem = (skuCode: string) => {
-    setCart(prev => prev.filter(it => it.skuCode !== skuCode));
+  const handleRemoveCartItem = (lineId: string) => {
+    setCart(prev => prev.filter(it => (it.lineId || it.skuCode) !== lineId));
   };
 
   const handleClearCart = () => {

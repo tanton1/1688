@@ -21,6 +21,7 @@ let assertShopifyDomain;
 let normalizeSourceStock;
 let inMemoryProducts;
 let inMemoryOrders;
+let buildExternalCustomizerMetadata;
 
 before(async () => {
   ({ ENV } = await import("../dist/config/env.js"));
@@ -33,6 +34,7 @@ before(async () => {
   ({ assertSafePublicUrl, assertShopifyDomain } = await import("../dist/utils/safe-network.js"));
   ({ normalizeSourceStock, inMemoryProducts } = await import("../dist/controllers/import.controller.js"));
   ({ inMemoryOrders } = await import("../dist/services/orders.service.js"));
+  ({ buildExternalCustomizerMetadata } = await import("../dist/services/multi-platform-cloner.service.js"));
 });
 
 test("health exposes security headers and request id", async () => {
@@ -274,6 +276,63 @@ test("checkout ignores client prices and hides internal sourcing costs", async (
   assert.equal(tracked.body.orders[0].estimatedProfitVND, 0);
   inMemoryProducts.delete(id);
   inMemoryOrders.clear();
+});
+
+test("untracked Shopify inventory remains sellable and tracked zero stock is rejected", async () => {
+  const id = "checkout-untracked-product";
+  inMemoryProducts.set(id, {
+    id, version: 1, slug: id, skuCode: "UNTRACKED-1", titleVI: "Sản phẩm Shopify không track kho", categoryName: "Test",
+    primaryImage: "https://example.com/image.jpg", galleryImages: [], status: "PUBLISHED", qualityScore: 100,
+    minPriceVND: 200000, maxPriceVND: 200000, isTitleLocked: false, isDescLocked: false, isImagesLocked: false,
+    isPriceAutoSync: true, isStockAutoSync: true, sourceProductId: "source-untracked",
+    sourceUrl: "https://macorner.co/products/source-untracked", supplierName: "Macorner",
+    variants: [
+      { sourceSkuId: "UNTRACKED-VAR", costPriceVND: 80000, sellingPriceVND: 200000, stockQuantity: 0, inventoryTracked: false, sourceAvailable: true, selectedForSale: true },
+      { sourceSkuId: "TRACKED-ZERO", costPriceVND: 80000, sellingPriceVND: 200000, stockQuantity: 0, inventoryTracked: true, sourceAvailable: true, selectedForSale: true }
+    ]
+  });
+
+  await request.post("/api/v1/store/orders").send({
+    customerName: "Nguyen Van B", customerPhone: "0912345678", customerAddress: "123 Duong Test, Quan 1",
+    paymentMethod: "COD",
+    items: [{ productId: id, skuCode: "UNTRACKED-VAR", sourceSkuId: "UNTRACKED-VAR", variantName: "1 PC", quantity: 12, sellingPriceVND: 1 }]
+  }).expect(201);
+  assert.equal(inMemoryProducts.get(id).variants[0].stockQuantity, 0, "Tồn kho không track không được decrement số 0 giả");
+
+  const rejected = await request.post("/api/v1/store/orders").send({
+    customerName: "Nguyen Van B", customerPhone: "0912345678", customerAddress: "123 Duong Test, Quan 1",
+    paymentMethod: "COD",
+    items: [{ productId: id, skuCode: "TRACKED-ZERO", sourceSkuId: "TRACKED-ZERO", variantName: "0 stock", quantity: 1, sellingPriceVND: 1 }]
+  }).expect(409);
+  assert.equal(rejected.body.error, "VARIANT_UNAVAILABLE");
+  inMemoryProducts.delete(id);
+  inMemoryOrders.clear();
+});
+
+test("Macorner external customizer schema keeps option assets outside commercial variants", () => {
+  const metadata = buildExternalCustomizerMetadata({
+    clipartCategories: [{
+      id: "shape-category",
+      title: "Jewelry Dish Shape",
+      cliparts: [
+        { id: "square", title: "Square", thumbnail: "cliparts/square.jpg" },
+        { id: "circle", title: "Circle", file: { key: "cliparts/circle.png" } }
+      ]
+    }],
+    printAreas: [{ artwork: { templates: [{ layers: [
+      { title: "Choose Shape", personalized: { enable: true, type: "clipartCategory", label: "Choose Shape", required: true, clipartCategory: "shape-category" } },
+      { title: "Enter Name", personalized: { enable: true, label: "Enter Name", required: true, max: "15" } }
+    ] }] } }],
+    mockups: [{ layers: [{ file: { key: "artworks/mockup.jpg" } }] }]
+  });
+  assert.ok(metadata);
+  assert.equal(metadata.customOptionGroups.length, 1);
+  assert.equal(metadata.customOptionGroups[0].name, "Choose Shape");
+  assert.equal(metadata.customOptionGroups[0].values.length, 2);
+  assert.equal(metadata.customOptionGroups[0].values[0].imageUrl, "https://cdn.dztcloud.com/cliparts/square.jpg");
+  assert.equal(metadata.customizationEvidence.textFields[0].label, "Enter Name");
+  assert.equal(metadata.customizationEvidence.textFields[0].maxLength, 15);
+  assert.equal(metadata.customizerMockupTemplateUrl, "https://cdn.dztcloud.com/artworks/mockup.jpg");
 });
 
 test("connector endpoints reject browser-supplied secrets", async () => {

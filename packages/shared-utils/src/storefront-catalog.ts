@@ -11,6 +11,31 @@ export interface StorefrontVariantGroup {
   options: StorefrontVariantOption[];
 }
 
+/**
+ * A source can expose availability without exposing a numeric inventory count
+ * (for example Shopify returns available=true and inventory_quantity=null).
+ * Keep that distinction explicit so the storefront never turns an available
+ * item into a false "sold out" state.
+ */
+export const isStorefrontVariantAvailable = (variant: WebProductVariant | undefined): boolean => {
+  if (!variant || variant.selectedForSale === false || variant.sourceAvailable === false) return false;
+  if (variant.inventoryTracked === false) return true;
+  return (variant.stockQuantity ?? 0) > 0;
+};
+
+/**
+ * Returns a quantity ceiling for UI steppers. Untracked inventory uses a
+ * bounded order safety limit instead of a fabricated stock quantity.
+ */
+export const getStorefrontVariantMaxQuantity = (
+  variant: WebProductVariant | undefined,
+  untrackedLimit = 20
+): number => {
+  if (!isStorefrontVariantAvailable(variant)) return 0;
+  if (variant?.inventoryTracked === false) return Math.max(1, untrackedLimit);
+  return Math.max(0, variant?.stockQuantity ?? 0);
+};
+
 export const normalizeCatalogKey = (value: string): string => value
   .normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "")
@@ -78,5 +103,5 @@ export const isStorefrontVariantOptionAvailable = (
 ): boolean => variants.some(variant =>
   getStorefrontVariantValue(variant, changedKey) === value &&
   matchesOtherSelections(variant, changedKey, selectedVariant, groups) &&
-  (variant.stockQuantity ?? 0) > 0
+  isStorefrontVariantAvailable(variant)
 );

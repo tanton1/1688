@@ -156,6 +156,8 @@ export const App: React.FC = () => {
           sizeVI: v.sizeName,
           priceCNY: priceCNY > 0 ? priceCNY : product.prices.minPriceCNY,
           stock: v.stockQuantity,
+          available: v.sourceAvailable,
+          inventoryTracked: v.inventoryTracked,
           imageUrl: v.imageUrl
         };
       }),

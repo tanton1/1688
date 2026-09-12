@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { WebProduct } from "@hub1688/shared-types";
+import { isStorefrontVariantAvailable } from "@hub1688/shared-utils";
 import { ShoppingBag, Eye, Video, Sparkles, Star, ImageOff } from "lucide-react";
 
 interface StoreProductCardProps {
@@ -18,8 +19,8 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
     .filter(tier => tier.discountPercent > 0)
     .sort((left, right) => left.minQty - right.minQty)[0];
   const hasReviews = Number(product.reviewCount) > 0 && Number(product.rating) > 0;
-  const totalStock = (product.variants || []).reduce((acc, variant) => acc + (variant.stockQuantity || 0), 0);
-  const isOutOfStock = totalStock <= 0;
+  const hasSellableVariant = (product.variants || []).some(isStorefrontVariantAvailable);
+  const isOutOfStock = !hasSellableVariant;
 
   const openDetails = () => onSelect(product);
 
@@ -51,7 +52,7 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
         <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent opacity-0 transition-opacity duration-[var(--mc-motion-instant)] group-hover:opacity-100" aria-hidden="true" />
 
         <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-1.5">
-          {product.isPersonalized && <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mc-color-accent)] px-2.5 py-1 text-[10px] font-bold text-white"><Sparkles className="h-3 w-3" aria-hidden="true" /> Custom</span>}
+          {product.isPersonalized && <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mc-color-accent)] px-2.5 py-1 text-[10px] font-bold text-white"><Sparkles className="h-3 w-3" aria-hidden="true" /> Cá nhân hóa</span>}
           {product.videoUrl && <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mc-color-surface-base)]/75 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm"><Video className="h-3 w-3" aria-hidden="true" /> Video</span>}
         </div>
         {firstDiscountTier && <span className="absolute right-3 top-3 z-10 rounded-full bg-[var(--mc-color-surface-strong)] px-2.5 py-1 text-[10px] font-bold text-[var(--mc-color-accent-strong)] shadow-sm">-{firstDiscountTier.discountPercent}% từ {firstDiscountTier.minQty}</span>}
@@ -77,7 +78,7 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onS
               {maxPrice > minPrice && <span className="text-[11px] font-semibold text-[var(--mc-color-text-secondary)]">– {maxPrice.toLocaleString("vi-VN")}đ</span>}
             </div>
           </div>
-          <button type="button" disabled={isOutOfStock} onClick={() => onQuickAdd(product)} className="mc-focus-ring relative z-20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--mc-color-accent)]/30 bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)] transition-colors hover:border-[var(--mc-color-accent)] hover:bg-[var(--mc-color-accent)] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-[var(--mc-color-border-default)]/10 disabled:bg-[var(--mc-color-surface-subtle)] disabled:text-[var(--mc-color-text-secondary)]" title={isOutOfStock ? "Sản phẩm đã hết hàng" : "Thêm nhanh vào giỏ hàng"} aria-label={isOutOfStock ? "Sản phẩm đã hết hàng" : `Thêm nhanh ${product.titleVI} vào giỏ hàng`}>
+          <button type="button" disabled={isOutOfStock} onClick={() => onQuickAdd(product)} className="mc-focus-ring relative z-20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--mc-color-accent)]/30 bg-[var(--mc-color-accent)]/10 text-[var(--mc-color-accent-strong)] transition-colors hover:border-[var(--mc-color-accent)] hover:bg-[var(--mc-color-accent)] hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:border-[var(--mc-color-border-default)]/10 disabled:bg-[var(--mc-color-surface-subtle)] disabled:text-[var(--mc-color-text-secondary)]" title={isOutOfStock ? "Sản phẩm hiện không khả dụng" : product.isPersonalized ? "Mở trang để cá nhân hóa" : "Thêm nhanh vào giỏ hàng"} aria-label={isOutOfStock ? "Sản phẩm hiện không khả dụng" : product.isPersonalized ? `Mở ${product.titleVI} để cá nhân hóa` : `Thêm nhanh ${product.titleVI} vào giỏ hàng`}>
             <ShoppingBag className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>

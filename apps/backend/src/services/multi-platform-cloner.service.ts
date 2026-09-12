@@ -13,13 +13,15 @@ import {
   VisualSourcingMatch,
   VisualSourcingResponse
 } from "@hub1688/shared-types";
+import type { CustomizationEvidence, SourceOptionGroup } from "@hub1688/shared-types";
 import crypto from "node:crypto";
 import {
   detectProductPlatform,
   extractProductIdFromUrl,
   parseHtmlProductMetadata,
   SUPPORTED_PLATFORMS_META,
-  evaluateProductQuality
+  evaluateProductQuality,
+  inferPersonalizationSchema
 } from "@hub1688/shared-utils";
 import { TranslationEngineService } from "./translation.service.js";
 import { PricingEngineService } from "./pricing.service.js";
@@ -28,6 +30,135 @@ import { aiGatewayService } from "./ai-gateway.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
 import { ENV } from "../config/env.js";
 import { safeFetch } from "../utils/safe-network.js";
+
+const getSourceInventoryState = (variant: any): { stock: number; available: boolean; inventoryTracked: boolean } => {
+  const hasSourceQuantity = Number.isFinite(variant?.inventory_quantity);
+  const hasNormalizedQuantity = Number.isFinite(variant?.stock) && typeof variant?.inventoryTracked !== "boolean" && typeof variant?.available !== "boolean";
+  const inventoryTracked = typeof variant?.inventoryTracked === "boolean"
+    ? variant.inventoryTracked
+    : hasSourceQuantity || hasNormalizedQuantity;
+  const stock = inventoryTracked
+    ? Math.max(0, Math.trunc(Number(hasSourceQuantity ? variant.inventory_quantity : (variant.stock ?? 0))))
+    : 0;
+  const available = typeof variant?.available === "boolean"
+    ? variant.available
+    : inventoryTracked && stock > 0;
+  return { stock, available, inventoryTracked };
+};
+
+type ExternalCustomizerMetadata = {
+  customOptionGroups: SourceOptionGroup[];
+  customizationEvidence: CustomizationEvidence;
+  customizerMockupTemplateUrl?: string;
+  customImages: string[];
+};
+
+export function buildExternalCustomizerMetadata(config: any): ExternalCustomizerMetadata | null {
+  if (!config || (!Array.isArray(config.clipartCategories) && !Array.isArray(config.printAreas))) return null;
+  const categories: any[] = Array.isArray(config.clipartCategories) ? config.clipartCategories : [];
+  const categoryById = new Map(categories.map(category => [String(category?.id || ""), category]));
+  const groups: SourceOptionGroup[] = [];
+  const usedCategoryIds = new Set<string>();
+  const textFields: NonNullable<CustomizationEvidence["textFields"]> = [];
+  const customImages: string[] = [];
+  const slugify = (value: string, fallback: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+  const assetUrl = (key: any): string | undefined => {
+    if (!key || typeof key !== "string") return undefined;
+    const value = key.trim();
+    if (!value || value.startsWith("data:") || value.startsWith("blob:")) return undefined;
+    if (/^https?:\/\//i.test(value)) return value;
+    return "https://cdn.dztcloud.com/" + value.replace(/^\/+/, "");
+  };
+  const addImage = (url?: string) => {
+    if (url && !customImages.includes(url)) customImages.push(url);
+  };
+  const addCategoryGroup = (category: any, label: string, categoryId?: string) => {
+    if (!category || !Array.isArray(category.cliparts) || category.cliparts.length === 0) return;
+    if ((categoryId && usedCategoryIds.has(categoryId)) || groups.some(group => group.name.toLowerCase() === label.toLowerCase())) return;
+    const values: SourceOptionGroup["values"] = [];
+    category.cliparts.forEach((clipart: any, index: number) => {
+      const imageUrl = assetUrl(clipart?.thumbnail || clipart?.file?.key);
+      const clipartLabel = String(clipart?.title || clipart?.name || ("Tùy chọn " + (index + 1))).trim();
+      if (!clipartLabel || values.some(value => value.label.toLowerCase() === clipartLabel.toLowerCase())) return;
+      values.push({
+        id: slugify(label, "custom") + "-" + slugify(clipartLabel, String(index + 1)),
+        label: clipartLabel,
+        sourceValue: String(clipart?.id || clipartLabel),
+        imageUrl
+      });
+      addImage(imageUrl);
+    });
+    if (values.length === 0) return;
+    groups.push({
+      id: "custom-" + slugify(label, String(groups.length + 1)),
+      name: label,
+      kind: "PERSONALIZATION",
+      inputType: values.some(value => Boolean(value.imageUrl)) ? "ASSET_PICKER" : "SELECT",
+      required: true,
+      source: "EXTERNAL_CUSTOMIZER",
+      values
+    });
+    if (categoryId) usedCategoryIds.add(categoryId);
+  };
+  const layers: any[] = [];
+  const collectLayers = (value: any) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) { value.forEach(collectLayers); return; }
+    if (value.personalized && typeof value.personalized === "object") layers.push(value);
+    Object.values(value).forEach(collectLayers);
+  };
+  collectLayers(config.printAreas || config.artworks || []);
+  layers.forEach(layer => {
+    const personalized = layer.personalized || {};
+    const label = String(personalized.label || layer.title || "").replace(/\s+/g, " ").trim();
+    const categoryId = String(personalized.clipartCategory || "").trim();
+    if (personalized.type === "clipartCategory" && categoryId) {
+      const category = categoryById.get(categoryId);
+      if (category) addCategoryGroup(category, label || category.title || "Tùy chọn", categoryId);
+      else if (/background/i.test(label)) {
+        const backgroundCategories = categories.filter(category => /square|circle|round/i.test(String(category?.title || "")) && Array.isArray(category?.cliparts));
+        const flattened = backgroundCategories.flatMap(category => (category.cliparts || []).map((clipart: any) => ({
+          ...clipart,
+          title: String(category.title) + ": " + String(clipart.title || clipart.name || "Tùy chọn")
+        })));
+        addCategoryGroup({ cliparts: flattened }, label || "Choose Background", categoryId);
+      }
+    }
+    if (personalized.enable && personalized.type !== "clipartCategory" && /name|text|message|enter/i.test(label)) {
+      const id = slugify(label, "custom-field-" + (textFields.length + 1));
+      if (!textFields.some(field => field.id === id)) {
+        textFields.push({
+          id,
+          label,
+          type: "TEXT",
+          required: personalized.required !== false,
+          maxLength: Number(personalized.max || personalized.maxLength) > 0 ? Number(personalized.max || personalized.maxLength) : undefined
+        });
+      }
+    }
+  });
+  categories.forEach(category => {
+    const title = String(category?.title || "").trim();
+    if (/flower|hoa/i.test(title) && !groups.some(group => /flower|hoa/i.test(group.name))) addCategoryGroup(category, "Choose Birth Flower", String(category.id));
+    else if (/font/i.test(title) && !groups.some(group => /font/i.test(group.name))) addCategoryGroup(category, "Choose Font", String(category.id));
+  });
+  const mockupKey = config.mockups?.[0]?.layers?.find((layer: any) => layer?.file?.key)?.file?.key;
+  return {
+    customOptionGroups: groups,
+    customizationEvidence: {
+      hasCustomTextInput: textFields.length > 0,
+      hasImageUpload: false,
+      hasCustomerAssetPicker: groups.some(group => group.inputType === "ASSET_PICKER"),
+      detectedLabels: [...groups.map(group => group.name), ...textFields.map(field => field.label)],
+      textFields,
+      confidence: groups.length > 0 || textFields.length > 0 ? 0.98 : 0,
+      reviewRequired: false
+    },
+    customizerMockupTemplateUrl: assetUrl(mockupKey),
+    customImages
+  };
+}
 
 interface PlatformPresetItem {
   platform: SourcePlatform;
@@ -277,7 +408,23 @@ export class MultiPlatformClonerService {
           const shopifyJsonUrl = `${cleanProductUrl}.js`;
           const shopifyRes = await this.fetchJson(shopifyJsonUrl);
           if (shopifyRes && (shopifyRes.title || (Array.isArray(shopifyRes.variants) && shopifyRes.variants.length > 0))) {
-            return this.formatShopifyJsonToPreviewResponse(url, platform, productId, shopifyRes);
+            const externalCustomizer = await this.fetchExternalCustomizerMetadata(url, shopifyRes);
+            // Macorner storefront prices are declared in USD in its public
+            // product page metadata, while Shopify's .js payload omits the
+            // currency field. Preserve that verified store currency here.
+            if (!shopifyRes.currency && /(?:^|\.)macorner\.co$/i.test(new URL(url).hostname)) shopifyRes.currency = "USD";
+            const preview = this.formatShopifyJsonToPreviewResponse(url, platform, productId, shopifyRes);
+            if (externalCustomizer) {
+              preview.customOptionGroups = externalCustomizer.customOptionGroups;
+              preview.customizationEvidence = externalCustomizer.customizationEvidence;
+              preview.customizerMockupTemplateUrl = externalCustomizer.customizerMockupTemplateUrl;
+              preview.galleryImages = Array.from(new Set([
+                ...preview.galleryImages,
+                ...externalCustomizer.customImages
+              ])).filter(image => image !== preview.primaryImage);
+              preview.provenance.push("Macorner MA Commerce personalization endpoint");
+            }
+            return preview;
           }
         } catch (shopifyErr) {
           // Fallback tiếp tục fetch HTML bình thường
@@ -325,6 +472,7 @@ export class MultiPlatformClonerService {
         }
       }
 
+      const inventory = getSourceInventoryState(v);
       return {
         id: crypto.randomUUID(),
         sourceVariantId: v.skuId,
@@ -333,10 +481,11 @@ export class MultiPlatformClonerService {
         colorNameEN: v.name,
         costPriceVND: vCostVND,
         sellingPriceVND: v.priceVND || preview.estimatedSellingPriceVND,
-        stockQuantity: v.stock ?? 0,
+        stockQuantity: inventory.stock,
         sourcePrice: v.originalPrice,
         imageUrl: v.imageUrl || preview.primaryImage,
-        sourceAvailable: (v.stock ?? 0) > 0,
+        sourceAvailable: inventory.available,
+        inventoryTracked: inventory.inventoryTracked,
         selectedForSale: true
       };
     });
@@ -344,6 +493,11 @@ export class MultiPlatformClonerService {
     // Tính toán min/max price
     const minPriceVND = Math.min(...variants.map(v => v.sellingPriceVND));
     const maxPriceVND = Math.max(...variants.map(v => v.sellingPriceVND));
+    const personalization = inferPersonalizationSchema({
+      title: preview.originalTitle,
+      customOptionGroups: preview.customOptionGroups || [],
+      customizationEvidence: preview.customizationEvidence
+    });
 
     // Sinh SEO package
     const seoPackage = this.translationService.generateCompleteSEOPackage({
@@ -400,6 +554,9 @@ export class MultiPlatformClonerService {
       isPriceAutoSync: true,
       isStockAutoSync: true,
       variants,
+      isPersonalized: personalization.isPersonalized,
+      personalizationFields: personalization.personalizationFields,
+      customizerMockupTemplateUrl: preview.customizerMockupTemplateUrl,
       sourceProductId: preview.sourceProductId,
       sourceUrl: preview.sourceUrl,
       supplierName: preview.supplierName,
@@ -573,6 +730,53 @@ export class MultiPlatformClonerService {
     return await response.json();
   }
 
+  private async fetchExternalCustomizerMetadata(sourceUrl: string, product: any): Promise<ExternalCustomizerMetadata | null> {
+    let parsed: URL;
+    try {
+      parsed = new URL(sourceUrl);
+    } catch {
+      return null;
+    }
+    if (!/(?:^|\.)macorner\.co$/i.test(parsed.hostname)) return null;
+
+    const handle = String(product?.handle || parsed.pathname.split("/products/")[1]?.split("/")[0] || "")
+      .split("?")[0]
+      .trim();
+    if (!handle) return null;
+
+    let storeName = "";
+    try {
+      const html = await this.fetchPageHtml(sourceUrl);
+      storeName = String(
+        html.match(/Shopify\.shop\s*=\s*["']([^"']+)["']/i)?.[1] ||
+        html.match(/window\.Shopify\.MCP\.shop\s*=\s*["']([^"']+)["']/i)?.[1] ||
+        ""
+      ).trim();
+    } catch {
+      // The Shopify product endpoint remains usable even when storefront HTML
+      // is blocked. The known Macorner shop domain is a safe last fallback.
+    }
+    if (!storeName && parsed.hostname.toLowerCase().replace(/^www\./, "") === "macorner.co") {
+      storeName = "46338f-fd.myshopify.com";
+    }
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(storeName)) return null;
+
+    const endpoints = [
+      `https://sh.medzt.com/${storeName}/${handle}.json?v=2.0.48`,
+      `https://api-prod.medzt.com/custom/${storeName}/${handle}.json?v=2.0.48`
+    ];
+    for (const endpoint of endpoints) {
+      try {
+        const config = await this.fetchJson(endpoint);
+        const metadata = buildExternalCustomizerMetadata(config);
+        if (metadata && (metadata.customOptionGroups.length > 0 || metadata.customizationEvidence.textFields?.length)) return metadata;
+      } catch {
+        // Try the secondary endpoint, then return Shopify-only preview.
+      }
+    }
+    return null;
+  }
+
   private formatShopifyJsonToPreviewResponse(
     sourceUrl: string,
     platform: SourcePlatform,
@@ -615,8 +819,13 @@ export class MultiPlatformClonerService {
     const declaredCurrency = String(data.currency || data.price_currency || "").trim().toUpperCase();
     const hasVerifiedCurrency = declaredCurrency === "USD" || declaredCurrency === "VND" || declaredCurrency === "CNY";
     const currency: "USD" | "VND" | "CNY" = hasVerifiedCurrency ? declaredCurrency as "USD" | "VND" | "CNY" : "USD";
-    const priceEstimate = currency === "CNY"
-      ? this.pricingService.calculate(minPrice)
+    const sourcePriceCNY = currency === "CNY"
+      ? minPrice
+      : currency === "USD"
+      ? Math.round(minPrice * 7.2 * 10) / 10
+      : 0;
+    const priceEstimate = sourcePriceCNY > 0
+      ? this.pricingService.calculate(sourcePriceCNY)
       : null;
     const costVND = priceEstimate?.totalCostVND || 0;
     const sellingVND = priceEstimate?.finalSellingPriceVND || (currency === "VND" ? minPrice : 0);
@@ -649,7 +858,12 @@ export class MultiPlatformClonerService {
 
     const variants: ClonedVariantPreview[] = rawVariants.map((v, idx) => {
       const vPrice = normalizePrice(v.price);
-      const variantEstimate = currency === "CNY" ? this.pricingService.calculate(vPrice) : null;
+      const variantPriceCNY = currency === "CNY"
+        ? vPrice
+        : currency === "USD"
+        ? Math.round(vPrice * 7.2 * 10) / 10
+        : 0;
+      const variantEstimate = variantPriceCNY > 0 ? this.pricingService.calculate(variantPriceCNY) : null;
       const vSellingVND = variantEstimate?.finalSellingPriceVND || (currency === "VND" ? vPrice : 0);
       let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
       if (!img && v.image_id && imageMap.has(v.image_id)) {
@@ -657,6 +871,7 @@ export class MultiPlatformClonerService {
       }
       if (!img) img = primaryImage;
       if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
+      const inventory = getSourceInventoryState(v);
 
       return {
         skuId: String(v.id || v.sku || `SKU-${idx}`),
@@ -667,7 +882,9 @@ export class MultiPlatformClonerService {
         option3: v.option3,
         originalPrice: vPrice,
         priceVND: vSellingVND,
-        stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+        stock: inventory.stock,
+        available: inventory.available,
+        inventoryTracked: inventory.inventoryTracked,
         imageUrl: img
       };
     });
@@ -833,6 +1050,7 @@ export class MultiPlatformClonerService {
         let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : primaryImage);
         if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
 
+        const inventory = getSourceInventoryState(v);
         return {
           skuId: String(v.id || v.sku || `SKU-${idx}`),
           name: v.title || v.name || `Biến thể ${idx + 1}`,
@@ -842,7 +1060,9 @@ export class MultiPlatformClonerService {
           option3: v.option3,
           originalPrice: vPrice,
           priceVND: vSellingVND,
-          stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+          stock: inventory.stock,
+          available: inventory.available,
+          inventoryTracked: inventory.inventoryTracked,
           imageUrl: img
         };
       });

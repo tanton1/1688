@@ -216,6 +216,154 @@ async function extractCommerceProductFromDom(): Promise<any> {
       };
     };
 
+    // Macorner's Customily/MA Commerce app is loaded after Shopify and keeps
+    // its personalization schema in a separate JSON endpoint. Shopify's
+    // product JSON therefore contains only commercial SKUs (for example
+    // 1-6 PCS), while Shape/Background/Flower/Name/Font and their artwork
+    // assets live in the Medzt payload. Read that payload directly so custom
+    // choices remain order-line data and never get multiplied into variants.
+    const extractExternalCustomizer = async (shopifyData: any) => {
+      if (!/macorner\.co$/i.test(window.location.hostname) || !pathname.includes("/products/")) return null;
+      const handle = String(shopifyData?.handle || pathname.split("/products/")[1]?.split("/")[0] || "").split("?")[0].trim();
+      if (!handle) return null;
+
+      const scriptText = Array.from(doc.scripts).map(script => script.textContent || "").join("\n");
+      const storeName = String((window as any).Shopify?.shop || scriptText.match(/Shopify\.shop\s*=\s*[\"']([^\"']+)[\"']/i)?.[1] || "").trim();
+      if (!storeName) return null;
+
+      const endpoints = [
+        `https://sh.medzt.com/${storeName}/${handle}.json?v=2.0.48`,
+        `https://api-prod.medzt.com/custom/${storeName}/${handle}.json?v=2.0.48`
+      ];
+      let config: any = null;
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { credentials: "omit" });
+          if (!response.ok) continue;
+          const candidate = await response.json();
+          if (candidate && (Array.isArray(candidate.clipartCategories) || Array.isArray(candidate.printAreas))) {
+            config = candidate;
+            break;
+          }
+        } catch {
+          // Try the secondary Medzt endpoint before falling back to live DOM.
+        }
+      }
+      if (!config) return null;
+
+      const slugify = (value: string, fallback: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+      const assetUrl = (key: any) => {
+        if (!key || typeof key !== "string") return undefined;
+        const value = key.trim();
+        if (!value || value.startsWith("data:") || value.startsWith("blob:")) return undefined;
+        if (/^https?:\/\//i.test(value)) return value;
+        return `https://cdn.dztcloud.com/${value.replace(/^\/+/, "")}`;
+      };
+      const categories: any[] = Array.isArray(config.clipartCategories) ? config.clipartCategories : [];
+      const categoryById = new Map(categories.map(category => [String(category?.id || ""), category]));
+      const groups: any[] = [];
+      const usedCategoryIds = new Set<string>();
+      const textFields: any[] = [];
+      const customImages: string[] = [];
+      const addImage = (url: string | undefined) => {
+        if (url && !customImages.includes(url)) customImages.push(url);
+      };
+      const addCategoryGroup = (category: any, label: string, categoryId?: string) => {
+        if (!category || !Array.isArray(category.cliparts) || category.cliparts.length === 0) return;
+        if ((categoryId && usedCategoryIds.has(categoryId)) || groups.some(group => group.name.toLowerCase() === label.toLowerCase())) return;
+        const values: any[] = [];
+        category.cliparts.forEach((clipart: any, index: number) => {
+          const imageUrl = assetUrl(clipart?.thumbnail || clipart?.file?.key);
+          const clipartLabel = String(clipart?.title || clipart?.name || `Tùy chọn ${index + 1}`).trim();
+          if (!clipartLabel || values.some(value => value.label.toLowerCase() === clipartLabel.toLowerCase())) return;
+          values.push({
+            id: `${slugify(label, "custom")}-${slugify(clipartLabel, String(index + 1))}`,
+            label: clipartLabel,
+            sourceValue: String(clipart?.id || clipartLabel),
+            imageUrl
+          });
+          addImage(imageUrl);
+        });
+        if (values.length === 0) return;
+        groups.push({
+          id: `custom-${slugify(label, String(groups.length + 1))}`,
+          name: label,
+          kind: "PERSONALIZATION",
+          inputType: values.some(value => Boolean(value.imageUrl)) ? "ASSET_PICKER" : "SELECT",
+          required: true,
+          source: "EXTERNAL_CUSTOMIZER",
+          values
+        });
+        if (categoryId) usedCategoryIds.add(categoryId);
+      };
+
+      // Walk every artwork template to recover the exact labels and required
+      // flags used by the live customizer, including text layers.
+      const layers: any[] = [];
+      const collectLayers = (value: any) => {
+        if (!value || typeof value !== "object") return;
+        if (Array.isArray(value)) { value.forEach(collectLayers); return; }
+        if (value.personalized && typeof value.personalized === "object") layers.push(value);
+        Object.values(value).forEach(collectLayers);
+      };
+      collectLayers(config.printAreas || config.artworks || []);
+      layers.forEach(layer => {
+        const personalized = layer.personalized || {};
+        const label = String(personalized.label || layer.title || "").replace(/\s+/g, " ").trim();
+        const categoryId = String(personalized.clipartCategory || "").trim();
+        if (personalized.type === "clipartCategory" && categoryId) {
+          const category = categoryById.get(categoryId);
+          if (category) addCategoryGroup(category, label || category.title || "Tùy chọn", categoryId);
+          else if (/background/i.test(label)) {
+            // Background categories are shape-dependent and some payloads only
+            // expose their child categories (square/circle/lace). Flatten them
+            // with a shape prefix so no custom artwork is silently dropped.
+            const backgroundCategories = categories.filter(category => /square|circle|round/i.test(String(category?.title || "")) && Array.isArray(category?.cliparts));
+            const flattened = backgroundCategories.flatMap(category => (category.cliparts || []).map((clipart: any) => ({ ...clipart, title: `${category.title}: ${clipart.title || clipart.name || "Tùy chọn"}` })));
+            addCategoryGroup({ cliparts: flattened }, label || "Choose Background", categoryId);
+          }
+        }
+        if (personalized.enable && personalized.type !== "clipartCategory" && /name|text|message|enter/i.test(label)) {
+          const id = slugify(label, `custom-field-${textFields.length + 1}`);
+          if (!textFields.some(field => field.id === id)) {
+            textFields.push({
+              id,
+              label,
+              type: "TEXT",
+              required: personalized.required !== false,
+              maxLength: Number(personalized.max || personalized.maxLength) > 0 ? Number(personalized.max || personalized.maxLength) : undefined,
+              placeholder: personalized.placeholder || undefined,
+              helpText: personalized.help || undefined
+            });
+          }
+        }
+      });
+
+      // Include category-backed options that are not directly referenced by a
+      // visible layer (common for shape-dependent background/font pickers).
+      const likelyCategories = categories.filter(category => !usedCategoryIds.has(String(category?.id || "")) && Array.isArray(category?.cliparts) && category.cliparts.length > 0);
+      likelyCategories.forEach(category => {
+        const title = String(category?.title || "").trim();
+        if (/flower|hoa/i.test(title) && !groups.some(group => /flower|hoa/i.test(group.name))) addCategoryGroup(category, "Choose Birth Flower", String(category.id));
+        else if (/font/i.test(title) && !groups.some(group => /font/i.test(group.name))) addCategoryGroup(category, "Choose Font", String(category.id));
+      });
+
+      let customizerMockupTemplateUrl: string | undefined;
+      const mockupKey = config.mockups?.[0]?.layers?.find((layer: any) => layer?.file?.key)?.file?.key;
+      customizerMockupTemplateUrl = assetUrl(mockupKey);
+      const evidence = {
+        hasCustomTextInput: textFields.length > 0,
+        hasImageUpload: false,
+        hasCustomerAssetPicker: groups.some(group => group.inputType === "ASSET_PICKER"),
+        detectedLabels: [...groups.map(group => group.name), ...textFields.map(field => field.label)],
+        textFields,
+        confidence: groups.length > 0 || textFields.length > 0 ? 0.98 : 0,
+        reviewRequired: false
+      };
+      return { customOptionGroups: groups, customizationEvidence: evidence, customizerMockupTemplateUrl, customImages };
+    };
+
     // Customily mounts its swatches asynchronously after the Shopify shell.
     // Give it a short window so opening the side panel immediately still gets
     // the option images instead of returning only the native quantity SKUs.
@@ -268,6 +416,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
             });
 
             const customGroups = extractCustomOptionGroups();
+            const externalCustomizer = await extractExternalCustomizer(shopifyData);
             const shopifyOptions = (Array.isArray(shopifyData.options) ? shopifyData.options : [])
               .map((option: any, index: number) => ({
                 name: String(typeof option === "string" ? option : (option?.name || `Option ${index + 1}`)).trim(),
@@ -277,11 +426,18 @@ async function extractCommerceProductFromDom(): Promise<any> {
               }))
               .filter((option: any) => option.values.length > 0);
             const baseOptionNames = new Set(shopifyOptions.map((option: any) => option.name.toLowerCase()));
-            const uniqueCustomGroups = customGroups.filter(group => !baseOptionNames.has(group.name.toLowerCase()));
+            const mergedCustomGroups = [...customGroups, ...(externalCustomizer?.customOptionGroups || [])];
+            const uniqueCustomGroups = mergedCustomGroups.filter((group, index, all) =>
+              !baseOptionNames.has(group.name.toLowerCase()) && all.findIndex(candidate => candidate.name.toLowerCase() === group.name.toLowerCase()) === index
+            );
 
             const mergedOptions = [...shopifyOptions];
-            const customImages = uniqueCustomGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean));
-            const customizationEvidence = extractCustomizationEvidence();
+            const customImages = [...new Set([
+              ...uniqueCustomGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean)),
+              ...(externalCustomizer?.customImages || [])
+            ])];
+            const domCustomizationEvidence = extractCustomizationEvidence();
+            const customizationEvidence = externalCustomizer?.customizationEvidence || domCustomizationEvidence;
 
             // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
             const detailImages: string[] = [];
@@ -327,7 +483,8 @@ async function extractCommerceProductFromDom(): Promise<any> {
               options: mergedOptions,
               variants: rawVariants,
               customOptionGroups: uniqueCustomGroups,
-              customizationEvidence
+              customizationEvidence,
+              customizerMockupTemplateUrl: externalCustomizer?.customizerMockupTemplateUrl
             };
           }
         }
@@ -735,6 +892,21 @@ export function useProductExtractor() {
   return { product, loading, error, currentUrl, refresh: () => fetchProductData(true), extractByCustomUrl };
 }
 
+const getSourceInventoryState = (variant: any): { stock: number; available: boolean; inventoryTracked: boolean } => {
+  const hasSourceQuantity = Number.isFinite(variant?.inventory_quantity);
+  const hasNormalizedQuantity = Number.isFinite(variant?.stock) && typeof variant?.inventoryTracked !== "boolean" && typeof variant?.available !== "boolean";
+  const inventoryTracked = typeof variant?.inventoryTracked === "boolean"
+    ? variant.inventoryTracked
+    : hasSourceQuantity || hasNormalizedQuantity;
+  const stock = inventoryTracked
+    ? Math.max(0, Math.trunc(Number(hasSourceQuantity ? variant.inventory_quantity : (variant.stock ?? 0))))
+    : 0;
+  const available = typeof variant?.available === "boolean"
+    ? variant.available
+    : inventoryTracked && stock > 0;
+  return { stock, available, inventoryTracked };
+};
+
 function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
   const currency = domData.currency || "USD";
   const originalPrice = Number(domData.price) || 0;
@@ -781,6 +953,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
         let img = v.imageUrl || v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
         if (img && img.startsWith("//")) img = "https:" + img;
 
+        const inventory = getSourceInventoryState(v);
         return {
           skuId: String(v.id || v.sku),
           name: v.title || [v.option1, v.option2, v.option3].filter(Boolean).join(" / ") || String(v.id || v.sku),
@@ -788,7 +961,9 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
           option2: v.option2,
           option3: v.option3,
           originalPrice: vPrice,
-          stock: Number.isFinite(v.inventory_quantity) ? Math.max(0, Math.trunc(v.inventory_quantity)) : 0,
+          stock: inventory.stock,
+          available: inventory.available,
+          inventoryTracked: inventory.inventoryTracked,
           imageUrl: img
         };
       })
@@ -916,6 +1091,8 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
         },
         priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
         stock: v.stock ?? 0,
+        available: typeof v.available === "boolean" ? v.available : undefined,
+        inventoryTracked: typeof v.inventoryTracked === "boolean" ? v.inventoryTracked : undefined,
         imageUrl: v.imageUrl
       };
 
@@ -954,6 +1131,8 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
         },
         priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
         stock: v.stock ?? 0,
+        available: typeof v.available === "boolean" ? v.available : undefined,
+        inventoryTracked: typeof v.inventoryTracked === "boolean" ? v.inventoryTracked : undefined,
         imageUrl: v.imageUrl
       };
 
@@ -991,6 +1170,8 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
           },
           priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
           stock: v.stock ?? 0,
+          available: typeof v.available === "boolean" ? v.available : undefined,
+          inventoryTracked: typeof v.inventoryTracked === "boolean" ? v.inventoryTracked : undefined,
           imageUrl: v.imageUrl
         };
 
@@ -1025,6 +1206,8 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
           attributes: { "Phân loại": v.nameVI || v.name },
           priceCNY: vPriceCNY > 0 ? vPriceCNY : minCNY,
           stock: v.stock ?? 0,
+          available: typeof v.available === "boolean" ? v.available : undefined,
+          inventoryTracked: typeof v.inventoryTracked === "boolean" ? v.inventoryTracked : undefined,
           imageUrl: v.imageUrl
         };
 
