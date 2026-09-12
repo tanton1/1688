@@ -3,6 +3,9 @@
 ALTER TABLE product_variants
   ADD COLUMN IF NOT EXISTS inventory_tracked BOOLEAN NOT NULL DEFAULT TRUE;
 
+ALTER TABLE product_variants
+  ADD COLUMN IF NOT EXISTS source_available BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE OR REPLACE FUNCTION create_storefront_order_atomic(p_order JSONB, p_reservations JSONB)
 RETURNS UUID
 LANGUAGE plpgsql
