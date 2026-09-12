@@ -496,6 +496,7 @@ test("personalized checkout enforces fields and stores a stable configuration id
     sourceUrl: "https://detail.1688.com/offer/source-custom.html", supplierName: "Test", isPersonalized: true,
     personalizationFields: [
       { id: "name", label: "Tên người nhận", type: "TEXT", required: true, maxLength: 20 },
+      { id: "frame", label: "Khung", type: "SELECT", required: true, options: [{ id: "premium", label: "Khung premium", value: "premium", priceDeltaVND: 15000 }] },
       { id: "photo", label: "Ảnh chân dung", type: "IMAGE_UPLOAD", required: true, minImageWidth: 800, minImageHeight: 800 }
     ],
     variants: [{ sourceSkuId: "CUSTOM-VAR-1", costPriceVND: 90000, sellingPriceVND: 250000, stockQuantity: 3, sourceAvailable: true, selectedForSale: true }]
@@ -512,6 +513,7 @@ test("personalized checkout enforces fields and stores a stable configuration id
 
   const customizationData = {
     name: "Gia Hân",
+    frame: "premium",
     photo: { url: "https://cdn.example.com/custom-photo.jpg", mimeType: "image/jpeg", width: 1200, height: 1200, sizeBytes: 120000 }
   };
   const missingId = await request.post("/api/v1/store/orders").send({
@@ -528,6 +530,7 @@ test("personalized checkout enforces fields and stores a stable configuration id
   assert.equal(created.body.order.items[0].customizationId, customizationId);
   assert.equal(created.body.order.items[0].customizationSchemaVersion, 4);
   assert.equal(created.body.order.items[0].customizedPreviewUrl, "https://cdn.example.com/preview.jpg");
+  assert.equal(created.body.order.items[0].sellingPriceVND, 265000);
   assert.equal(inMemoryProducts.get(id).variants[0].stockQuantity, 2);
   inMemoryProducts.delete(id);
   inMemoryOrders.clear();
