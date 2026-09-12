@@ -48,7 +48,10 @@ export async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new UnsafeUrlError("Chỉ cho phép URL HTTP/HTTPS");
   }
-  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+  // WHATWG URL keeps IPv6 brackets in `hostname` (for example `[::1]`).
+  // Strip them before net.isIP()/private-range checks so loopback and other
+  // literal IPv6 targets are rejected before any DNS lookup is attempted.
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (!hostname || blockedHostnames.has(hostname) || hostname.endsWith(".local")) {
     throw new UnsafeUrlError("Tên miền nội bộ bị chặn");
   }
