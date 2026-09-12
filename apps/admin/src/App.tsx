@@ -521,11 +521,13 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              <StorefrontView
-                onBackToAdmin={() => setCurrentTab("PRODUCTS")}
-                onShowToast={showToast}
-                initialProductId={storefrontProductId}
-              />
+              <React.Suspense fallback={<LoadingPanel />}>
+                <StorefrontView
+                  onBackToAdmin={() => setCurrentTab("PRODUCTS")}
+                  onShowToast={showToast}
+                  initialProductId={storefrontProductId}
+                />
+              </React.Suspense>
             </div>
           )}
 
