@@ -214,7 +214,26 @@ export const productUpdateSchema = z.object({
       blendMode: z.enum(["NORMAL", "MULTIPLY", "SCREEN", "OVERLAY"]).optional(),
       fit: z.enum(["CONTAIN", "COVER"]).optional()
     }).strict()).max(200).optional()
-  }).strict().optional(),
+  }).strict().superRefine((canvas, ctx) => {
+    const sceneIds = new Set((canvas.scenes || []).map(scene => scene.id));
+    const areaIds = new Set(canvas.printAreas.map(area => area.id));
+    canvas.printAreas.forEach((area, index) => {
+      if (area.xPercent + area.widthPercent > 100 || area.yPercent + area.heightPercent > 100) {
+        ctx.addIssue({ code: "custom", path: ["printAreas", index], message: "Vùng in phải nằm gọn trong khung mockup" });
+      }
+      if (area.sceneId && !sceneIds.has(area.sceneId)) {
+        ctx.addIssue({ code: "custom", path: ["printAreas", index, "sceneId"], message: "Scene của vùng in không tồn tại" });
+      }
+    });
+    (canvas.layers || []).forEach((layer, index) => {
+      if (!areaIds.has(layer.printAreaId)) {
+        ctx.addIssue({ code: "custom", path: ["layers", index, "printAreaId"], message: "Layer phải gắn với một vùng in tồn tại" });
+      }
+      if (layer.sceneId && !sceneIds.has(layer.sceneId)) {
+        ctx.addIssue({ code: "custom", path: ["layers", index, "sceneId"], message: "Scene của layer không tồn tại" });
+      }
+    });
+  }).optional(),
   volumeDiscountTiers: z.array(z.unknown()).max(100).optional(),
   giftAddons: z.array(z.unknown()).max(100).optional(),
   occasionTags: z.array(z.string().max(100)).max(100).optional(),

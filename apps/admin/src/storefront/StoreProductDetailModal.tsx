@@ -149,7 +149,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       const supportsMockup = Boolean(
         product.isPersonalized ||
         product.customizerMockupTemplateUrl ||
-        Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
+        Object.keys(product.seo?.variantMockupVisuals || {}).length > 0 ||
+        product.customizerCanvas?.scenes?.length ||
+        product.customizerCanvas?.printAreas?.length
       );
       setMediaView(supportsMockup ? "mockup" : "source");
       setVariantPreviewActive(validVariants.length <= 1);
@@ -215,7 +217,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     if (
       product.isPersonalized ||
       product.customizerMockupTemplateUrl ||
-      Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
+      Object.keys(product.seo?.variantMockupVisuals || {}).length > 0 ||
+      product.customizerCanvas?.scenes?.length ||
+      product.customizerCanvas?.printAreas?.length
     ) {
       setMediaView("mockup");
     }
@@ -254,7 +258,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const hasMockup = Boolean(
     product.isPersonalized ||
     product.customizerMockupTemplateUrl ||
-    Object.keys(product.seo?.variantMockupVisuals || {}).length > 0
+    Object.keys(product.seo?.variantMockupVisuals || {}).length > 0 ||
+    product.customizerCanvas?.scenes?.length ||
+    product.customizerCanvas?.printAreas?.length
   );
   const selectedVariantVisual = useMemo(
     () => getVariantVisual(product, variantPreviewActive ? selectedVariant : undefined),

@@ -80,7 +80,12 @@ function getVariantVisual(product: WebProduct, variant?: WebProductVariant): Var
 
 export const VariantMockupPreview: React.FC<VariantMockupPreviewProps> = ({ product, variant, className = "" }) => {
   const visual = useMemo(() => getVariantVisual(product, variant), [product, variant]);
-  const configuredBase = product.customizerMockupTemplateUrl || undefined;
+  const defaultScene = product.customizerCanvas?.scenes?.[0];
+  const configuredBase = (variant?.sourceSkuId ? defaultScene?.variantMockupUrls?.[variant.sourceSkuId] : undefined)
+    || defaultScene?.mockupUrl
+    || product.customizerMockupTemplateUrl
+    || undefined;
+  const configuredArea = product.customizerCanvas?.printAreas?.find(area => !area.sceneId || area.sceneId === defaultScene?.id);
   const isCupLike = /ly|cốc|bình|tumbler|mug|chai/i.test(`${product.categoryName} ${product.titleVI}`);
   const isWearable = /áo|shirt|hoodie|sweatshirt|thời trang/i.test(`${product.categoryName} ${product.titleVI}`);
   const silhouetteClass = isCupLike
@@ -107,7 +112,17 @@ export const VariantMockupPreview: React.FC<VariantMockupPreviewProps> = ({ prod
       )}
 
       {configuredBase && (
-        <div className="absolute inset-[22%_16%_20%] z-10 overflow-hidden rounded-[8%] border border-white/70 bg-white/5 shadow-inner">
+        <div
+          className="absolute z-10 overflow-hidden border border-white/70 bg-white/5 shadow-inner"
+          style={{
+            left: `${configuredArea?.xPercent ?? 16}%`,
+            top: `${configuredArea?.yPercent ?? 22}%`,
+            width: `${configuredArea?.widthPercent ?? 68}%`,
+            height: `${configuredArea?.heightPercent ?? 58}%`,
+            transform: `rotate(${configuredArea?.rotationDeg || 0}deg)`,
+            borderRadius: configuredArea?.shape === "CIRCLE" ? "999px" : "8%"
+          }}
+        >
           {visual.type === "COLOR" && <div className="absolute inset-0 opacity-65 mix-blend-multiply" style={{ backgroundColor: visual.colorHex }} />}
           {visual.type === "DESIGN" && visual.imageUrl && <img src={visual.imageUrl} alt={`Design ${visual.label}`} className="absolute inset-0 h-full w-full object-contain mix-blend-multiply" />}
           {visual.type === "DESIGN" && !visual.imageUrl && <span className="absolute inset-0 grid place-items-center px-3 text-center text-[10px] font-semibold text-amber-700">Chưa gắn ảnh design cho SKU</span>}
