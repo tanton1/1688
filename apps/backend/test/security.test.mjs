@@ -72,6 +72,18 @@ test("CORS permits supported merchant origins used by content scripts", async ()
     .set("Origin", "https://macorner.co")
     .expect(200);
   assert.equal(response.headers["access-control-allow-origin"], "https://macorner.co");
+
+  const etsy = await request.get("/health")
+    .set("Host", "store.example.com")
+    .set("Origin", "https://www.etsy.com")
+    .expect(200);
+  assert.equal(etsy.headers["access-control-allow-origin"], "https://www.etsy.com");
+
+  const amazon = await request.get("/health")
+    .set("Host", "store.example.com")
+    .set("Origin", "https://www.amazon.de")
+    .expect(200);
+  assert.equal(amazon.headers["access-control-allow-origin"], "https://www.amazon.de");
 });
 
 test("protected routes reject anonymous requests", async () => {

@@ -1016,10 +1016,30 @@ export class MultiPlatformClonerService {
     const detailImages = extracted.detailImages || [];
 
     const hasDeclaredCurrency = extracted.currency === "CNY" || extracted.currency === "USD" || extracted.currency === "VND";
-    const currency: "CNY" | "USD" | "VND" = extracted.currency || (platform === "ALIEXPRESS" ? "USD" : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND"));
+    const currency: "CNY" | "USD" | "VND" = extracted.currency || (
+      platform === "ALIEXPRESS" || platform === "ETSY" || platform === "AMAZON"
+        ? "USD"
+        : (platform === "TAOBAO" || platform === "TMALL" ? "CNY" : "VND")
+    );
     const rawPrice = Number(extracted.price) || 0;
     const priceMin = extracted.priceMin || rawPrice;
     const priceMax = extracted.priceMax || rawPrice;
+    const rawOptions = Array.isArray(extracted.options) ? extracted.options : [];
+    const optionGroups: SourceOptionGroup[] = Array.isArray(extracted.optionGroups) && extracted.optionGroups.length > 0
+      ? extracted.optionGroups
+      : rawOptions.slice(0, 3).map((option: any, optionIndex: number) => ({
+          id: `variation-${optionIndex + 1}`,
+          name: String(option?.name || `Variation ${optionIndex + 1}`),
+          kind: "VARIATION" as const,
+          inputType: "SELECT" as const,
+          required: true,
+          source: "DOM" as const,
+          values: (Array.isArray(option?.values) ? option.values : []).map((value: any, valueIndex: number) => ({
+            id: `variation-${optionIndex + 1}-${valueIndex + 1}`,
+            label: String(value),
+            sourceValue: String(value)
+          }))
+        }));
 
     if (rawTitle.length < 3 || !primaryImage || priceMin <= 0) {
       throw new Error("EXTRACTION_FAILED: metadata công khai thiếu tiêu đề, ảnh hoặc giá xác thực");
@@ -1098,7 +1118,8 @@ export class MultiPlatformClonerService {
       galleryImages,
       detailImages,
       variants,
-      rawOptions: extracted.options,
+      rawOptions,
+      optionGroups,
       customOptionGroups: extracted.customOptionGroups || [],
       customizationEvidence: extracted.customizationEvidence,
       categorySuggested: "Thời trang & Phụ kiện",

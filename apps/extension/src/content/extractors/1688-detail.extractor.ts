@@ -810,7 +810,7 @@ export class Detail1688Extractor {
         values.push({
           valueId,
           valueCN: name,
-          imageUrl: img
+          imageUrl: img || undefined
         });
 
         skuMap[name] = {
@@ -818,7 +818,7 @@ export class Detail1688Extractor {
           priceCNY: finalPrice,
           stock: stockVal,
           attributes: { "规格": name },
-          imageUrl: img
+          imageUrl: img || undefined
         };
         skuMap[valueId] = skuMap[name];
       });

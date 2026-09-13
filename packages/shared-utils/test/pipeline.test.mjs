@@ -386,6 +386,9 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.equal(detectProductPlatform("https://shopee.vn/product/12345678/987654321"), "SHOPEE");
   assert.equal(detectProductPlatform("https://shop.tiktok.com/view/product/1729384918294"), "TIKTOK_SHOP");
   assert.equal(detectProductPlatform("https://www.aliexpress.com/item/1005004819283746.html"), "ALIEXPRESS");
+  assert.equal(detectProductPlatform("https://www.etsy.com/listing/1234567890/sample-personalized-gift"), "ETSY");
+  assert.equal(detectProductPlatform("https://www.amazon.com/dp/B0ABCDE123"), "AMAZON");
+  assert.equal(detectProductPlatform("https://www.amazon.de/gp/product/B012345678"), "AMAZON");
   assert.equal(detectProductPlatform("https://cottonon.com/VN/p/oversized-crew-tee/123456.html"), "GENERIC_WEB");
 
   // 2. ID Extraction
@@ -393,15 +396,21 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.equal(extractProductIdFromUrl("https://shopee.vn/product/12345678/987654321"), "987654321");
   assert.equal(extractProductIdFromUrl("https://shop.tiktok.com/view/product/1729384918294"), "1729384918294");
   assert.equal(extractProductIdFromUrl("https://www.aliexpress.com/item/1005004819283746.html"), "1005004819283746");
+  assert.equal(extractProductIdFromUrl("https://www.etsy.com/listing/1234567890/sample-personalized-gift"), "1234567890");
+  assert.equal(extractProductIdFromUrl("https://www.etsy.com/shop/demo?listing_id=987654321"), "987654321");
+  assert.equal(extractProductIdFromUrl("https://www.amazon.com/dp/b0abcde123"), "B0ABCDE123");
+  assert.equal(extractProductIdFromUrl("https://www.amazon.de/gp/product/B012345678"), "B012345678");
   const genericId = extractProductIdFromUrl("https://example.com/");
   assert.equal(genericId, extractProductIdFromUrl("https://example.com/"));
   assert.match(genericId, /^url_[a-z0-9]+$/);
   assert.equal(extractProductIdFromUrl(""), "");
 
   // 3. Supported Platforms Meta
-  assert.equal(SUPPORTED_PLATFORMS_META.length >= 7, true);
+  assert.equal(SUPPORTED_PLATFORMS_META.length >= 9, true);
   assert.ok(SUPPORTED_PLATFORMS_META.some(p => p.id === "TAOBAO"));
   assert.ok(SUPPORTED_PLATFORMS_META.some(p => p.id === "SHOPEE"));
+  assert.equal(SUPPORTED_PLATFORMS_META.find(p => p.id === "ETSY")?.defaultCurrency, "USD");
+  assert.equal(SUPPORTED_PLATFORMS_META.find(p => p.id === "AMAZON")?.defaultCurrency, "USD");
 
   // 4. HTML OpenGraph & Schema.org Extraction
   const sampleHtml = `
@@ -446,6 +455,38 @@ test("8. Multi-Platform Cloner Engine (Platform Detector, ID Extractor & OpenGra
   assert.ok(extracted.images.includes("https://img.cdn.com/shirt.jpg"));
   assert.ok(extracted.detailImages?.includes("https://img.cdn.com/size-chart-detail.jpg"));
   assert.ok(extracted.detailImages?.includes("https://img.cdn.com/fabric-zoom.jpg"));
+
+  // 5. Etsy/Amazon-style JSON-LD often wraps Product in @graph and exposes
+  // AggregateOffer ranges plus image objects rather than plain URL strings.
+  const marketplaceHtml = `
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@graph":[
+        {"@type":"BreadcrumbList","itemListElement":[]},
+        {"@type":["Product","Thing"],"name":"Personalized Gift Mug","sku":"ET-123",
+         "image":[{"contentURL":"https://cdn.example.com/mug-front.jpg"},{"contentUrl":"https://cdn.example.com/mug-back.jpg"}],
+         "brand":{"@type":"Brand","name":"Example Shop"},
+         "offers":{"@type":"AggregateOffer","price":"18.99","priceSpecification":{"minPrice":"18.99","maxPrice":"24.99","priceCurrency":"USD"}}}
+      ]}
+    </script>`;
+  const marketplace = parseHtmlProductMetadata(marketplaceHtml);
+  assert.equal(marketplace.title, "Personalized Gift Mug");
+  assert.equal(marketplace.price, 18.99);
+  assert.equal(marketplace.priceMin, 18.99);
+  assert.equal(marketplace.priceMax, 24.99);
+  assert.equal(marketplace.currency, "USD");
+  assert.equal(marketplace.brand, "Example Shop");
+  assert.ok(marketplace.images.includes("https://cdn.example.com/mug-front.jpg"));
+  assert.ok(marketplace.images.includes("https://cdn.example.com/mug-back.jpg"));
+
+  const amazonEuropeHtml = `
+    <script type="application/ld+json">
+      {"@type":"Product","name":"Echo Dot","image":[{"contentURL":"https://cdn.example.com/echo.jpg"}],
+       "offers":{"@type":"AggregateOffer","priceSpecification":{"minPrice":"59.32","maxPrice":"89.99","priceCurrency":"EUR"}}}
+    </script>`;
+  const amazonEurope = parseHtmlProductMetadata(amazonEuropeHtml);
+  assert.equal(amazonEurope.currency, "EUR");
+  assert.equal(amazonEurope.priceMin, 59.32);
+  assert.equal(amazonEurope.priceMax, 89.99);
 });
 
 test("9. Batch URL Processing & Visual Sourcing Sourcing Margin Engine", (t) => {

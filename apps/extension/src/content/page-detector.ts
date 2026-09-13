@@ -67,6 +67,25 @@ export function detectAnyCommercePage(url: string = window.location.href): Detec
       return { platform, pageType: "UNKNOWN", productId };
     }
 
+    // 6. Etsy
+    if (platform === "ETSY") {
+      if (/\/listing\/\d+/i.test(pathname)) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      if (pathname.includes("/search") || pathname.includes("/market/")) return { platform, pageType: "SEARCH" };
+      if (pathname.includes("/shop/")) return { platform, pageType: "SHOP" };
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
+    // 7. Amazon quốc tế
+    if (platform === "AMAZON") {
+      if (/\/(?:dp|gp\/product|gp\/aw\/d|product)\/[A-Z0-9]{10}(?:[/?]|$)/i.test(pathname)) {
+        return { platform, pageType: "DETAIL", productId, offerId: productId };
+      }
+      if (pathname.startsWith("/s") || parsed.searchParams.has("k")) return { platform, pageType: "SEARCH" };
+      return { platform, pageType: "UNKNOWN", productId };
+    }
+
     return { platform, pageType: "UNKNOWN", productId };
   } catch {
     return { platform, pageType: "UNKNOWN", productId };

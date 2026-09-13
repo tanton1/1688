@@ -1,4 +1,4 @@
-import { CustomizationEvidence, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
+import { CustomizationEvidence, SourceCurrency, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
 
 export type PublishStatus = "DRAFT" | "READY_TO_REVIEW" | "PUBLISHED" | "ARCHIVED";
 
@@ -354,7 +354,7 @@ export interface WebProduct {
   reviewCount?: number; // Ví dụ 1,280 reviews
 
   sourcePlatform?: SourcePlatform;
-  sourceCurrency?: "CNY" | "VND" | "USD";
+  sourceCurrency?: SourceCurrency;
   sourceProductId: string;
   sourceUrl: string;
   supplierName: string;
@@ -397,7 +397,7 @@ export interface ClonePreviewResponse {
   translatedTitleVI: string;
   translatedTitleEN?: string;
   supplierName: string;
-  currency: "CNY" | "USD" | "VND";
+  currency: SourceCurrency;
   originalPriceMin: number;
   originalPriceMax: number;
   estimatedCostVND: number;
@@ -410,6 +410,7 @@ export interface ClonePreviewResponse {
   categorySuggested: string;
   rawAttributes?: Array<{ key: string; value: string }>;
   rawOptions?: Array<{ name: string; values: string[] }>;
+  optionGroups?: SourceOptionGroup[];
   customOptionGroups?: SourceOptionGroup[];
   customizationEvidence?: CustomizationEvidence;
   customizerMockupTemplateUrl?: string;

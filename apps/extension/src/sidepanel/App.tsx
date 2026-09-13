@@ -24,6 +24,60 @@ import {
   loginWithPassword
 } from "../shared/config.js";
 
+type ImportApiPayload = {
+  error?: string;
+  message?: string;
+  stage?: string;
+  requestId?: string;
+  details?: {
+    formErrors?: string[];
+    fieldErrors?: Record<string, string[]>;
+    issues?: Array<{ path?: Array<string | number>; message?: string }>;
+  };
+  blockers?: string[];
+  product?: any;
+};
+
+const readApiPayload = async (response: Response): Promise<ImportApiPayload> => {
+  const body = await response.text();
+  if (!body) return {};
+  try {
+    return JSON.parse(body) as ImportApiPayload;
+  } catch {
+    return { message: body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300) };
+  }
+};
+
+const describeImportFailure = (response: Response, data: ImportApiPayload): string => {
+  const details: string[] = [];
+  data.details?.issues?.slice(0, 3).forEach(issue => {
+    const path = issue.path?.length ? `${issue.path.join(".")}: ` : "";
+    if (issue.message) details.push(`${path}${issue.message}`);
+  });
+  Object.entries(data.details?.fieldErrors || {}).slice(0, 3).forEach(([field, messages]) => {
+    messages.slice(0, 2).forEach(message => details.push(`${field}: ${message}`));
+  });
+  data.details?.formErrors?.slice(0, 2).forEach(message => details.push(message));
+  data.blockers?.slice(0, 3).forEach(message => details.push(message));
+  if (data.error === "PERSISTENCE_FAILED" && data.stage) details.push(`giai đoạn: ${data.stage}`);
+
+  const fallbackByCode: Record<string, string> = {
+    AUTH_REQUIRED: "Vui lòng đăng nhập lại trước khi đồng bộ.",
+    INVALID_TOKEN: "Phiên đăng nhập không còn hợp lệ.",
+    VALIDATION_ERROR: "Dữ liệu lấy từ listing chưa đúng định dạng API.",
+    PERSISTENCE_NOT_CONFIGURED: "Backend chưa được cấu hình kết nối Supabase.",
+    PERSISTENCE_FAILED: "Supabase từ chối lưu sản phẩm.",
+    PAYLOAD_TOO_LARGE: "Listing có quá nhiều dữ liệu hoặc ảnh nhúng; dung lượng đồng bộ vượt giới hạn.",
+    QUALITY_GATE_FAILED: "Sản phẩm chưa đủ điều kiện đăng bán; hãy lưu bản nháp trước."
+  };
+  const code = data.error || `HTTP_${response.status}`;
+  const main = data.message || fallbackByCode[code] || `Đồng bộ thất bại (HTTP ${response.status}).`;
+  const uniqueDetails = [...new Set(details)];
+  const detailText = uniqueDetails.length ? ` Chi tiết: ${uniqueDetails.join("; ")}` : "";
+  const requestText = data.requestId ? ` Mã lỗi: ${data.requestId}` : "";
+  return `${main}${detailText}${requestText}`;
+};
+
 export const App: React.FC = () => {
   const { product, loading, error, currentUrl, refresh, extractByCustomUrl } = useProductExtractor();
   const [inputUrl, setInputUrl] = useState<string>("");
@@ -121,6 +175,17 @@ export const App: React.FC = () => {
     setImporting(true);
     setSuccessMessage(null);
 
+    const basePriceCNY = Number(product.prices?.minPriceCNY);
+    const sourceMaxPriceCNY = Number(product.prices?.maxPriceCNY);
+    if (!Number.isFinite(basePriceCNY) || basePriceCNY <= 0) {
+      setSuccessMessage("⚠ Không thể đồng bộ vì listing chưa lấy được giá hợp lệ. Hãy tải lại trang sản phẩm rồi bấm quét lại.");
+      setImporting(false);
+      return;
+    }
+    const maxPriceCNY = Number.isFinite(sourceMaxPriceCNY) && sourceMaxPriceCNY > 0
+      ? Math.max(basePriceCNY, sourceMaxPriceCNY)
+      : basePriceCNY;
+
     const platform = product.sourcePlatform || "1688";
     const normalized: Normalized1688Product = {
       sourcePlatform: platform,
@@ -132,8 +197,8 @@ export const App: React.FC = () => {
       cleanedTitleCN: product.title,
       price: {
         currency: "CNY",
-        min: product.prices.minPriceCNY,
-        max: product.prices.maxPriceCNY
+        min: basePriceCNY,
+        max: maxPriceCNY
       },
       media: {
         images: product.images,
@@ -146,7 +211,7 @@ export const App: React.FC = () => {
           : undefined;
         const priceCNY = skuItem?.priceCNY && skuItem.priceCNY > 0
           ? skuItem.priceCNY
-          : (v.costPriceVND && v.costPriceVND > 0 ? Math.round((v.costPriceVND / 3800) * 10) / 10 : product.prices.minPriceCNY);
+          : (v.costPriceVND && v.costPriceVND > 0 ? Math.round((v.costPriceVND / 3800) * 10) / 10 : basePriceCNY);
 
         return {
           sourceSkuId: v.sourceSkuId,
@@ -154,13 +219,14 @@ export const App: React.FC = () => {
           sizeCN: v.sizeName,
           colorVI: v.colorName,
           sizeVI: v.sizeName,
-          priceCNY: priceCNY > 0 ? priceCNY : product.prices.minPriceCNY,
+          priceCNY: priceCNY > 0 ? priceCNY : basePriceCNY,
           stock: v.stockQuantity,
           available: v.sourceAvailable,
           inventoryTracked: v.inventoryTracked,
           imageUrl: v.imageUrl
         };
       }),
+      optionGroups: product.optionGroups,
       customOptionGroups: product.customOptionGroups,
       customizationEvidence: product.customizationEvidence,
       customizerMockupTemplateUrl: product.customizerMockupTemplateUrl,
@@ -187,7 +253,7 @@ export const App: React.FC = () => {
         })
       });
 
-      const data = await res.json();
+      const data = await readApiPayload(res);
       if (res.ok && data.product) {
         const title = targetLanguage === "en" ? (data.product.titleEN || data.product.titleVI) : data.product.titleVI;
         setSuccessMessage(
@@ -237,7 +303,7 @@ export const App: React.FC = () => {
           setAuthUser(null);
           setAuthError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
         }
-        setSuccessMessage(`⚠ ${data.message || "Lỗi khi đồng bộ về website"}`);
+        setSuccessMessage(`⚠ ${describeImportFailure(res, data)}`);
       }
     } catch (err: any) {
       setSuccessMessage(`⚠ Lỗi mạng: ${err.message}`);

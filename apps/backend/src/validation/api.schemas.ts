@@ -11,7 +11,7 @@ const persistedImageRef = z.string().max(2_048).refine(
 );
 const money = z.number().finite().nonnegative().max(10_000_000_000);
 const positiveMoney = z.number().finite().positive().max(10_000_000_000);
-const sourcePlatform = z.enum(["1688", "TAOBAO", "TMALL", "SHOPEE", "TIKTOK_SHOP", "ALIEXPRESS", "GENERIC_WEB"]);
+const sourcePlatform = z.enum(["1688", "TAOBAO", "TMALL", "SHOPEE", "TIKTOK_SHOP", "ALIEXPRESS", "ETSY", "AMAZON", "GENERIC_WEB"]);
 
 const rawSku = z.object({
   skuId: id,

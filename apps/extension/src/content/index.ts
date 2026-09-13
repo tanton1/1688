@@ -5,7 +5,7 @@ import { injectBulkSelectionBar } from "./overlay/bulk-checkbox.js";
 import { ExistingProductCheckResult } from "@hub1688/shared-types";
 import { apiFetch } from "../shared/config.js";
 
-console.log("[1688 Hub] Multi-Platform Content Script đã nạp thành công (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress)!");
+console.log("[1688 Hub] Multi-Platform Content Script đã nạp thành công (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Etsy, Amazon)!");
 
 function runPageDetection() {
   const { platform, pageType, productId, offerId } = detectAnyCommercePage();
@@ -55,7 +55,7 @@ const onNavigation = () => {
 };
 for (const method of ["pushState", "replaceState"] as const) {
   const original = history[method];
-  history[method] = function (...args: Parameters<History[typeof method]>) {
+  history[method] = function (this: History, ...args: Parameters<History[typeof method]>) {
     const result = original.apply(this, args);
     queueMicrotask(onNavigation);
     return result;

@@ -6,6 +6,14 @@ export class Shop1688Extractor {
    * Trích xuất danh mục sản phẩm của gian hàng 1688
    */
   public static extractShopCatalog(): Raw1688SearchItem[] {
-    return Search1688Extractor.extractCards();
+    return Search1688Extractor.extractCards().map(item => ({
+      offerId: item.offerId,
+      title: item.title,
+      priceCNY: item.priceCNY,
+      thumbUrl: item.imageUrl,
+      detailUrl: item.detailUrl,
+      companyName: item.shopName,
+      soldQuantity: item.salesCount
+    }));
   }
 }

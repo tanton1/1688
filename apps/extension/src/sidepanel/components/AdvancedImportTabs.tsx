@@ -30,6 +30,32 @@ import {
   Check
 } from "lucide-react";
 
+const SOURCE_CURRENCY_SYMBOL: Record<string, string> = {
+  CNY: "¥",
+  USD: "$",
+  VND: "₫",
+  EUR: "€",
+  GBP: "£",
+  CAD: "CA$",
+  AUD: "A$",
+  JPY: "¥",
+  INR: "₹",
+  BRL: "R$",
+  MXN: "MX$",
+  SEK: "kr",
+  PLN: "zł",
+  SGD: "S$",
+  AED: "AED ",
+  SAR: "SAR ",
+  TRY: "₺"
+};
+
+const formatSourcePrice = (price: number | undefined, currency: string | undefined) => {
+  if (!price || price <= 0) return "Chưa xác minh";
+  const symbol = SOURCE_CURRENCY_SYMBOL[currency || ""] || `${currency || ""} `;
+  return `${symbol}${price.toLocaleString("vi-VN", { maximumFractionDigits: 2 })}`;
+};
+
 export interface AdvancedImportTabsProps {
   product?: Raw1688Product | null;
   initialTab?: "PREVIEW" | "TRANSLATION" | "SKU" | "PRICING";
@@ -146,7 +172,7 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
   const handleExportCSV = (platform: "SHOPIFY" | "WOOCOMMERCE" | "HARAVAN" | "TIKTOK_SHOP" | "SHOPEE") => {
     if (!product) return;
     try {
-      const exportable = convertRawProductToExportable(product, variants, product.categoryName || "Sản phẩm");
+      const exportable = convertRawProductToExportable(product, variants, "Sản phẩm");
       let csvData = "";
       let filename = "";
 
@@ -455,9 +481,10 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
             <div className="text-right">
               <span className="text-[10px] text-gray-500 font-medium block">Giá gốc nguồn</span>
               <span className="text-xs font-bold text-gray-700">
-                {product?.originalCurrency === "USD"
-                  ? (product.originalPriceMin ? `$${product.originalPriceMin}` : "Chưa xác minh")
-                  : (product?.prices?.minPriceCNY ? `¥${product.prices.minPriceCNY}` : "Chưa xác minh")}
+                {formatSourcePrice(product?.originalPriceMin, product?.originalCurrency)}
+                {product?.originalPriceMax && product.originalPriceMax > (product.originalPriceMin || 0)
+                  ? ` – ${formatSourcePrice(product.originalPriceMax, product.originalCurrency)}`
+                  : ""}
               </span>
               <div className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                 Lãi {pricingBreakdown?.marginPercent >= 0 ? `${pricingBreakdown.marginPercent}%` : "chưa tính"}
@@ -481,8 +508,34 @@ export const AdvancedImportTabs: React.FC<AdvancedImportTabsProps> = ({
                         : "bg-gray-100 border-gray-200 text-gray-400 line-through"
                     }`}
                   >
-                    {v.colorName} {v.sizeName !== "Tiêu chuẩn" ? `(${v.sizeName})` : ""}: {v.sellingPriceVND.toLocaleString("vi-VN")}đ
+                    {v.colorName} {v.sizeName !== "Tiêu chuẩn" ? `(${v.sizeName})` : ""}: {v.sellingPriceVND > 0 ? `${v.sellingPriceVND.toLocaleString("vi-VN")}đ` : "Chưa tính giá"}
                   </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {product?.optionGroups && product.optionGroups.length > 0 && (
+            <div className="space-y-1.5 pt-2 border-t border-amber-100">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-gray-700">Lựa chọn nguồn phát hiện được:</span>
+                <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                  Cần xác minh SKU
+                </span>
+              </div>
+              <div className="space-y-1">
+                {product.optionGroups.map(group => (
+                  <div key={group.id} className="rounded-lg border border-gray-100 bg-gray-50/70 p-1.5">
+                    <div className="text-[10px] font-semibold text-gray-600 mb-1">{group.name}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {group.values.slice(0, 24).map(value => (
+                        <span key={value.id} className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-700">
+                          {value.imageUrl && <img src={value.imageUrl} alt="" className="h-4 w-4 rounded object-cover" />}
+                          {value.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

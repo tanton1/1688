@@ -520,14 +520,14 @@ export class SupabaseDataService {
   /**
    * Lưu Nhà cung cấp / Shop 1688 vào Supabase
    */
-  public async upsertSupplier(shop: Raw1688Shop): Promise<string | null> {
+  public async upsertSupplier(shop: Raw1688Shop, sourcePlatform: Normalized1688Product["sourcePlatform"] = "1688"): Promise<string | null> {
     if (!this.client) return null;
 
     const { data, error } = await this.client
       .from("suppliers")
       .upsert(
         {
-          source_platform: "1688",
+          source_platform: sourcePlatform,
           shop_id: shop.shopId,
           shop_name: shop.shopName,
           company_name: shop.companyName,
@@ -570,6 +570,7 @@ export class SupabaseDataService {
           max_price_cny: normalized.price.max,
           raw_media_json: {
             ...normalized.media,
+            optionGroups: normalized.optionGroups || raw.optionGroups || [],
             customOptionGroups: normalized.customOptionGroups || raw.customOptionGroups || [],
             customizationEvidence: normalized.customizationEvidence || raw.customizationEvidence || null,
             customizerMockupTemplateUrl: normalized.customizerMockupTemplateUrl || raw.customizerMockupTemplateUrl || null

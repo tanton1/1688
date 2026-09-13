@@ -75,7 +75,10 @@ export interface CustomizationEvidence {
   reviewRequired?: boolean;
 }
 
-export type SourcePlatform = "1688" | "TAOBAO" | "TMALL" | "SHOPEE" | "TIKTOK_SHOP" | "ALIEXPRESS" | "GENERIC_WEB";
+export type SourcePlatform = "1688" | "TAOBAO" | "TMALL" | "SHOPEE" | "TIKTOK_SHOP" | "ALIEXPRESS" | "ETSY" | "AMAZON" | "GENERIC_WEB";
+export type SourceCurrency =
+  | "CNY" | "USD" | "VND" | "EUR" | "GBP" | "CAD" | "AUD" | "JPY" | "INR"
+  | "BRL" | "MXN" | "SEK" | "PLN" | "SGD" | "AED" | "SAR" | "TRY";
 
 export interface Normalized1688Product {
   sourcePlatform: SourcePlatform;

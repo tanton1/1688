@@ -356,6 +356,8 @@ export class ImportController {
       isPersonalized: personalization.isPersonalized,
       personalizationFields: personalization.personalizationFields,
       customizerMockupTemplateUrl: normalized.customizerMockupTemplateUrl || raw?.customizerMockupTemplateUrl,
+      sourcePlatform: normalized.sourcePlatform,
+      sourceCurrency: raw?.originalCurrency || "CNY",
       sourceProductId: normalized.sourceProductId,
       sourceUrl: normalized.sourceUrl,
       supplierName: normalized.supplier.shopName,
@@ -484,7 +486,7 @@ export class ImportController {
     // Lưu vào Supabase Cloud nếu đã cấu hình
     if (supabaseService.isConfigured()) {
       try {
-        const supplierId = await supabaseService.upsertSupplier(normalized.supplier);
+        const supplierId = await supabaseService.upsertSupplier(normalized.supplier, normalized.sourcePlatform);
         if (!supplierId) throw new Error("SUPPLIER_PERSISTENCE_FAILED");
         const sourceId = await supabaseService.saveSourceProduct(normalized, supplierId);
         if (!sourceId) throw new Error("SOURCE_PERSISTENCE_FAILED");
@@ -492,7 +494,13 @@ export class ImportController {
       } catch (dbErr) {
         inMemoryProducts.delete(productId);
         console.error("[Supabase save error]", dbErr);
-        res.status(503).json({ error: "PERSISTENCE_FAILED", message: "Không thể lưu sản phẩm vào cơ sở dữ liệu" });
+        const persistenceStage = dbErr instanceof Error ? dbErr.message : "UNKNOWN_PERSISTENCE_FAILURE";
+        res.status(503).json({
+          error: "PERSISTENCE_FAILED",
+          message: "Không thể lưu sản phẩm vào Supabase",
+          stage: persistenceStage,
+          requestId: req.requestId
+        });
         return;
       }
     }

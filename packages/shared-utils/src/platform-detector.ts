@@ -1,4 +1,4 @@
-import { SourcePlatform, SupportedPlatformInfo } from "@hub1688/shared-types";
+import { SourceCurrency, SourcePlatform, SupportedPlatformInfo } from "@hub1688/shared-types";
 
 export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
   {
@@ -62,6 +62,26 @@ export const SUPPORTED_PLATFORMS_META: SupportedPlatformInfo[] = [
     description: "Nền tảng bán lẻ toàn cầu của Alibaba, giá USD và thông số tiếng Anh"
   },
   {
+    id: "ETSY",
+    name: "Etsy",
+    badge: "Etsy Marketplace",
+    icon: "🧶",
+    color: "#f1641e",
+    defaultCurrency: "USD",
+    sampleUrl: "https://www.etsy.com/listing/1234567890/sample-personalized-gift",
+    description: "Marketplace đồ thủ công và quà cá nhân hóa; addon lấy listing ID, media, giá, shop và lựa chọn công khai"
+  },
+  {
+    id: "AMAZON",
+    name: "Amazon",
+    badge: "Amazon Marketplace",
+    icon: "📦",
+    color: "#ff9900",
+    defaultCurrency: "USD",
+    sampleUrl: "https://www.amazon.com/dp/B0ABCDE123",
+    description: "Amazon quốc tế; addon lấy ASIN, media, giá, thương hiệu và lựa chọn đang hiển thị trên trang"
+  },
+  {
     id: "GENERIC_WEB",
     name: "Website Bất Kỳ",
     badge: "Universal Web",
@@ -86,6 +106,8 @@ export function detectProductPlatform(url: string): SourcePlatform {
   if (lower.includes("shopee.vn") || lower.includes("shopee.com") || lower.includes("shopee.co")) return "SHOPEE";
   if (lower.includes("tiktok.com") || lower.includes("shop.tiktok.com")) return "TIKTOK_SHOP";
   if (lower.includes("aliexpress.com")) return "ALIEXPRESS";
+  if (/(?:^|\.)etsy\.com(?::|\/|$)/i.test(lower.replace(/^https?:\/\//, ""))) return "ETSY";
+  if (/(?:^|\.)amazon\.(?:com|ca|com\.mx|com\.br|co\.uk|de|fr|it|es|nl|se|pl|com\.be|co\.jp|in|com\.au|sg|ae|sa|com\.tr)(?::|\/|$)/i.test(lower.replace(/^https?:\/\//, ""))) return "AMAZON";
 
   return "GENERIC_WEB";
 }
@@ -127,6 +149,20 @@ export function extractProductIdFromUrl(url: string, platform?: SourcePlatform):
       if (match) return match[1];
     }
 
+    if (targetPlatform === "ETSY") {
+      const match = parsed.pathname.match(/\/listing\/(\d+)/i);
+      if (match) return match[1];
+      const listingId = parsed.searchParams.get("listing_id");
+      if (listingId && /^\d+$/.test(listingId)) return listingId;
+    }
+
+    if (targetPlatform === "AMAZON") {
+      const match = parsed.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|product)\/([A-Z0-9]{10})(?:[/?]|$)/i);
+      if (match) return match[1].toUpperCase();
+      const asin = parsed.searchParams.get("asin") || parsed.searchParams.get("ASIN");
+      if (asin && /^[A-Z0-9]{10}$/i.test(asin)) return asin.toUpperCase();
+    }
+
     // Generic Web: lấy slug hoặc path cuối cùng
     const pathParts = parsed.pathname.split("/").filter(Boolean);
     if (pathParts.length > 0) {
@@ -156,11 +192,73 @@ export interface ExtractedHtmlMetadata {
   price?: number;
   priceMin?: number;
   priceMax?: number;
-  currency?: "CNY" | "USD" | "VND";
+  currency?: SourceCurrency;
   brand?: string;
   schemaProduct?: any;
   options?: Array<{ name: string; values: string[] }>;
   variants?: Array<any>;
+}
+
+function jsonLdHasType(value: unknown, expected: string): boolean {
+  const types = Array.isArray(value) ? value : [value];
+  return types.some(type => String(type || "").toLowerCase() === expected.toLowerCase());
+}
+
+function findJsonLdProduct(value: any, seen = new Set<any>()): any | null {
+  if (!value || typeof value !== "object" || seen.has(value)) return null;
+  seen.add(value);
+  if (jsonLdHasType(value["@type"], "Product")) return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const product = findJsonLdProduct(item, seen);
+      if (product) return product;
+    }
+    return null;
+  }
+  for (const nested of [value["@graph"], value.mainEntity, value.itemListElement]) {
+    const product = findJsonLdProduct(nested, seen);
+    if (product) return product;
+  }
+  return null;
+}
+
+function appendJsonLdImages(target: string[], imageValue: any): void {
+  const values = Array.isArray(imageValue) ? imageValue : [imageValue];
+  for (const item of values) {
+    const raw = typeof item === "string" ? item : item?.url || item?.contentUrl || item?.contentURL;
+    if (typeof raw !== "string" || !raw.trim()) continue;
+    const normalized = raw.trim().startsWith("//") ? `https:${raw.trim()}` : raw.trim();
+    if (/^https?:\/\//i.test(normalized) && !target.includes(normalized)) target.push(normalized);
+  }
+}
+
+function readJsonLdOffers(offersValue: any): { prices: number[]; currency?: SourceCurrency } {
+  const prices: number[] = [];
+  let currency: SourceCurrency | undefined;
+  const visit = (value: any) => {
+    if (!value) return;
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (typeof value !== "object") return;
+    const specifications = Array.isArray(value.priceSpecification) ? value.priceSpecification : [value.priceSpecification];
+    for (const candidate of [
+      value.price,
+      value.lowPrice,
+      value.highPrice,
+      ...specifications.flatMap((spec: any) => [spec?.price, spec?.minPrice, spec?.maxPrice])
+    ]) {
+      const parsed = Number.parseFloat(String(candidate ?? "").replace(/,/g, ""));
+      if (Number.isFinite(parsed) && parsed > 0) prices.push(parsed);
+    }
+    const declaredCurrency = String(
+      value.priceCurrency || specifications.find((spec: any) => spec?.priceCurrency)?.priceCurrency || ""
+    ).toUpperCase();
+    if (["USD", "VND", "CNY", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "BRL", "MXN", "SEK", "PLN", "SGD", "AED", "SAR", "TRY"].includes(declaredCurrency)) {
+      currency = declaredCurrency as SourceCurrency;
+    }
+    if (value.offers && value.offers !== value) visit(value.offers);
+  };
+  visit(offersValue);
+  return { prices, currency };
 }
 
 /**
@@ -312,7 +410,7 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     try {
       const jsonContent = jsonMatch[1].trim();
       const parsed = JSON.parse(jsonContent);
-      const item = Array.isArray(parsed) ? parsed.find(x => x["@type"] === "Product") : (parsed["@type"] === "Product" ? parsed : null);
+      const item = findJsonLdProduct(parsed);
 
       if (item) {
         result.schemaProduct = item;
@@ -320,24 +418,16 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
         if (item.description) result.description = item.description;
         if (item.brand?.name) result.brand = item.brand.name;
         
-        if (item.image) {
-          if (Array.isArray(item.image)) {
-            result.images.push(...item.image.filter((img: any) => typeof img === "string"));
-          } else if (typeof item.image === "string") {
-            result.images.push(item.image);
-          }
-        }
+        if (item.image) appendJsonLdImages(result.images, item.image);
 
         if (item.offers) {
-          const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
-          if (offers) {
-            const rawPrice = parseFloat(offers.price || offers.lowPrice || "0");
-            if (rawPrice > 0) result.price = rawPrice;
-            const rawCurr = (offers.priceCurrency || "").toUpperCase();
-            if (rawCurr === "VND" || rawCurr === "USD" || rawCurr === "CNY") {
-              result.currency = rawCurr as any;
-            }
+          const offerData = readJsonLdOffers(item.offers);
+          if (offerData.prices.length > 0) {
+            result.price = Math.min(...offerData.prices);
+            result.priceMin = Math.min(...offerData.prices);
+            result.priceMax = Math.max(...offerData.prices);
           }
+          if (offerData.currency) result.currency = offerData.currency;
         }
         break;
       }
@@ -398,7 +488,9 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
                       html.match(/<meta\b[^>]*property=["']product:price:currency["'][^>]*content=["']([^"']*)["']/i);
   if (!result.currency && ogCurrMatch) {
     const c = ogCurrMatch[1].toUpperCase();
-    if (c === "VND" || c === "USD" || c === "CNY") result.currency = c as any;
+    if (["VND", "USD", "CNY", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "BRL", "MXN", "SEK", "PLN", "SGD", "AED", "SAR", "TRY"].includes(c)) {
+      result.currency = c as SourceCurrency;
+    }
   }
 
   // 4. Trích xuất ảnh chi tiết dài (Detail & Gallery Images) từ HTML content

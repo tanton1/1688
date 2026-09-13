@@ -45,6 +45,8 @@ app.use(cors((req, callback) => {
         host === "shopee.vn" || host.endsWith(".shopee.vn") ||
         host === "tiktok.com" || host.endsWith(".tiktok.com") ||
         host === "aliexpress.com" || host.endsWith(".aliexpress.com") ||
+        host === "etsy.com" || host.endsWith(".etsy.com") ||
+        /^amazon\.(com|ca|com\.mx|com\.br|co\.uk|de|fr|it|es|nl|se|pl|com\.be|co\.jp|in|com\.au|sg|ae|sa|com\.tr)$/.test(host.replace(/^www\./, "")) ||
         host === "macorner.co" || host.endsWith(".macorner.co");
     } catch {
       return false;

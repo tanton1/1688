@@ -6,10 +6,74 @@ import {
   Raw1688Attribute,
   SourcePlatform,
   SourceOptionGroup,
+  SourceCurrency,
   CustomizationEvidence
 } from "@hub1688/shared-types";
 import { detectProductPlatform, extractProductIdFromUrl } from "@hub1688/shared-utils";
 import { Detail1688Extractor } from "./1688-detail.extractor.js";
+
+const normalizePublicImageUrl = (value: string | null | undefined): string | undefined => {
+  if (!value) return undefined;
+  let image = value.trim();
+  if (!image || image.startsWith("data:") || image.startsWith("blob:")) return undefined;
+  if (image.startsWith("//")) image = `https:${image}`;
+  try { return new URL(image, window.location.href).href; } catch { return undefined; }
+};
+
+const parsePriceText = (value: unknown): number => {
+  const text = String(value ?? "").replace(/\u00a0/g, " ").trim();
+  if (!text) return 0;
+  const match = text.match(/(?:\d[\d\s.,]*\d|\d+(?:[.,]\d+)?)/);
+  if (!match) return 0;
+  let numeric = match[0].replace(/\s/g, "");
+  const comma = numeric.lastIndexOf(",");
+  const dot = numeric.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    // Last separator is decimal only when it has one or two trailing digits.
+    const decimalIndex = Math.max(comma, dot);
+    const decimals = numeric.length - decimalIndex - 1;
+    numeric = decimals <= 2
+      ? `${numeric.slice(0, decimalIndex).replace(/[.,]/g, "")}.${numeric.slice(decimalIndex + 1)}`
+      : numeric.replace(/[.,]/g, "");
+  } else if (comma >= 0) {
+    const decimals = numeric.length - comma - 1;
+    numeric = decimals <= 2 ? numeric.replace(",", ".") : numeric.replace(/,/g, "");
+  } else if (dot >= 0) {
+    const decimals = numeric.length - dot - 1;
+    numeric = decimals <= 2 ? numeric : numeric.replace(/\./g, "");
+  }
+  const parsed = Number.parseFloat(numeric);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const findJsonLdProduct = (value: any, seen = new Set<any>()): any | null => {
+  if (!value || typeof value !== "object" || seen.has(value)) return null;
+  seen.add(value);
+  const types = Array.isArray(value["@type"]) ? value["@type"] : [value["@type"]];
+  if (types.some((type: unknown) => String(type || "").toLowerCase() === "product")) return value;
+  if (Array.isArray(value)) {
+    for (const item of value) { const product = findJsonLdProduct(item, seen); if (product) return product; }
+  } else {
+    for (const nested of [value["@graph"], value.mainEntity, value.itemListElement]) {
+      const product = findJsonLdProduct(nested, seen);
+      if (product) return product;
+    }
+  }
+  return null;
+};
+
+const readSchemaProduct = (): any | null => {
+  for (const script of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {
+    try {
+      const parsed = JSON.parse(script.textContent || "{}");
+      const product = findJsonLdProduct(parsed);
+      if (product) return product;
+    } catch {
+      // Ignore malformed or bot-injected JSON-LD blocks.
+    }
+  }
+  return null;
+};
 
 const getSourceInventoryState = (variant: any): { stock: number; available: boolean; inventoryTracked: boolean } => {
   const inventoryTracked = Number.isFinite(variant?.inventory_quantity);
@@ -22,7 +86,8 @@ const getSourceInventoryState = (variant: any): { stock: number; available: bool
 
 export class UniversalPlatformExtractor {
   /**
-   * Tự động nhận diện nền tảng (1688, Taobao, Tmall, Shopee, TikTok Shop, AliExpress, Web)
+   * Tự động nhận diện nền tảng (1688, Taobao, Tmall, Shopee, TikTok Shop,
+   * AliExpress, Etsy, Amazon và Web)
    * và bóc tách thông tin sản phẩm đầy đủ nhất từ DOM hiện tại.
    */
   public static async extract(): Promise<Raw1688Product> {
@@ -112,6 +177,7 @@ export class UniversalPlatformExtractor {
       attributes,
       skuProps,
       skuMap,
+      optionGroups: this.extractNativeOptionGroups(platform),
       customOptionGroups: personalization.customOptionGroups,
       customizationEvidence: personalization.customizationEvidence,
       extractedAt: new Date().toISOString()
@@ -119,6 +185,10 @@ export class UniversalPlatformExtractor {
   }
 
   private static extractTitle(platform: SourcePlatform): string {
+    const schemaProduct = readSchemaProduct();
+    if (schemaProduct?.name && String(schemaProduct.name).trim().length > 5) {
+      return String(schemaProduct.name).trim();
+    }
     // 1. Thử lấy từ OpenGraph hoặc Twitter meta
     const ogTitle = document.querySelector('meta[property="og:title"], meta[name="twitter:title"]')?.getAttribute("content");
     if (ogTitle && ogTitle.trim().length > 5) {
@@ -142,6 +212,14 @@ export class UniversalPlatformExtractor {
       // AliExpress
       "h1.title--wrap--eGQk2Bl",
       ".product-title-text",
+      // Etsy
+      "h1[data-buy-box-listing-title]",
+      "h1[data-selector='listing-page-title']",
+      ".wt-text-body-03.wt-break-word",
+      // Amazon
+      "#productTitle",
+      "#title",
+      "h1.product-title-word-break",
       // Generic
       "h1",
       ".product-name",
@@ -162,7 +240,7 @@ export class UniversalPlatformExtractor {
 
   private static extractImages(platform: SourcePlatform): string[] {
     const images: string[] = [];
-    const JUNK_IMG_REGEX = /(?:icon|logo|badge|banner|trust|payment|flag|avatar|review|rating|star|arrow|svg|rec_|recommend|related|cart|checkout|halloween_badge|search-|img-menu|default-img|footer|header|menu|\/assets\/)/i;
+    const JUNK_IMG_REGEX = /(?:icon|logo|badge|banner|trust|payment|flag|avatar|review|rating|star|arrow|svg|rec_|recommend|related|cart|checkout|halloween_badge|search-|img-menu|default-img|footer|header|menu|grey-pixel|pixel\.gif|play-icon|\/assets\/|_AC_(?:SR|SS|SX)\d*)/i;
 
     const addImg = (src: string | null | undefined) => {
       if (!src) return;
@@ -171,11 +249,18 @@ export class UniversalPlatformExtractor {
       if ((clean.startsWith("http://") || clean.startsWith("https://")) && !JUNK_IMG_REGEX.test(clean)) {
         // Loại bỏ thumbnail query params để lấy ảnh gốc độ phân giải cao
         clean = clean.replace(/_\d+x\d+.*$/, "").replace(/\.32x32\..*$/, ".800x800.");
+        if (/m\.media-amazon\.|images-na\.ssl-images-amazon\./i.test(clean)) {
+          clean = clean.replace(/(?:\._|_)[A-Z]{2,}(?:_[A-Z0-9,]+)*_\.(\w+)$/i, ".$1");
+        }
         if (!images.includes(clean)) {
           images.push(clean);
         }
       }
     };
+
+    const schemaProduct = readSchemaProduct();
+    const schemaImages = Array.isArray(schemaProduct?.image) ? schemaProduct.image : [schemaProduct?.image];
+    schemaImages.forEach((image: any) => addImg(typeof image === "string" ? image : image?.url || image?.contentUrl || image?.contentURL));
 
     // 1. OpenGraph / Twitter meta images
     const ogImg = document.querySelector('meta[property="og:image"], meta[name="twitter:image"]')?.getAttribute("content");
@@ -209,6 +294,17 @@ export class UniversalPlatformExtractor {
       ".images--wrap--wFkP-6p img",
       ".image-viewer img",
       ".gallery-wrap img",
+      // Etsy
+      "[data-listing-id] img",
+      "[data-carousel] img",
+      "[data-selector='listing-image'] img",
+      ".listing-page-image img",
+      // Amazon
+      "#landingImage",
+      "#imgBlkFront",
+      "#altImages img",
+      "#imageBlock img",
+      "#main-image-container img",
       // Generic product images
       ".gallery img",
       ".product-images img"
@@ -220,8 +316,15 @@ export class UniversalPlatformExtractor {
         // Bỏ qua nếu ảnh nằm trong vùng gợi ý, thanh toán, menu, footer
         if (el.closest?.(".recommendations, .related-products, .product-recommendations, footer, header, nav, .cart, .announcement-bar")) return;
         const img = el as HTMLImageElement;
-        const src = img.getAttribute("data-src") || img.getAttribute("zoom-src") || img.src;
+        const src = img.getAttribute("data-old-hires") || img.getAttribute("data-zoom-image") || img.getAttribute("data-src") || img.getAttribute("zoom-src") || img.src;
         addImg(src);
+        const dynamic = img.getAttribute("data-a-dynamic-image");
+        if (dynamic) {
+          try {
+            const parsed = JSON.parse(dynamic);
+            Object.keys(parsed).forEach(addImg);
+          } catch { /* Amazon may encode this as invalid JSON while hydrating. */ }
+        }
       });
       if (images.length >= 8) break;
     }
@@ -293,34 +396,74 @@ export class UniversalPlatformExtractor {
   private static extractPriceInfo(platform: SourcePlatform): {
     minPriceCNY: number;
     maxPriceCNY: number;
-    originalCurrency: "CNY" | "VND" | "USD";
+    originalCurrency: SourceCurrency;
     originalMin: number;
     originalMax: number;
   } {
-    let originalCurrency: "CNY" | "VND" | "USD" = "USD";
+    let originalCurrency: SourceCurrency = "USD";
     let foundPrices: number[] = [];
+
+    if (platform === "AMAZON") {
+      const host = window.location.hostname.toLowerCase();
+      if (host.endsWith("amazon.com.br")) originalCurrency = "BRL";
+      else if (host.endsWith("amazon.com.mx")) originalCurrency = "MXN";
+      else if (host.endsWith("amazon.co.uk")) originalCurrency = "GBP";
+      else if (/amazon\.(?:de|fr|it|es|nl)$/.test(host) || host.endsWith("amazon.com.be")) originalCurrency = "EUR";
+      else if (host.endsWith("amazon.ca")) originalCurrency = "CAD";
+      else if (host.endsWith("amazon.com.au")) originalCurrency = "AUD";
+      else if (host.endsWith("amazon.co.jp")) originalCurrency = "JPY";
+      else if (host.endsWith("amazon.in")) originalCurrency = "INR";
+      else if (host.endsWith("amazon.se")) originalCurrency = "SEK";
+      else if (host.endsWith("amazon.pl")) originalCurrency = "PLN";
+      else if (host.endsWith("amazon.sg")) originalCurrency = "SGD";
+      else if (host.endsWith("amazon.ae")) originalCurrency = "AED";
+      else if (host.endsWith("amazon.sa")) originalCurrency = "SAR";
+      else if (host.endsWith("amazon.com.tr")) originalCurrency = "TRY";
+    }
+
+    const addPrice = (value: unknown) => {
+      const parsed = parsePriceText(value);
+      if (parsed > 0 && !foundPrices.includes(parsed)) foundPrices.push(parsed);
+    };
+
+    const schemaProduct = readSchemaProduct();
+    const schemaOffers = Array.isArray(schemaProduct?.offers) ? schemaProduct.offers : [schemaProduct?.offers];
+    schemaOffers.forEach((offer: any) => {
+      if (!offer) return;
+      addPrice(offer.price);
+      addPrice(offer.lowPrice);
+      addPrice(offer.highPrice);
+      const specifications = Array.isArray(offer.priceSpecification) ? offer.priceSpecification : [offer.priceSpecification];
+      specifications.forEach((spec: any) => {
+        if (!spec) return;
+        addPrice(spec.price);
+        addPrice(spec.minPrice);
+        addPrice(spec.maxPrice);
+      });
+      const schemaCurrency = String(offer.priceCurrency || specifications.find((spec: any) => spec?.priceCurrency)?.priceCurrency || "").toUpperCase();
+      if (["USD", "VND", "CNY", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "BRL", "MXN", "SEK", "PLN", "SGD", "AED", "SAR", "TRY"].includes(schemaCurrency)) {
+        originalCurrency = schemaCurrency as SourceCurrency;
+      }
+    });
 
     // 1. Kiểm tra trực tiếp thẻ meta OpenGraph price & currency (Chuẩn quốc tế trên Shopify như Macorner, WooCommerce...)
     const metaPrice = document.querySelector('meta[property="og:price:amount"], meta[property="product:price:amount"]')?.getAttribute("content");
     const metaCurr = document.querySelector('meta[property="og:price:currency"], meta[property="product:price:currency"]')?.getAttribute("content");
     if (metaCurr) {
       const c = metaCurr.toUpperCase().trim();
-      if (c === "USD" || c === "VND" || c === "CNY") {
-        originalCurrency = c;
+      if (["USD", "VND", "CNY", "EUR", "GBP", "CAD", "AUD", "JPY", "INR", "BRL", "MXN", "SEK", "PLN", "SGD", "AED", "SAR", "TRY"].includes(c)) {
+        originalCurrency = c as SourceCurrency;
       }
     }
     if (metaPrice) {
-      const p = parseFloat(metaPrice.replace(/[^0-9.]/g, ""));
-      if (!isNaN(p) && p > 0) {
-        foundPrices.push(p);
-      }
+      addPrice(metaPrice);
     }
 
     // Nhận diện tiền tệ theo platform nếu chưa có
     if (foundPrices.length === 0) {
       if (platform === "SHOPEE") {
         originalCurrency = "VND";
-      } else if (platform === "ALIEXPRESS" || platform === "GENERIC_WEB") {
+      } else if (platform === "ALIEXPRESS" || platform === "ETSY" || platform === "GENERIC_WEB") {
         originalCurrency = "USD";
       } else if (platform === "TAOBAO" || platform === "TMALL" || platform === "1688") {
         originalCurrency = "CNY";
@@ -349,6 +492,21 @@ export class UniversalPlatformExtractor {
       // AliExpress
       ".price--currentPriceText--2AQG17x",
       ".product-price-value",
+      // Etsy
+      "[data-selector='listing-price']",
+      "[data-buy-box-region] .currency-value",
+      ".wt-text-title-03",
+      ".wt-text-title-01",
+      // Amazon
+      "#corePrice_feature_div .a-offscreen",
+      "#apex_desktop .a-offscreen",
+      "#priceblock_ourprice",
+      "#priceblock_dealprice",
+      "#price_inside_buybox",
+      ".a-price .a-offscreen",
+      ".priceToPay .a-offscreen",
+      "#corePriceDisplay_desktop_feature_div .a-offscreen",
+      ".a-color-price",
       // Generic
       ".price",
       ".current-price",
@@ -362,17 +520,39 @@ export class UniversalPlatformExtractor {
         // Nếu có ký hiệu tiền tệ cụ thể
         if (text.includes("₫") || text.includes("đ") || text.includes("VND")) {
           originalCurrency = "VND";
-        } else if (text.includes("$") || text.includes("USD")) {
-          originalCurrency = "USD";
+        } else if (/R\s*\$/i.test(text) || /\bBRL\b/i.test(text)) {
+          originalCurrency = "BRL";
+        } else if (/(?:MX|MEX)\s*\$/i.test(text) || /\bMXN\b/i.test(text)) {
+          originalCurrency = "MXN";
+        } else if (/S\s*\$/i.test(text) || /\bSGD\b/i.test(text)) {
+          originalCurrency = "SGD";
+        } else if (/(?:CA|CAD)\s*\$/.test(text) || /\bCAD\b/i.test(text)) {
+          originalCurrency = "CAD";
+        } else if (/(?:A|AU|AUD)\s*\$/.test(text) || /\bAUD\b/i.test(text)) {
+          originalCurrency = "AUD";
+        } else if (text.includes("€") || /\bEUR\b/i.test(text)) {
+          originalCurrency = "EUR";
+        } else if (text.includes("£") || /\bGBP\b/i.test(text)) {
+          originalCurrency = "GBP";
+        } else if (text.includes("₹") || /\bINR\b/i.test(text)) {
+          originalCurrency = "INR";
+        } else if (/\bAED\b/i.test(text)) {
+          originalCurrency = "AED";
+        } else if (/\bSAR\b/i.test(text)) {
+          originalCurrency = "SAR";
+        } else if (text.includes("₺") || /\bTRY\b|\bTL\b/i.test(text)) {
+          originalCurrency = "TRY";
+        } else if (text.includes("zł") || /\bPLN\b/i.test(text)) {
+          originalCurrency = "PLN";
+        } else if (/\bSEK\b/i.test(text) || (platform === "AMAZON" && window.location.hostname.endsWith("amazon.se") && /\bkr\b/i.test(text))) {
+          originalCurrency = "SEK";
         } else if (text.includes("¥") || text.includes("￥")) {
-          originalCurrency = "CNY";
+          originalCurrency = platform === "AMAZON" && window.location.hostname.endsWith("amazon.co.jp") ? "JPY" : "CNY";
+        } else if (text.includes("$") || text.includes("USD")) {
+          if (!["CAD", "AUD", "SGD", "MXN"].includes(originalCurrency)) originalCurrency = "USD";
         }
 
-        const cleaned = text.replace(/[^0-9.,]/g, "").replace(",", ".");
-        const val = parseFloat(cleaned);
-        if (!isNaN(val) && val > 0) {
-          foundPrices.push(val);
-        }
+        addPrice(text);
       });
       if (foundPrices.length > 0) break;
     }
@@ -385,14 +565,16 @@ export class UniversalPlatformExtractor {
     let minPriceCNY = originalMin;
     let maxPriceCNY = originalMax;
 
-    if (originalCurrency === "VND") {
-      // 1 CNY ~ 3,800 VND
-      minPriceCNY = Math.round((originalMin / 3800) * 10) / 10;
-      maxPriceCNY = Math.round((originalMax / 3800) * 10) / 10;
-    } else if (originalCurrency === "USD") {
-      // 1 USD ~ 7.2 CNY
-      minPriceCNY = Math.round(originalMin * 7.2 * 10) / 10;
-      maxPriceCNY = Math.round(originalMax * 7.2 * 10) / 10;
+    const sourceToCny: Record<SourceCurrency, number> = {
+      CNY: 1, USD: 7.2, VND: 1 / 3800, EUR: 7.8, GBP: 9.1,
+      CAD: 5.2, AUD: 4.7, JPY: 0.05, INR: 0.086, BRL: 1.32,
+      MXN: 0.4, SEK: 0.75, PLN: 1.85, SGD: 5.6, AED: 1.96,
+      SAR: 1.92, TRY: 0.17
+    };
+    const rate = sourceToCny[originalCurrency] || 1;
+    if (rate !== 1) {
+      minPriceCNY = Math.round(originalMin * rate * 10) / 10;
+      maxPriceCNY = Math.round(originalMax * rate * 10) / 10;
     }
 
     if (minPriceCNY <= 0) minPriceCNY = 30;
@@ -421,6 +603,17 @@ export class UniversalPlatformExtractor {
   }
 
   private static extractShop(platform: SourcePlatform, productId: string): Raw1688Shop {
+    const schemaProduct = readSchemaProduct();
+    const schemaBrand = typeof schemaProduct?.brand === "string" ? schemaProduct.brand : schemaProduct?.brand?.name;
+    const schemaSeller = typeof schemaProduct?.seller === "string" ? schemaProduct.seller : schemaProduct?.seller?.name;
+    const schemaShop = String(schemaSeller || schemaBrand || "").trim();
+    if (schemaShop.length > 1) {
+      return {
+        shopId: `shop_${productId}`,
+        shopName: schemaShop,
+        shopUrl: window.location.origin
+      };
+    }
     // 1. Thử lấy từ OpenGraph site_name (ví dụ: Macorner)
     const ogSite = document.querySelector('meta[property="og:site_name"]')?.getAttribute("content");
     if (ogSite && ogSite.trim().length > 1) {
@@ -438,7 +631,14 @@ export class UniversalPlatformExtractor {
       ".store-name",
       ".shop-header a",
       "[data-e2e='shop-name']",
-      ".shop-head-info a"
+      ".shop-head-info a",
+      // Etsy seller/shop name
+      "a[href*='/shop/']",
+      "[data-shop-name]",
+      // Amazon brand/seller blocks
+      "#bylineInfo",
+      "#sellerProfileTriggerId",
+      "#merchant-info"
     ];
 
     for (const sel of shopSelectors) {
@@ -463,10 +663,11 @@ export class UniversalPlatformExtractor {
     ];
 
     // Quét các thông số từ bảng spec
-    const specItems = document.querySelectorAll(".specification-item, .attribute-item, .params-item, .ItemProperties--item--1h9e3lA");
+    const specItems = document.querySelectorAll(".specification-item, .attribute-item, .params-item, .ItemProperties--item--1h9e3lA, #productDetails_techSpec_section_1 tr, #productDetails_detailBullets_sections1 tr, #technicalSpecifications_section_1 tr, [data-selector='listing-details'] li, .wt-list-unstyled li");
     specItems.forEach(item => {
-      const label = item.querySelector(".label, .key, .name")?.textContent?.trim();
-      const val = item.querySelector(".value, .val")?.textContent?.trim();
+      const cells = Array.from(item.querySelectorAll("th, td"));
+      const label = item.querySelector(".label, .key, .name")?.textContent?.trim() || cells[0]?.textContent?.trim();
+      const val = item.querySelector(".value, .val")?.textContent?.trim() || cells[1]?.textContent?.trim() || (cells.length === 1 ? cells[0]?.textContent?.trim()?.split(/:\s*/).slice(1).join(": ") : undefined);
       if (label && val) {
         attrs.push({ nameCN: label, valueCN: val });
       }
@@ -611,6 +812,56 @@ export class UniversalPlatformExtractor {
       });
     });
 
+    // Etsy renders personalization inputs outside the generic customizer
+    // wrappers. Its stable ids let us capture upload/text requirements without
+    // classifying them as commercial SKU axes.
+    if (detectProductPlatform(window.location.href) === "ETSY") {
+      const etsyControls = Array.from(document.querySelectorAll("textarea[id^='perso-input-'], input[id^='perso-input-'], input[id^='file-input-']")) as HTMLInputElement[];
+      etsyControls.forEach((control, index) => {
+        const label = (
+          document.querySelector(`label[for='${CSS.escape(control.id)}']`)?.textContent ||
+          control.getAttribute("aria-label") ||
+          control.getAttribute("placeholder") ||
+          control.closest("div")?.querySelector("label, legend")?.textContent ||
+          (control.type === "file" ? "Tải ảnh cá nhân hóa" : `Nội dung cá nhân hóa ${index + 1}`)
+        ).replace(/\*/g, "").replace(/\s+/g, " ").trim();
+        if (seenFieldIds.has(control.id)) return;
+        seenFieldIds.add(control.id);
+        textFields.push({
+          id: control.id,
+          label,
+          type: control.type === "file" ? "IMAGE_UPLOAD" : control.tagName.toLowerCase() === "textarea" ? "TEXTAREA" : "TEXT",
+          required: control.required || control.getAttribute("aria-required") === "true",
+          maxLength: control.maxLength > 0 ? control.maxLength : undefined,
+          accept: control.accept ? control.accept.split(",").map(value => value.trim()).filter(Boolean) : undefined
+        });
+        if (label && !detectedLabels.includes(label)) detectedLabels.push(label);
+      });
+      document.querySelectorAll("select[id^='perso-dropdown-']").forEach((select, index) => {
+        const label = (select.getAttribute("aria-labelledby") || "").split(/\s+/)
+          .map(id => document.getElementById(id)?.textContent || "").filter(Boolean).join(" ")
+          .replace(/\(\s*optional\s*\)/i, "").replace(/\s+/g, " ").trim() || `Tùy chọn cá nhân hóa ${index + 1}`;
+        const values = Array.from((select as HTMLSelectElement).options)
+          .filter(option => option.value && !/select|choose|please select|chọn/i.test(option.textContent || ""))
+          .map((option, valueIndex) => ({
+            id: `${slugify(label, "custom")}-${valueIndex + 1}`,
+            label: (option.textContent || option.value).replace(/\s+/g, " ").trim(),
+            sourceValue: option.value
+          }));
+        if (values.length > 0 && !customOptionGroups.some(group => group.name.toLowerCase() === label.toLowerCase())) {
+          customOptionGroups.push({
+            id: `custom-${slugify(label, String(customOptionGroups.length + 1))}`,
+            name: label,
+            kind: "PERSONALIZATION",
+            inputType: "SELECT",
+            required: false,
+            source: "EXTERNAL_CUSTOMIZER",
+            values
+          });
+        }
+      });
+    }
+
     return {
       customOptionGroups,
       customizationEvidence: {
@@ -625,27 +876,174 @@ export class UniversalPlatformExtractor {
     };
   }
 
+  /**
+   * Capture native marketplace variation controls without pretending that a
+   * cartesian combination is a verified provider SKU. Etsy exposes variation
+   * popovers while Amazon usually renders swatch buttons inside #twister; both
+   * are useful to show in the draft even when no SKU/stock matrix is public.
+   */
+  private static extractNativeOptionGroups(platform: SourcePlatform): SourceOptionGroup[] {
+    const groups: SourceOptionGroup[] = [];
+    const seen = new Set<string>();
+    const slugify = (value: string, fallback: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+    const normalizeImage = (value: string | null | undefined): string | undefined => {
+      if (!value) return undefined;
+      let raw = value.trim();
+      if (!raw || raw.startsWith("data:") || raw.startsWith("blob:")) return undefined;
+      if (raw.startsWith("//")) raw = `https:${raw}`;
+      try { return new URL(raw, window.location.href).href; } catch { return undefined; }
+    };
+    const readControlImage = (control: Element): string | undefined => {
+      const img = control.querySelector("img") as HTMLImageElement | null;
+      const direct = img?.getAttribute("data-old-hires") || img?.getAttribute("data-zoom-image") || img?.getAttribute("data-src") || img?.getAttribute("src") ||
+        control.getAttribute("data-img-url") || control.getAttribute("data-image-url");
+      if (direct) return normalizeImage(direct);
+      const styled = (control.querySelector("[style*='background-image']") || control) as HTMLElement;
+      const style = styled.getAttribute("style") || "";
+      const match = style.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
+      return normalizeImage(match?.[1]);
+    };
+    const cleanLabel = (value: string): string => value.replace(/\s+/g, " ").replace(/[\u2022*]/g, "").trim();
+    const cleanAmazonValue = (value: string): string => cleanLabel(value)
+      .replace(/\s+\d+\s+options?\s+from\s+.+$/i, "")
+      .replace(/\s+from\s+(?:[€£$¥₹₺]|R\$|S\$|CA\$|A\$).+$/i, "")
+      .trim();
+    const addGroup = (nameValue: string, controls: Element[], select?: HTMLSelectElement) => {
+      const name = cleanLabel(nameValue).replace(/^(select|choose)\s+/i, "").trim();
+      if (!name || /^(quantity|số lượng)$/i.test(name) || seen.has(name.toLowerCase())) return;
+      const values: SourceOptionGroup["values"] = [];
+      const pushValue = (labelValue: string, imageUrl?: string, sourceValue?: string) => {
+        const label = cleanLabel(labelValue);
+        if (!label || /^(select|choose|please select|chọn)$/i.test(label)) return;
+        if (values.some(item => item.label.toLowerCase() === label.toLowerCase())) return;
+        values.push({
+          id: `${slugify(name, "variation")}-${values.length + 1}`,
+          label,
+          sourceValue: sourceValue || label,
+          imageUrl
+        });
+      };
+      if (select) {
+        Array.from(select.options).forEach(option => pushValue(option.textContent || option.value, normalizeImage(option.getAttribute("data-image") || option.getAttribute("data-src")), option.value));
+      }
+      controls.forEach(control => {
+        const imageUrl = readControlImage(control);
+        const rawLabel = control.getAttribute("aria-label") || control.getAttribute("data-value") || control.getAttribute("title") ||
+          control.querySelector(".a-size-base, .a-button-text, [data-value-label]")?.textContent ||
+          (control as HTMLInputElement).value || control.textContent || "";
+        const label = platform === "AMAZON" ? cleanAmazonValue(rawLabel) : rawLabel;
+        pushValue(label, imageUrl, control.getAttribute("data-asin") || control.getAttribute("data-value") || undefined);
+      });
+      if (values.length < 1) return;
+      seen.add(name.toLowerCase());
+      groups.push({
+        id: `variation-${slugify(name, String(groups.length + 1))}`,
+        name,
+        kind: "VARIATION",
+        inputType: values.some(value => Boolean(value.imageUrl)) ? "COLOR_SWATCH" : "SELECT",
+        required: true,
+        source: "DOM",
+        values: values.slice(0, 100)
+      });
+    };
+
+    // Native <select> controls (common on Etsy localized/fallback markup).
+    document.querySelectorAll("select[name*='variation' i], select[id*='variation' i], select[data-selector*='variation' i]").forEach((element) => {
+      const select = element as HTMLSelectElement;
+      const root = select.closest("fieldset, .wt-validation, [data-buy-box-region], form") || select.parentElement;
+      const ariaLabel = select.getAttribute("aria-labelledby")?.split(/\s+/).map(id => document.getElementById(id)?.textContent || "").filter(Boolean).join(" ");
+      const label = root?.querySelector("label, legend, [data-option-label]")?.textContent || ariaLabel || select.getAttribute("aria-label") || select.name || "Variation";
+      addGroup(label, [], select);
+    });
+
+    if (platform === "ETSY") {
+      document.querySelectorAll("button[id^='variation-selector-'], [data-selector='listing-page-variation-select']").forEach(button => {
+        const root = button.parentElement;
+        const controls = Array.from(root?.querySelectorAll("[role='option'], [role='menuitem'], option, [data-value]") || []);
+        const label = root?.querySelector("label, legend, [data-option-label]")?.textContent ||
+          button.getAttribute("aria-label") || button.textContent || `Variation ${groups.length + 1}`;
+        addGroup(label, controls);
+      });
+    }
+
+    if (platform === "AMAZON") {
+      const amazonGroupSelector = [
+        "#twister [role='radiogroup']",
+        "#twister [id^='variation_']",
+        "#twister-plus-inline-twister [id^='inline-twister-row-']",
+        "[id^='inline-twister-row-']"
+      ].join(", ");
+      document.querySelectorAll(amazonGroupSelector).forEach(root => {
+        const controls = Array.from(root.querySelectorAll("[role='radio'], input[type='radio'], li[data-asin], button[data-asin]"));
+        const inferredName = root.id.replace(/^inline-twister-row-/, "").replace(/_name$/, "").replace(/[_-]+/g, " ");
+        const headerText = root.querySelector("[id^='inline-twister-expander-header-'], .a-form-label, .a-row.a-spacing-micro")?.textContent || "";
+        const label = headerText.split(":")[0] || root.getAttribute("aria-label") || inferredName || `Variation ${groups.length + 1}`;
+        addGroup(label, controls);
+      });
+
+      // Singleton dimensions are displayed as plain text rather than radios.
+      document.querySelectorAll("#twister-plus-inline-twister [id^='inline-twister-singleton-header-'], [id^='inline-twister-singleton-header-']").forEach(root => {
+        const text = cleanLabel(root.textContent || "");
+        const [name, ...valueParts] = text.split(":");
+        const value = valueParts.join(":").trim();
+        if (name && value) {
+          const synthetic = document.createElement("span");
+          synthetic.setAttribute("data-value", value);
+          addGroup(name, [synthetic]);
+        }
+      });
+    }
+
+    return groups.slice(0, 3);
+  }
+
   private static extractVariants(
     platform: SourcePlatform,
     productId: string,
     basePriceCNY: number,
-    currency: "USD" | "VND" | "CNY" = "USD"
+    currency: SourceCurrency = "USD"
   ): {
     skuProps: Raw1688SkuProp[];
     skuMap: Record<string, Raw1688SkuItem>;
   } {
-    const toCny = (p: number) => {
-      if (typeof p !== "number" || isNaN(p)) return basePriceCNY;
-      return currency === "VND"
-        ? Math.round((p / 3800) * 10) / 10
-        : currency === "USD"
-        ? Math.round(p * 7.2 * 10) / 10
-        : p;
+    // Approximate source-currency conversion used for imported SKU prices.
+    // The product-level price is still the source of truth; this conversion
+    // only keeps variant prices consistent with the app's CNY pricing model.
+    const sourceToCny: Record<SourceCurrency, number> = {
+      CNY: 1,
+      USD: 7.2,
+      VND: 1 / 3800,
+      EUR: 7.8,
+      GBP: 9.1,
+      CAD: 5.2,
+      AUD: 4.7,
+      JPY: 0.05,
+      INR: 0.086,
+      BRL: 1.32,
+      MXN: 0.4,
+      SEK: 0.75,
+      PLN: 1.85,
+      SGD: 5.6,
+      AED: 1.96,
+      SAR: 1.92,
+      TRY: 0.17
     };
+    const toCny = (price: number) => {
+      if (!Number.isFinite(price) || price <= 0) return basePriceCNY;
+      const rate = sourceToCny[currency] || 1;
+      return Math.round(price * rate * 10) / 10;
+    };
+
+    // Etsy/Amazon do not expose a stable public SKU/stock matrix in the page.
+    // Their visible choices are retained in optionGroups; never turn unrelated
+    // hydration JSON into sellable SKUs.
+    const canTrustEmbeddedVariantArray = platform !== "ETSY" && platform !== "AMAZON";
 
     // 1. Thử quét variants từ thẻ script application/json (Shopify Dawn / 2.0 / WooCommerce)
     let parsedVariants: any[] = [];
     try {
+      if (!canTrustEmbeddedVariantArray) throw new Error("MARKETPLACE_OPTIONS_ONLY");
       const jsonScripts = document.querySelectorAll('script[type="application/json"]');
       for (const s of jsonScripts) {
         try {

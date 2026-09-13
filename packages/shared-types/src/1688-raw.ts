@@ -1,4 +1,4 @@
-import { CustomizationEvidence, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
+import { CustomizationEvidence, SourceCurrency, SourceOptionGroup, SourcePlatform } from "./normalized-product.js";
 
 export interface Raw1688Shop {
   shopId: string;
@@ -54,7 +54,7 @@ export interface Raw1688Product {
   sourceUrl: string;
   title: string;
   sourcePlatform?: SourcePlatform;
-  originalCurrency?: "CNY" | "VND" | "USD";
+  originalCurrency?: SourceCurrency;
   originalPriceMin?: number;
   originalPriceMax?: number;
   categoryId?: string;
@@ -74,6 +74,10 @@ export interface Raw1688Product {
   skuMap: Record<string, Raw1688SkuItem>; // key = combination key or skuId
   descriptionHtml?: string;
   descriptionImages?: string[];
+  /** Native variation controls observed on marketplaces such as Etsy/Amazon.
+   * Informational metadata; kept separate from verified SKU rows.
+   */
+  optionGroups?: SourceOptionGroup[];
   /** External customizer metadata; never treated as native SKU axes. */
   customOptionGroups?: SourceOptionGroup[];
   customizationEvidence?: CustomizationEvidence;
