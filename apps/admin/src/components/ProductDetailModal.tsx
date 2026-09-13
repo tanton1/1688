@@ -598,32 +598,32 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/65">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="flex h-[100dvh] w-screen max-w-none flex-col overflow-hidden border-0 bg-[#f8fafc] shadow-2xl animate-in fade-in duration-150">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="flex min-h-[100dvh] w-screen max-w-none flex-col overflow-y-auto overscroll-contain border-0 bg-[#f8fafc] shadow-2xl animate-in fade-in duration-150">
         {/* Modal Header */}
         <div className="border-b border-slate-200 bg-white">
-          <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-6">
+          <div className="flex items-start justify-between gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4">
             <div className="flex min-w-0 items-start gap-3">
               <img
                 src={formData.primaryImage}
                 alt=""
-                className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-slate-100 object-cover"
+                className="h-11 w-11 shrink-0 rounded-lg border border-slate-200 bg-slate-100 object-cover sm:h-14 sm:w-14 sm:rounded-xl"
               />
               <div className="min-w-0">
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5 sm:mb-1.5 sm:gap-2">
+                  <span className="hidden rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600 sm:inline-block">
                     {formData.skuCode}
                   </span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${formData.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                     {formData.status === "PUBLISHED" ? "Đang hiển thị trên web" : "Bản nháp nội bộ"}
                   </span>
-                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                  <span className="hidden rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 sm:inline-block">
                     Storefront riêng · React/Vite
                   </span>
                 </div>
-                <h2 id="product-dialog-title" className="max-w-3xl truncate text-sm font-extrabold leading-5 text-slate-950 sm:text-base">
+                <h2 id="product-dialog-title" className="line-clamp-2 max-w-3xl text-[13px] font-extrabold leading-5 text-slate-950 sm:truncate sm:text-base">
                   {editLang === "VI" ? formData.titleVI : (formData.titleEN || formData.titleVI)}
                 </h2>
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 hidden text-[11px] text-slate-500 sm:block">
                   Chỉnh nội dung, media, biến thể và SEO trước khi xuất bản cho khách hàng.
                 </p>
               </div>
@@ -633,19 +633,19 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label="Đóng trình biên tập sản phẩm"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 active:bg-slate-200"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 active:bg-slate-200 sm:h-11 sm:w-11"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-              <div className="flex shrink-0 items-center bg-white p-0.5 rounded-lg border border-slate-300">
+          <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/80 px-3 py-2 sm:gap-3 sm:px-6 sm:py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0 lg:gap-2">
+              <div className="flex shrink-0 items-center rounded-lg border border-slate-300 bg-white p-0.5">
               <button
                 type="button"
                 onClick={() => setEditLang("VI")}
-                className={`flex min-h-11 items-center gap-1 rounded-md px-3 py-1 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 sm:min-h-8 ${
+                className={`flex min-h-9 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 sm:min-h-8 sm:px-3 ${
                   editLang === "VI"
                     ? "bg-white text-orange-600 shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
@@ -657,7 +657,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => setEditLang("EN")}
-                className={`flex min-h-11 items-center gap-1 rounded-md px-3 py-1 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-8 ${
+                className={`flex min-h-9 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-8 sm:px-3 ${
                   editLang === "EN"
                     ? "bg-white text-blue-600 shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
@@ -672,7 +672,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenConnectors(formData)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-xs transition-colors"
+                className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-xs transition-colors hover:bg-slate-200 sm:px-3"
                 title="Đẩy sản phẩm lên WooCommerce, Shopify hoặc xuất CSV"
               >
                 <Share2 className="w-3.5 h-3.5 text-orange-600" />
@@ -684,7 +684,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenBannerStudio(formData, formData.primaryImage, "TRANSLATE")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-lg shadow-xs transition-colors"
+                  className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 shadow-xs transition-colors hover:bg-orange-100 sm:px-3"
                   title="Dịch bảng size (尺码表), thay thế tem mác tiếng Trung sang Tiếng Việt/Tiếng Anh"
                 >
                   <Languages className="w-3.5 h-3.5 text-orange-600" />
@@ -695,7 +695,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <button
               type="button"
               onClick={handleOpenApplyTemplate}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-xs transition-colors"
+              className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 shadow-xs transition-colors hover:bg-indigo-100 sm:px-3"
               title="Áp dụng mẫu nội dung & biến thể chuẩn cho sản phẩm này"
             >
               <LayoutTemplate className="w-3.5 h-3.5 text-indigo-600" />
@@ -704,32 +704,32 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <button
               type="button"
               onClick={() => { setTemplateSaveName(formData.titleVI.slice(0, 30)); setShowSaveTemplateModal(true); }}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+              className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 sm:px-3"
               title="Lưu cấu trúc sản phẩm này thành mẫu tái sử dụng"
             >
               <Save className="h-3.5 w-3.5" /> Lưu mẫu
             </button>
-            <a href={formData.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-white hover:text-orange-700">
+            <a href={formData.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-white hover:text-orange-700 sm:px-3">
               Nguồn gốc <ExternalLink className="h-3.5 w-3.5" />
             </a>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               {formData.status === "PUBLISHED" && onOpenStorefront && (
-                <button type="button" onClick={() => onOpenStorefront(formData)} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100">
+                <button type="button" onClick={() => onOpenStorefront(formData)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 sm:px-3 sm:py-2">
                   <ExternalLink className="h-3.5 w-3.5" /> Xem trên web
                 </button>
               )}
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-xs transition-colors hover:bg-slate-100 disabled:opacity-60"
+              className="flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-xs transition-colors hover:bg-slate-100 disabled:opacity-60 sm:px-4 sm:py-2"
             >
               <Save className="w-3.5 h-3.5" />
               <span>{isSaving ? "Đang lưu..." : "Lưu bản nháp"}</span>
             </button>
               {onPublish && (
-                <button onClick={handlePublish} disabled={isPublishing || isSaving} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-orange-600/20 transition-colors hover:bg-orange-700 disabled:opacity-60">
+                <button onClick={handlePublish} disabled={isPublishing || isSaving} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-orange-600/20 transition-colors hover:bg-orange-700 disabled:opacity-60 sm:px-4 sm:py-2">
                   <Globe className="h-3.5 w-3.5" />
                   {isPublishing ? "Đang đăng..." : formData.status === "PUBLISHED" ? "Cập nhật storefront" : "Đăng lên storefront"}
                 </button>
@@ -738,8 +738,23 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Navigation Tabs */}
-        <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white select-none overflow-x-auto" role="tablist" aria-label="Khu vực biên tập sản phẩm">
+        {/* Mobile navigation: one compact control instead of a wide tab rail. */}
+        <div className="border-b border-slate-200 bg-white px-3 py-2.5 md:hidden">
+          <label htmlFor="product-editor-tab-mobile" className="sr-only">Khu vực biên tập sản phẩm</label>
+          <select id="product-editor-tab-mobile" value={activeTab} onChange={event => { const next = event.target.value as typeof activeTab; setActiveTab(next); if (next === "seo") setCopyLang(editLang); if (next === "sourcing" && !visualMatches) handleLoadVisualSourcing(); }} className="mc-focus-ring min-h-10 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none focus:border-orange-500">
+            <option value="content">Nội dung & thông số</option>
+            <option value="variants">Ma trận SKU ({variants.length})</option>
+            <option value="media">Media & video ({mediaCount})</option>
+            <option value="personalization">Cá nhân hóa ({formData.personalizationFields?.length || 0})</option>
+            <option value="seo">Tối ưu SEO & SERP ({seoAudit.score}/100)</option>
+            <option value="copywriter">AI Marketing Copywriter</option>
+            <option value="quality">Chất lượng listing ({qualityAudit.totalScore}/100)</option>
+            <option value="sourcing">Nguồn xưởng 1688</option>
+          </select>
+        </div>
+
+        {/* Desktop navigation tabs */}
+        <div className="hidden items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-6 select-none md:flex" role="tablist" aria-label="Khu vực biên tập sản phẩm">
           <button
             id="product-editor-tab-content"
             type="button"
@@ -914,37 +929,37 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Operational product snapshot */}
-        <div className="grid grid-cols-2 gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4 lg:grid-cols-6">
-          <div className="bg-white px-4 py-2.5">
+        <div className="flex gap-px overflow-x-auto border-b border-slate-200 bg-slate-200 md:grid md:grid-cols-4 lg:grid-cols-6">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Giá bán</div>
             <div className="mt-0.5 text-xs font-extrabold text-slate-900">
               {formData.minPriceVND.toLocaleString("vi-VN")}đ{formData.maxPriceVND > formData.minPriceVND ? ` – ${formData.maxPriceVND.toLocaleString("vi-VN")}đ` : ""}
             </div>
           </div>
-          <div className="bg-white px-4 py-2.5">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Phân loại bán</div>
             <div className="mt-0.5 text-xs font-extrabold text-slate-900">{activeVariantCount}/{variants.length} SKU</div>
           </div>
-          <div className="bg-white px-4 py-2.5">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Ảnh biến thể</div>
             <div className={`mt-0.5 text-xs font-extrabold ${variantImageCoverage === 100 ? "text-emerald-700" : "text-amber-700"}`}>{variantImageCount}/{variants.length} · {variantImageCoverage}%</div>
           </div>
-          <div className="bg-white px-4 py-2.5">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Media</div>
             <div className="mt-0.5 text-xs font-extrabold text-slate-900">{mediaCount} tài nguyên</div>
           </div>
-          <div className="bg-white px-4 py-2.5">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">SEO</div>
             <div className={`mt-0.5 text-xs font-extrabold ${seoAudit.score >= 80 ? "text-emerald-700" : "text-amber-700"}`}>{seoAudit.score}/100</div>
           </div>
-          <div className="bg-white px-4 py-2.5">
+          <div className="min-w-[132px] flex-none bg-white px-3 py-2 md:min-w-0 md:px-4 md:py-2.5">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Chất lượng</div>
             <div className={`mt-0.5 text-xs font-extrabold ${qualityAudit.canPublish ? "text-emerald-700" : "text-amber-700"}`}>{qualityAudit.totalScore}/100</div>
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-none space-y-5 p-3 pb-20 sm:space-y-6 sm:p-6">
           {/* TAB 1: NỘI DUNG & THÔNG SỐ */}
           {activeTab === "content" && (
             <div id="product-editor-panel-content" role="tabpanel" aria-labelledby="product-editor-tab-content" tabIndex={0} className="space-y-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
@@ -2792,6 +2807,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* Keep only the essential actions reachable on small screens; the heading itself scrolls away. */}
+        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-2 border-t border-slate-200 bg-white/95 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden">
+          <span className="min-w-0 truncate text-[10px] font-semibold text-slate-500">{isSaving ? "Đang lưu thay đổi…" : isPublishing ? "Đang đăng lên storefront…" : "Bản nháp chưa xuất bản"}</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button type="button" onClick={handleSave} disabled={isSaving || isPublishing} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-bold text-slate-800 disabled:opacity-50"><Save className="h-3.5 w-3.5" /> Lưu</button>
+            {onPublish && <button type="button" onClick={handlePublish} disabled={isSaving || isPublishing} className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-orange-600 px-3 text-[11px] font-bold text-white shadow-sm disabled:opacity-50"><Globe className="h-3.5 w-3.5" /> {formData.status === "PUBLISHED" ? "Cập nhật" : "Đăng bán"}</button>}
+          </div>
         </div>
       </div>
 

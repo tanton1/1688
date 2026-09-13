@@ -58,7 +58,9 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
   const [mediaFilter, setMediaFilter] = useState<"ALL" | "VIDEO_ONLY" | "NO_VIDEO">("ALL");
   const [sortBy, setSortBy] = useState("NEWEST");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [viewMode, setViewMode] = useState<"table" | "grid">(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "grid" : "table"
+  ));
   const [page, setPage] = useState(1);
 
   useEffect(() => { setPage(1); }, [searchTerm, statusFilter, categoryFilter, qualityFilter, mediaFilter, sortBy]);
@@ -152,18 +154,19 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo tên tiếng Việt/English, SKU, 1688 Offer ID, Tên shop..."
-              className="w-full text-xs pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              placeholder="Tìm sản phẩm, SKU hoặc Offer ID 1688..."
+              aria-label="Tìm sản phẩm, SKU hoặc Offer ID 1688"
+              className="min-h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-xs focus:outline-hidden focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
             />
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto flex-wrap">
+          <div className="flex w-full items-center gap-2 overflow-x-auto pb-0.5 md:w-auto md:flex-wrap">
             {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+              className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-orange-500"
             >
               <option value="ALL">Tất cả trạng thái</option>
               <option value="PUBLISHED">Đang bán (Published)</option>
@@ -174,7 +177,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
             <select
               value={mediaFilter}
               onChange={(e) => setMediaFilter(e.target.value as any)}
-              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+              className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-orange-500"
             >
               <option value="ALL">Mọi loại Media</option>
               <option value="VIDEO_ONLY">🎬 Có Video HD</option>
@@ -185,7 +188,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+              className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-orange-500"
             >
               <option value="ALL">Tất cả ngành hàng</option>
               {categories.map(cat => (
@@ -197,7 +200,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
             <select
               value={qualityFilter}
               onChange={(e) => setQualityFilter(e.target.value)}
-              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+              className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-orange-500"
             >
               <option value="ALL">Mọi điểm chất lượng</option>
               <option value="HIGH">Đạt chuẩn (≥ 80 điểm)</option>
@@ -208,7 +211,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="text-xs py-2 px-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500"
+              className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-orange-500"
             >
               <option value="NEWEST">Mới nhất</option>
               <option value="OLDEST">Cũ nhất</option>
