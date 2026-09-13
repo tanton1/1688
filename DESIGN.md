@@ -231,7 +231,7 @@ States:
 
 ### 4.7 Personalization editor
 
-Anatomy: progress, ordered fields, text/select/upload/asset controls, help text, field errors, draft status, canvas preview, and configuration identifier.
+Anatomy: progress, ordered fields, text/select/upload/asset controls, help text, field errors, draft status, canvas preview, scenes, print areas, ordered layers, and configuration identifier.
 
 - Personalization must remain separate from the variation selector and must not generate new SKU combinations.
 - Required fields must be validated before cart or buy-now actions proceed.
@@ -241,6 +241,11 @@ Anatomy: progress, ordered fields, text/select/upload/asset controls, help text,
 - Conditional and repeat-group fields must validate only when visible and applicable.
 - Empty schemas must show a configuration notice rather than a blank editor.
 - Preview failure must not erase entered customer data.
+- Each listing should declare an `idea` preset (photo gift, design choice, name/text, avatar, pet, multi-person, or custom) so the customer flow matches the product concept.
+- Mockup scenes must be independent per listing; each scene may provide a base mockup and optional `variantMockupUrls` overrides for physical SKUs.
+- Print areas must use percentage coordinates, an explicit shape/fit, optional safe zone, and optional field bindings. A field bound to an area must render only inside that area.
+- Canvas layers must define source (`FIELD`, `VARIANT_DESIGN`, or `VARIANT_COLOR`), print-area mapping, scene scope, and z-index so a design SKU and a customer upload can be composited deterministically.
+- The admin editor must expose direct drag/resize handles and a SKU preview selector; saving the listing must preserve the canvas snapshot with the product and order line.
 
 States:
 
@@ -411,6 +416,10 @@ Examples:
 - [ ] Every sellable variation resolves to an existing SKU with correct image, price, and stock.
 - [ ] Impossible variation combinations are disabled.
 - [ ] Personalization required fields block purchase and preserve entered data after errors.
+- [ ] Each listing preset creates the intended fields, print areas, and ordered layers without generating synthetic SKUs.
+- [ ] Admin can switch scenes, select a SKU preview, drag/resize a print area, bind fields, and assign a scene scope to layers.
+- [ ] A scene-level mockup and a variant-level mockup resolve in the expected order; clearing a variant URL falls back to the scene mockup.
+- [ ] Uploaded customer imagery respects the selected area shape, fit mode, crop, zoom, translation, rotation, and safe zone.
 - [ ] Live preview media is persisted before checkout; demo mode does not call the upload service.
 - [ ] Cart separates variation labels from personalization values.
 - [ ] Checkout recalculates price and validates stock on the server.
