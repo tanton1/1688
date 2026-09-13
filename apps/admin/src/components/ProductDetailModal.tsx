@@ -597,8 +597,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/65">
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="flex min-h-[100dvh] w-screen max-w-none flex-col overflow-y-auto overscroll-contain border-0 bg-[#f8fafc] shadow-2xl animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-950/65">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-dialog-title" className="relative flex min-h-[100dvh] w-screen max-w-none flex-col overflow-x-hidden border-0 bg-[#f8fafc] shadow-2xl animate-in fade-in duration-150">
         {/* Modal Header */}
         <div className="border-b border-slate-200 bg-white">
           <div className="flex items-start justify-between gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4">

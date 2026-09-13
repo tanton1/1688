@@ -15,10 +15,14 @@ import {
   ChevronDown,
   ChevronUp,
   Image as ImageIcon,
+  ImagePlus,
+  Loader2,
   Plus,
   Settings2,
   Trash2
 } from "lucide-react";
+import { AdminApi } from "../services/api";
+import { getCustomizationGuestSessionId, preparePersonalizationImage } from "../storefront/personalizationImage";
 
 interface PersonalizationBuilderProps {
   enabled: boolean;
@@ -76,6 +80,57 @@ const AREA_COORDINATE_LABELS: Record<"xPercent" | "yPercent" | "widthPercent" | 
   heightPercent: "Cao"
 };
 
+const LISTING_IDEA_GUIDES: Record<PersonalizationListingIdea, { label: string; summary: string; steps: string[] }> = {
+  PHOTO_GIFT: {
+    label: "Quà kèm ảnh khách",
+    summary: "Khách tải ảnh, sau đó nhập tên/lời nhắn. Phù hợp cốc, áo, tranh, móc khóa và quà kỷ niệm.",
+    steps: ["Chọn preset để tạo field Ảnh khách hàng + Tên người nhận.", "Đặt vùng ảnh ở mặt trước; đặt vùng tên ở dưới hoặc mặt sau.", "Kiểm tra ảnh tối thiểu 800px và chọn COVER nếu cần lấp đầy khung."]
+  },
+  DESIGN_CHOICE: {
+    label: "Chọn design",
+    summary: "Khách chọn một mẫu có sẵn; ảnh thumbnail của từng option sẽ xuất hiện trên storefront.",
+    steps: ["Tạo option cho từng design và tải thumbnail trực tiếp từ máy.", "Gán field Chọn design vào vùng in; không tạo SKU mới cho từng design.", "Dùng lớp Design SKU nếu design cần chồng lên mockup theo variant vật lý."]
+  },
+  NAME_TEXT: {
+    label: "Tên / chữ in",
+    summary: "Khách chỉ nhập tên hoặc câu chữ ngắn, phù hợp sản phẩm khắc/in cá nhân hóa nhanh.",
+    steps: ["Giữ một field văn bản và đặt giới hạn ký tự.", "Dùng Regex nếu chỉ cho phép chữ, số hoặc ký tự an toàn.", "Căn giữa vùng chữ và kiểm tra cỡ chữ trên preview."]
+  },
+  AVATAR: {
+    label: "Avatar nhiều lớp",
+    summary: "Khách chọn nhân vật và tên; phù hợp tranh/avatar nhiều người với các lớp design xếp chồng.",
+    steps: ["Tải option nhân vật/thumbnail cho field Avatar.", "Tách vùng nhân vật và vùng tên để dễ căn chỉnh.", "Dùng lớp theo scene khi mỗi mặt có bố cục khác nhau."]
+  },
+  PET: {
+    label: "Chân dung thú cưng",
+    summary: "Khách chọn thú cưng hoặc tải ảnh thú cưng, sau đó nhập tên.",
+    steps: ["Chọn preset để tạo field thú cưng + tên.", "Dùng IMAGE_UPLOAD nếu khách gửi ảnh riêng; đặt min width/height để giữ chất lượng.", "Chọn CIRCLE cho avatar hoặc CONTAIN để không cắt tai/mặt thú cưng."]
+  },
+  MULTI_PERSON: {
+    label: "Nhiều người / thú cưng",
+    summary: "Khách thêm nhiều mục lặp, phù hợp gia đình, nhóm bạn, đội tuyển hoặc nhiều thú cưng.",
+    steps: ["Đặt số lượng tối thiểu/tối đa trong Nhóm lặp.", "Mỗi mục mặc định có field Tên; có thể bổ sung cấu trúc con trong dữ liệu nâng cao.", "Kiểm tra thứ tự lớp để các nhân vật không che nhau."]
+  },
+  CUSTOM: {
+    label: "Tùy chỉnh thủ công",
+    summary: "Dùng khi listing có quy trình riêng hoặc cần kết hợp nhiều loại field.",
+    steps: ["Tạo field theo đúng thứ tự khách cần hoàn thành.", "Thêm vùng in và gán field/layer vào từng vùng.", "Kiểm tra cảnh báo trước khi lưu rồi xem thử trên storefront."]
+  }
+};
+
+type AssetUploadTarget =
+  | { kind: "default-mockup" }
+  | { kind: "scene-mockup"; sceneIndex: number }
+  | { kind: "scene-variant-mockup"; sceneIndex: number; skuId: string }
+  | { kind: "option"; fieldIndex: number; optionIndex: number };
+
+const assetUploadKey = (target: AssetUploadTarget): string => {
+  if (target.kind === "default-mockup") return target.kind;
+  if (target.kind === "scene-mockup") return `${target.kind}-${target.sceneIndex}`;
+  if (target.kind === "scene-variant-mockup") return `${target.kind}-${target.sceneIndex}-${target.skuId}`;
+  return `${target.kind}-${target.fieldIndex}-${target.optionIndex}`;
+};
+
 const NumberInput = ({ label, value, onChange, min = 0, max = 100 }: { label: string; value?: number; onChange: (value: number | undefined) => void; min?: number; max?: number }) => (
   <label className="block text-[10px] font-bold text-slate-500">
     {label}
@@ -100,6 +155,8 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(canvas?.scenes?.[0]?.id || null);
   const [selectedPreviewSkuId, setSelectedPreviewSkuId] = useState<string>(variants.find(variant => variant.selectedForSale)?.sourceSkuId || variants[0]?.sourceSkuId || "");
   const [showAdvancedMobile, setShowAdvancedMobile] = useState(false);
+  const [uploadingAsset, setUploadingAsset] = useState<string | null>(null);
+  const [assetUploadError, setAssetUploadError] = useState<string | null>(null);
   const dragRef = useRef<{ id: string; startX: number; startY: number; x: number; y: number; rect: DOMRect } | null>(null);
   const resizeRef = useRef<{ id: string; startX: number; startY: number; x: number; y: number; width: number; height: number; rect: DOMRect } | null>(null);
 
@@ -121,6 +178,36 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
     const options = [...(fields[fieldIndex].options || [])];
     options[optionIndex] = { ...options[optionIndex], ...updates };
     patchField(fieldIndex, { options });
+  };
+
+  const handleAssetUpload = async (target: AssetUploadTarget, file?: File) => {
+    if (!file) return;
+    const targetKey = assetUploadKey(target);
+    setUploadingAsset(targetKey);
+    setAssetUploadError(null);
+    try {
+      const prepared = await preparePersonalizationImage(file, {});
+      const response = await AdminApi.uploadCustomizationImage({
+        ...prepared,
+        guestSessionId: getCustomizationGuestSessionId()
+      });
+      const url = response.image?.url;
+      if (!url) throw new Error("Máy chủ không trả về URL ảnh sau khi tải lên");
+
+      if (target.kind === "default-mockup") {
+        onMockupUrlChange(url);
+      } else if (target.kind === "scene-mockup") {
+        patchScene(target.sceneIndex, { mockupUrl: url });
+      } else if (target.kind === "scene-variant-mockup") {
+        patchSceneVariantUrl(target.sceneIndex, target.skuId, url);
+      } else {
+        patchOption(target.fieldIndex, target.optionIndex, { previewAssetUrl: url });
+      }
+    } catch (error: any) {
+      setAssetUploadError(error?.message || "Không thể tải ảnh lên. Vui lòng thử lại.");
+    } finally {
+      setUploadingAsset(null);
+    }
   };
   const printAreas = canvas?.printAreas || [];
   const scenes = canvas?.scenes || [];
@@ -249,10 +336,13 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
           </div>
           <label htmlFor="personalization-mockup-url" className="mt-4 block text-xs font-bold text-slate-700">URL mockup nền trơn</label>
           <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]"><label className="text-[10px] font-bold text-slate-500">Ý tưởng listing<select value={canvas?.idea || "CUSTOM"} onChange={event => applyIdeaPreset(event.target.value as PersonalizationListingIdea)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs"><option value="PHOTO_GIFT">Quà kèm ảnh khách</option><option value="DESIGN_CHOICE">Chọn design</option><option value="NAME_TEXT">Tên / chữ in</option><option value="AVATAR">Avatar nhiều lớp</option><option value="PET">Chân dung thú cưng</option><option value="MULTI_PERSON">Nhiều người / thú cưng</option><option value="CUSTOM">Tùy chỉnh thủ công</option></select></label><div className="flex items-end"><span className="rounded-lg bg-slate-950 px-2.5 py-2 text-[10px] font-bold text-white">Preset theo listing</span></div></div>
+          {(() => { const ideaGuide = LISTING_IDEA_GUIDES[canvas?.idea || "CUSTOM"]; return <div className="mt-2 rounded-xl border border-orange-100 bg-orange-50/70 p-3"><div className="flex items-start gap-2"><span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-orange-600 text-[10px] font-black text-white">i</span><div className="min-w-0"><p className="text-[11px] font-extrabold text-orange-950">{ideaGuide.label}: dùng khi nào?</p><p className="mt-0.5 text-[10px] leading-4 text-orange-950/75">{ideaGuide.summary}</p></div></div><details className="mt-2"><summary className="cursor-pointer text-[10px] font-bold text-orange-700">Xem hướng dẫn cấu hình</summary><ol className="mt-1.5 list-decimal space-y-1 pl-4 text-[10px] leading-4 text-orange-950/80">{ideaGuide.steps.map(step => <li key={step}>{step}</li>)}</ol></details></div>; })()}
           <div className="mt-1.5 flex items-center gap-2">
             <ImageIcon className="h-4 w-4 shrink-0 text-slate-400" />
-            <input id="personalization-mockup-url" type="url" value={mockupUrl || ""} onChange={event => onMockupUrlChange(event.target.value)} placeholder="https://.../mockup-tron.png" className="mc-focus-ring min-h-11 w-full rounded-xl border border-slate-300 px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+            <input id="personalization-mockup-url" type="url" value={mockupUrl || ""} onChange={event => onMockupUrlChange(event.target.value)} placeholder="https://.../mockup-tron.png" className="mc-focus-ring min-h-11 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-xs outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+            <label htmlFor="personalization-mockup-file" className={`inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border px-3 text-[10px] font-bold ${uploadingAsset === "default-mockup" ? "border-slate-200 bg-slate-100 text-slate-400" : "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"}`} title="Tải mockup từ máy"><input id="personalization-mockup-file" type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingAsset)} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ""; void handleAssetUpload({ kind: "default-mockup" }, file); }} className="sr-only" />{uploadingAsset === "default-mockup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}<span className="hidden sm:inline">Tải từ máy</span><span className="sm:hidden">Tải</span></label>
           </div>
+          {assetUploadError && <p className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[10px] leading-4 text-rose-700" role="alert">{assetUploadError}</p>}
           <p className="mt-1.5 text-[10px] text-slate-500">Khuyến nghị PNG/JPG vuông, nền sạch và vùng in nằm ở trung tâm. Design của SKU và dữ liệu khách sẽ được chồng lên mockup này.</p>
           <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[10px] leading-4 text-slate-500"><strong className="text-slate-700">Quy ước tọa độ:</strong> X/Y là điểm bắt đầu tính từ góc trên trái; Rộng/Cao là phần trăm khung mockup. Dùng <strong className="text-orange-700">COVER</strong> khi ảnh cần lấp kín vùng, <strong className="text-orange-700">CONTAIN</strong> khi cần giữ nguyên tỉ lệ.</p>
           {canvasWarnings.length > 0 && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-900" role="status"><strong className="font-extrabold">Cần kiểm tra trước khi lưu:</strong><ul className="mt-1 list-disc space-y-0.5 pl-4">{canvasWarnings.slice(0, 4).map(warning => <li key={warning}>{warning}</li>)}</ul>{canvasWarnings.length > 4 && <p className="mt-1 text-amber-800/80">+ {canvasWarnings.length - 4} cảnh báo khác</p>}</div>}
@@ -269,7 +359,7 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
             </div>;
           })()}
           <button type="button" onClick={() => setShowAdvancedMobile(current => !current)} aria-expanded={showAdvancedMobile} className="mt-3 flex min-h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-[11px] font-bold text-slate-700 md:hidden"><span>{showAdvancedMobile ? "Ẩn cấu hình nâng cao" : "Mở cấu hình nâng cao"}</span><span aria-hidden="true">{showAdvancedMobile ? "⌃" : "⌄"}</span></button>
-          <div className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 ${showAdvancedMobile ? "" : "hidden md:block"}`}><div className="mb-2 flex items-center justify-between"><div><span className="text-[11px] font-extrabold text-slate-800">Mặt preview / scene</span><p className="mt-0.5 text-[10px] text-slate-500">Mỗi mặt có mockup riêng; có thể thay ảnh theo từng SKU.</p></div><button type="button" onClick={() => { const nextScene = { id: newId("scene"), label: `Mặt ${((canvas?.scenes || []).length || 0) + 1}`, mockupUrl }; onCanvasChange({ ...(canvas || {}), scenes: [...(canvas?.scenes || []), nextScene], printAreas }); setSelectedSceneId(nextScene.id); }} className="text-[10px] font-bold text-orange-700">+ Thêm mặt</button></div>{scenes.length === 0 ? <p className="text-[10px] text-slate-500">Có thể thêm mặt trước, mặt sau hoặc góc lifestyle; mỗi mặt có mockup và vùng in riêng.</p> : <div className="space-y-2">{scenes.map((scene, sceneIndex) => <div key={scene.id} className={`rounded-lg p-2 ${activeSceneId === scene.id ? "bg-orange-50 ring-1 ring-orange-200" : "bg-white"}`}><div className="grid gap-2 sm:grid-cols-[120px_1fr_auto]"><input value={scene.label} onFocus={() => setSelectedSceneId(scene.id)} onChange={event => patchScene(sceneIndex, { label: event.target.value })} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><input aria-label={`URL mockup ${scene.label}`} value={scene.mockupUrl || ""} onFocus={() => setSelectedSceneId(scene.id)} onChange={event => patchScene(sceneIndex, { mockupUrl: event.target.value })} placeholder="URL mockup mặt này" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><button type="button" onClick={() => removeScene(sceneIndex)} className="text-[10px] font-bold text-rose-600">Xóa</button></div>{previewVariants.length > 0 && <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2"><div className="mb-1 flex items-center justify-between"><span className="text-[10px] font-extrabold text-slate-700">Mockup theo SKU</span><span className="text-[9px] text-slate-400">Để trống = dùng mockup mặt</span></div><div className="space-y-1.5">{previewVariants.map(variant => { const variantUrl = scene.variantMockupUrls?.[variant.sourceSkuId] || ""; return <div key={variant.sourceSkuId} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_1fr_auto]"><span className="truncate self-center text-[10px] font-semibold text-slate-600" title={variant.sourceSkuId}>{variant.colorName || variant.sizeName || variant.sourceSkuId}</span><input aria-label={`Mockup SKU ${variant.sourceSkuId} ở ${scene.label}`} value={variantUrl} onChange={event => patchSceneVariantUrl(sceneIndex, variant.sourceSkuId, event.target.value)} placeholder="URL ảnh mockup SKU" className="min-h-8 rounded border border-slate-300 px-2 text-[10px]" /><button type="button" disabled={!variant.imageUrl} onClick={() => patchSceneVariantUrl(sceneIndex, variant.sourceSkuId, variant.imageUrl)} className="min-h-8 rounded border border-slate-200 px-2 text-[9px] font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Dùng ảnh SKU</button></div>; })}</div></div>}</div>)}</div>}</div>
+          <div className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 ${showAdvancedMobile ? "" : "hidden md:block"}`}><div className="mb-2 flex items-center justify-between"><div><span className="text-[11px] font-extrabold text-slate-800">Mặt preview / scene</span><p className="mt-0.5 text-[10px] text-slate-500">Mỗi mặt có mockup riêng; có thể thay ảnh theo từng SKU.</p></div><button type="button" onClick={() => { const nextScene = { id: newId("scene"), label: `Mặt ${((canvas?.scenes || []).length || 0) + 1}`, mockupUrl }; onCanvasChange({ ...(canvas || {}), scenes: [...(canvas?.scenes || []), nextScene], printAreas }); setSelectedSceneId(nextScene.id); }} className="text-[10px] font-bold text-orange-700">+ Thêm mặt</button></div>{scenes.length === 0 ? <p className="text-[10px] text-slate-500">Có thể thêm mặt trước, mặt sau hoặc góc lifestyle; mỗi mặt có mockup và vùng in riêng.</p> : <div className="space-y-2">{scenes.map((scene, sceneIndex) => <div key={scene.id} className={`rounded-lg p-2 ${activeSceneId === scene.id ? "bg-orange-50 ring-1 ring-orange-200" : "bg-white"}`}><div className="grid gap-2 sm:grid-cols-[120px_1fr_auto_auto]"><input value={scene.label} onFocus={() => setSelectedSceneId(scene.id)} onChange={event => patchScene(sceneIndex, { label: event.target.value })} className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><input aria-label={`URL mockup ${scene.label}`} value={scene.mockupUrl || ""} onFocus={() => setSelectedSceneId(scene.id)} onChange={event => patchScene(sceneIndex, { mockupUrl: event.target.value })} placeholder="URL mockup mặt này" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" /><label htmlFor={`scene-mockup-file-${scene.id}`} className={`inline-flex min-h-9 cursor-pointer items-center justify-center gap-1 rounded border px-2 text-[9px] font-bold ${uploadingAsset === `scene-mockup-${sceneIndex}` ? "border-slate-200 bg-slate-100 text-slate-400" : "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"}`} title="Tải mockup mặt này từ máy"><input id={`scene-mockup-file-${scene.id}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingAsset)} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ""; void handleAssetUpload({ kind: "scene-mockup", sceneIndex }, file); }} className="sr-only" />{uploadingAsset === `scene-mockup-${sceneIndex}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}<span>Tải</span></label><button type="button" onClick={() => removeScene(sceneIndex)} className="min-h-9 text-[10px] font-bold text-rose-600">Xóa</button></div>{previewVariants.length > 0 && <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2"><div className="mb-1 flex items-center justify-between"><span className="text-[10px] font-extrabold text-slate-700">Mockup theo SKU</span><span className="text-[9px] text-slate-400">Để trống = dùng mockup mặt</span></div><div className="space-y-1.5">{previewVariants.map(variant => { const variantUrl = scene.variantMockupUrls?.[variant.sourceSkuId] || ""; const variantUploadKey = assetUploadKey({ kind: "scene-variant-mockup", sceneIndex, skuId: variant.sourceSkuId }); return <div key={variant.sourceSkuId} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_1fr_auto_auto]"><span className="truncate self-center text-[10px] font-semibold text-slate-600" title={variant.sourceSkuId}>{variant.colorName || variant.sizeName || variant.sourceSkuId}</span><input aria-label={`Mockup SKU ${variant.sourceSkuId} ở ${scene.label}`} value={variantUrl} onChange={event => patchSceneVariantUrl(sceneIndex, variant.sourceSkuId, event.target.value)} placeholder="URL ảnh mockup SKU" className="min-h-8 rounded border border-slate-300 px-2 text-[10px]" /><label htmlFor={`scene-variant-file-${scene.id}-${variant.sourceSkuId}`} className={`inline-flex min-h-8 cursor-pointer items-center justify-center gap-1 rounded border px-2 text-[9px] font-bold ${uploadingAsset === variantUploadKey ? "border-slate-200 bg-slate-100 text-slate-400" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`} title="Tải mockup SKU từ máy"><input id={`scene-variant-file-${scene.id}-${variant.sourceSkuId}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingAsset)} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ""; void handleAssetUpload({ kind: "scene-variant-mockup", sceneIndex, skuId: variant.sourceSkuId }, file); }} className="sr-only" />{uploadingAsset === variantUploadKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}<span>Tải</span></label><button type="button" disabled={!variant.imageUrl} onClick={() => patchSceneVariantUrl(sceneIndex, variant.sourceSkuId, variant.imageUrl)} className="min-h-8 rounded border border-slate-200 px-2 text-[9px] font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">Dùng ảnh SKU</button></div>; })}</div></div>}</div>)}</div>}</div>
           <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-3"><div className="mb-2 flex items-center justify-between"><div><span className="text-[11px] font-extrabold text-orange-950">Vùng in trên mockup</span><p className="mt-0.5 text-[10px] text-orange-900/70">Nhập theo phần trăm khung; có thể kéo trực tiếp ở preview.</p></div><button type="button" onClick={() => { const area = { id: newId("area"), label: `Vùng ${printAreas.length + 1}`, xPercent: 18, yPercent: 20, widthPercent: 64, heightPercent: 62, shape: "RECT" as const, sceneId: activeSceneId }; onCanvasChange({ ...(canvas || {}), printAreas: [...printAreas, area] }); setSelectedAreaId(area.id); }} className="min-h-9 shrink-0 text-[10px] font-bold text-orange-700">+ Thêm vùng</button></div>{printAreas.length === 0 ? <p className="text-[10px] text-orange-900/70">Đang dùng vùng mặc định. Thêm vùng để căn nhiều mặt in hoặc chỉ định field cụ thể.</p> : <div className="space-y-2">{printAreas.map((area, areaIndex) => <div key={area.id} className="rounded-lg bg-white p-2"><div className="grid gap-2 sm:grid-cols-[minmax(140px,1fr)_repeat(4,minmax(56px,70px))_auto]"><input value={area.label || ""} onFocus={() => setSelectedAreaId(area.id)} onChange={event => patchArea(areaIndex, { label: event.target.value })} placeholder="Tên vùng" aria-label="Tên vùng in" className="min-h-9 rounded border border-slate-300 px-2 text-[10px]" />{(["xPercent", "yPercent", "widthPercent", "heightPercent"] as const).map(key => <label key={key} className="text-[9px] font-bold text-slate-500">{AREA_COORDINATE_LABELS[key]}<input type="number" min={0} max={100} value={area[key]} onFocus={() => setSelectedAreaId(area.id)} onChange={event => patchArea(areaIndex, { [key]: clamp(Number(event.target.value), key === "widthPercent" || key === "heightPercent" ? 1 : 0, 100) })} aria-label={`${AREA_COORDINATE_LABELS[key]} của vùng in`} className="mt-0.5 min-h-9 w-full rounded border border-slate-300 px-2 text-[10px]" /></label>)}<button type="button" onClick={() => removeArea(areaIndex)} className="min-h-9 text-[10px] font-bold text-rose-600">Xóa</button></div></div>)}</div>}</div>
           {printAreas.length > 0 && <div className="mt-3 rounded-xl border border-orange-200 bg-white p-3"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><span className="text-[11px] font-extrabold text-slate-800">Binding nhanh theo vùng</span><p className="text-[10px] text-slate-500">Field được chọn sẽ chỉ render trong vùng này; bỏ chọn để dùng vùng mặc định.</p></div><div className="flex gap-1.5"><select aria-label="Chọn vùng để gán field" value={selectedAreaId || printAreas[0]?.id || ""} onChange={event => setSelectedAreaId(event.target.value)} className="min-h-9 max-w-[150px] rounded-lg border border-slate-300 bg-white px-2 text-[10px]"><option value="">Chọn vùng</option>{printAreas.map(area => <option key={area.id} value={area.id}>{area.label || area.id}</option>)}</select>{scenes.length > 0 && <select aria-label="Chọn scene cho vùng" value={printAreas.find(area => area.id === (selectedAreaId || printAreas[0]?.id))?.sceneId || ""} onChange={event => { const areaIndex = printAreas.findIndex(area => area.id === (selectedAreaId || printAreas[0]?.id)); if (areaIndex >= 0) patchArea(areaIndex, { sceneId: event.target.value || undefined }); }} className="min-h-9 max-w-[130px] rounded-lg border border-slate-300 bg-white px-2 text-[10px]"><option value="">Tất cả mặt</option>{scenes.map(scene => <option key={scene.id} value={scene.id}>{scene.label}</option>)}</select>}</div></div>{(() => { const bindingAreaIndex = printAreas.findIndex(area => area.id === (selectedAreaId || printAreas[0]?.id)); const bindingArea = bindingAreaIndex >= 0 ? printAreas[bindingAreaIndex] : undefined; if (!bindingArea) return null; return <div className="flex flex-wrap gap-1.5">{fields.map(field => { const checked = (bindingArea.fieldIds || []).includes(field.id); return <label key={field.id} className={`inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-full border px-2.5 text-[10px] font-semibold ${checked ? "border-orange-300 bg-orange-50 text-orange-800" : "border-slate-200 bg-slate-50 text-slate-500"}`}><input type="checkbox" checked={checked} onChange={event => { const nextIds = new Set(bindingArea.fieldIds || []); if (event.target.checked) nextIds.add(field.id); else nextIds.delete(field.id); patchArea(bindingAreaIndex, { fieldIds: [...nextIds] }); }} className="h-3 w-3 rounded border-slate-300 text-orange-600" />{field.label}</label>; })}</div>; })()}</div>}
         </div>
@@ -350,7 +440,7 @@ export const PersonalizationBuilder: React.FC<PersonalizationBuilderProps> = ({
                     {supportsOptions(field.type) && (
                       <div className="rounded-xl border border-slate-200 p-3">
                         <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-extrabold text-slate-800">Danh sách lựa chọn</span><button type="button" onClick={() => patchField(index, { options: [...(field.options || []), createOption(field.type)] })} className="inline-flex min-h-10 items-center gap-1 px-2 text-[10px] font-bold text-orange-600"><Plus className="h-3.5 w-3.5" /> Thêm lựa chọn</button></div>
-                        <div className="space-y-2">{(field.options || []).map((option, optionIndex) => <div key={option.id} className="grid gap-2 rounded-lg bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_1.2fr_110px_auto]"><input aria-label={`Tên lựa chọn ${optionIndex + 1}`} value={option.label} onChange={event => patchOption(index, optionIndex, { label: event.target.value })} placeholder="Tên hiển thị" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Giá trị lựa chọn ${optionIndex + 1}`} value={option.value} onChange={event => patchOption(index, optionIndex, { value: event.target.value })} placeholder={field.type === "COLOR_SWATCH" ? "#f97316" : "Giá trị"} className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`URL ảnh lựa chọn ${optionIndex + 1}`} value={option.previewAssetUrl || ""} onChange={event => patchOption(index, optionIndex, { previewAssetUrl: event.target.value })} placeholder="URL ảnh design/thumbnail" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Phụ thu lựa chọn ${optionIndex + 1}`} type="number" value={option.priceDeltaVND ?? ""} onChange={event => patchOption(index, optionIndex, { priceDeltaVND: event.target.value === "" ? undefined : Number(event.target.value) })} placeholder="Phụ thu (đ)" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><button type="button" aria-label={`Xóa lựa chọn ${optionIndex + 1}`} onClick={() => patchField(index, { options: (field.options || []).filter((_, itemIndex) => itemIndex !== optionIndex) })} className="mc-focus-ring grid h-10 w-10 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button></div>)}</div>
+                        <div className="space-y-2">{(field.options || []).map((option, optionIndex) => { const optionUploadKey = assetUploadKey({ kind: "option", fieldIndex: index, optionIndex }); return <div key={option.id} className="grid gap-2 rounded-lg bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_minmax(0,1.2fr)_auto_110px_auto]"><input aria-label={`Tên lựa chọn ${optionIndex + 1}`} value={option.label} onChange={event => patchOption(index, optionIndex, { label: event.target.value })} placeholder="Tên hiển thị" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`Giá trị lựa chọn ${optionIndex + 1}`} value={option.value} onChange={event => patchOption(index, optionIndex, { value: event.target.value })} placeholder={field.type === "COLOR_SWATCH" ? "#f97316" : "Giá trị"} className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><input aria-label={`URL ảnh lựa chọn ${optionIndex + 1}`} value={option.previewAssetUrl || ""} onChange={event => patchOption(index, optionIndex, { previewAssetUrl: event.target.value })} placeholder="URL ảnh design/thumbnail" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><label htmlFor={`option-file-${field.id}-${option.id}`} className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-1 rounded-lg border px-2 text-[9px] font-bold ${uploadingAsset === optionUploadKey ? "border-slate-200 bg-slate-100 text-slate-400" : "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"}`} title="Tải thumbnail từ máy"><input id={`option-file-${field.id}-${option.id}`} type="file" accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingAsset)} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ""; void handleAssetUpload({ kind: "option", fieldIndex: index, optionIndex }, file); }} className="sr-only" />{uploadingAsset === optionUploadKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}<span>Tải ảnh</span></label><input aria-label={`Phụ thu lựa chọn ${optionIndex + 1}`} type="number" value={option.priceDeltaVND ?? ""} onChange={event => patchOption(index, optionIndex, { priceDeltaVND: event.target.value === "" ? undefined : Number(event.target.value) })} placeholder="Phụ thu (đ)" className="mc-focus-ring min-h-10 rounded-lg border border-slate-300 px-2 text-xs" /><button type="button" aria-label={`Xóa lựa chọn ${optionIndex + 1}`} onClick={() => patchField(index, { options: (field.options || []).filter((_, itemIndex) => itemIndex !== optionIndex) })} className="mc-focus-ring grid h-10 w-10 place-items-center rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button></div>; })}</div>
                       </div>
                     )}
 
