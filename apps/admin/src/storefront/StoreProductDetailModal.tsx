@@ -543,19 +543,19 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             </div>
 
             {/* Verified availability and policies */}
-            <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-3 sm:p-3.5 space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-orange-950">
+            <div className="grid gap-2 border-y border-stone-200/80 py-3 text-stone-700 sm:grid-cols-2 sm:gap-x-5">
+              <div className="flex items-center gap-2 text-[11px] font-bold">
                 <ShoppingBag size={15} className="shrink-0 text-[var(--mc-color-accent-strong)]" />
                 <span>{isOutOfStock ? "Phân loại này đang tạm hết hàng" : selectedVariant?.inventoryTracked === false ? "Phân loại này đang còn hàng" : `Tồn kho hiện tại: ${maxQuantity.toLocaleString("vi-VN")} sản phẩm`}</span>
               </div>
               {product.shippingPolicy && (
-                <div className="flex items-start gap-2 text-[11px] text-stone-700">
+                <div className="flex items-start gap-2 text-[11px]">
                   <Truck size={13} className="text-emerald-600 shrink-0 mt-0.5" />
                   <span>{product.shippingPolicy}</span>
                 </div>
               )}
               {product.warrantyPolicy && (
-                <div className="flex items-start gap-2 text-[11px] text-stone-700">
+                <div className="flex items-start gap-2 text-[11px]">
                   <ShieldCheck size={13} className="text-blue-600 shrink-0 mt-0.5" />
                   <span>{product.warrantyPolicy}</span>
                 </div>
@@ -567,8 +567,8 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           <div className="lg:col-span-6 flex flex-col justify-between space-y-4 sm:space-y-5">
             <div>
               {/* Category & Ratings */}
-              <div className="flex items-center justify-between gap-2">
-                <span className="bg-orange-50 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-[var(--mc-color-accent-strong)] rounded-full">
+              <div className="flex items-center justify-between gap-3 border-b border-stone-200/70 pb-3">
+                <span className="text-[11px] font-bold text-[var(--mc-color-accent-strong)]">
                   {product.categoryName}
                 </span>
 
@@ -586,38 +586,26 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               </div>
 
               {/* Title */}
-              <h1 className="text-base sm:text-xl font-black text-stone-900 mt-2 leading-snug">
+              <h1 className="mt-4 text-2xl font-black leading-[1.12] tracking-[-0.035em] text-stone-950 sm:text-3xl">
                 {product.titleVI}
               </h1>
 
               {product.shortDescVI && (
-                <p className="mt-2 text-xs leading-5 text-stone-600">{product.shortDescVI}</p>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-600">{product.shortDescVI}</p>
               )}
 
               {/* Price Display */}
-              <div className="mt-2.5 flex items-baseline gap-2.5 p-3 rounded-2xl bg-stone-50 border border-stone-200/80">
-                <span className="text-2xl sm:text-3xl font-black text-[var(--mc-color-accent-strong)] tracking-tight">
+              <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="text-3xl font-black tracking-[-0.04em] text-[var(--mc-color-accent-strong)] sm:text-4xl">
                   {currentPrice.toLocaleString("vi-VN")}đ
                 </span>
                 {discountPercent > 0 && (
-                  <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md">
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
                     Tiết kiệm {discountPercent}%
                   </span>
                 )}
               </div>
               {selectedVariant?.inventoryTracked !== false && maxQuantity > 0 && maxQuantity <= 10 && <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />Chỉ còn {maxQuantity.toLocaleString("vi-VN")} sản phẩm cho phân loại này</div>}
-
-              {product.isPersonalized && <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-3.5" aria-label="Tiến trình đặt sản phẩm cá nhân hóa">
-                <div className="flex items-center justify-between gap-3">
-                  <div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-orange-700">Lộ trình đặt hàng</p><p className="mt-0.5 text-[11px] font-semibold text-stone-600">Hoàn tất từng bước, xem mockup rồi mới đặt</p></div>
-                  <span className="shrink-0 text-[11px] font-black text-orange-700">{customizationValidation.completedRequired}/{customizationValidation.totalRequired || 0}</span>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px] font-bold">
-                  <div className="flex items-center gap-1.5 rounded-xl bg-white px-2 py-2 text-stone-800 ring-1 ring-orange-200"><span className="grid h-5 w-5 place-items-center rounded-full bg-orange-600 text-[9px] text-white">1</span><span className="truncate">Chọn biến thể</span></div>
-                  <div className={`flex items-center gap-1.5 rounded-xl px-2 py-2 ring-1 ${customizationValidation.valid ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-stone-800 ring-orange-200"}`}><span className={`grid h-5 w-5 place-items-center rounded-full text-[9px] text-white ${customizationValidation.valid ? "bg-emerald-600" : "bg-orange-600"}`}>{customizationValidation.valid ? <Check className="h-3 w-3" /> : "2"}</span><span className="truncate">Nhập nội dung</span></div>
-                  <button type="button" onClick={() => { setShowCustomizationReview(true); openLargePreview(); }} className="mc-focus-ring flex min-h-9 items-center gap-1.5 rounded-xl bg-white px-2 py-2 text-left font-bold text-stone-800 ring-1 ring-orange-200 transition hover:bg-orange-100"><span className="grid h-5 w-5 place-items-center rounded-full bg-orange-600 text-[9px] text-white">3</span><span className="truncate">Xem & đặt hàng</span></button>
-                </div>
-              </div>}
 
               {/* Volume Discount Tiers */}
               {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
@@ -653,9 +641,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
               {/* Structured variant selector */}
               {validVariants.length > 1 && (
-                <div className="mt-4 space-y-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5">
+                <div className="mt-5 space-y-4 border-t border-stone-200 pt-5">
                   <div className="flex items-center justify-between gap-3" aria-live="polite">
-                    <span className="text-xs font-bold text-stone-900">Chọn phân loại</span>
+                    <span className="text-sm font-black tracking-[-0.01em] text-stone-950">Chọn phân loại</span>
                     <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-bold text-orange-700">
                       <span className="truncate">{getVariantDisplayName(selectedVariant)}</span>
                       <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold text-stone-500 ring-1 ring-stone-200">
@@ -667,7 +655,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   {variantGroups.length > 0 ? variantGroups.map(group => (
                     <fieldset key={group.key} className="m-0 min-w-0 border-0 p-0">
                       <legend className="mb-2 block text-[11px] font-semibold text-stone-500">{group.label} ({group.options.length})</legend>
-                      <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                      <div className="flex flex-wrap gap-2 pr-1">
                         {group.options.map(option => {
                           const selected = getStorefrontVariantValue(selectedVariant, group.key) === option.label;
                           const available = isStorefrontVariantOptionAvailable(validVariants, variantGroups, selectedVariant, group.key, option.label);
@@ -682,7 +670,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                       </div>
                     </fieldset>
                   )) : (
-                    <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-2 pr-1">
                       {validVariants.map(variant => <button key={variant.sourceSkuId} type="button" aria-pressed={selectedVariant?.sourceSkuId === variant.sourceSkuId} onClick={() => handleSelectVariant(variant)} className={`mc-focus-ring min-h-11 rounded-lg border px-3 py-2 text-[11px] font-semibold active:scale-[0.98] ${selectedVariant?.sourceSkuId === variant.sourceSkuId ? "border-orange-500 bg-orange-50 text-orange-700" : "border-stone-200 bg-white text-stone-700 hover:border-orange-400"}`}>{getVariantDisplayName(variant)}</button>)}
                     </div>
                   )}
@@ -793,12 +781,12 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             {/* Primary purchase actions; the mobile sticky bar takes over after this block scrolls away. */}
             <div ref={purchaseActionsRef} className="space-y-2.5 border-t border-stone-100 pt-4" aria-busy={isPreparingPurchase}>
               {purchaseError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{purchaseError}</div>}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2.5 sm:grid-cols-[0.8fr_1.2fr]">
                 <button
                   type="button"
                   disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
                   onClick={handleAddToCartClick}
-                  className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
+                  className={`mc-focus-ring min-h-12 py-3.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${
                     isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration
                       ? "bg-stone-100 text-stone-400 cursor-not-allowed"
                       : "bg-orange-50 hover:bg-orange-100 text-[var(--mc-color-accent-strong)] border border-orange-200 shadow-xs"
@@ -812,7 +800,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   type="button"
                   disabled={isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration}
                   onClick={handleBuyNowClick}
-                  className={`mc-focus-ring min-h-11 py-3.5 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
+                  className={`mc-focus-ring min-h-12 py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer ${
                     isOutOfStock || isPreparingPurchase || personalizationNeedsConfiguration
                       ? "bg-stone-300 cursor-not-allowed"
                       : "bg-[var(--mc-color-action-primary)] hover:bg-[var(--mc-color-action-primary-hover)] shadow-orange-950/20"
@@ -844,7 +832,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
-              Mô Tả Sản Phẩm & Chính Sách
+              Mô tả & chính sách
             </button>
             <button
               id="product-tab-specs"
@@ -861,7 +849,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                   : "text-stone-500 hover:text-stone-800"
               }`}
             >
-              Thông Số Kỹ Thuật ({product.attributes?.length || 0})
+              Thông số ({product.attributes?.length || 0})
             </button>
             <button
               id="product-tab-reviews"
@@ -879,13 +867,13 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               }`}
             >
               <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-              <span>Đánh Giá Khách Hàng ({product.reviewCount || 0})</span>
+              <span>Đánh giá ({product.reviewCount || 0})</span>
             </button>
           </div>
 
           {/* Tab contents */}
           {activeTab === "desc" && (
-            <div id="product-panel-desc" role="tabpanel" aria-labelledby="product-tab-desc" tabIndex={0} className="mc-focus-ring max-h-[28rem] space-y-5 overflow-y-auto pr-2">
+            <div id="product-panel-desc" role="tabpanel" aria-labelledby="product-tab-desc" tabIndex={0} className="mc-focus-ring space-y-5 pr-2">
               <div className="prose prose-sm max-w-none whitespace-pre-line text-xs leading-6 text-stone-700" dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
               {(product.detailImages || []).length > 0 && (
                 <div className="space-y-3 border-t border-stone-200 pt-5">
@@ -915,7 +903,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           )}
 
           {activeTab === "reviews" && (
-            <div id="product-panel-reviews" role="tabpanel" aria-labelledby="product-tab-reviews" tabIndex={0} className="mc-focus-ring space-y-2.5 max-h-60 sm:max-h-72 overflow-y-auto pr-2">
+            <div id="product-panel-reviews" role="tabpanel" aria-labelledby="product-tab-reviews" tabIndex={0} className="mc-focus-ring space-y-2.5 pr-2">
               <div className="p-4 bg-white rounded-xl border border-stone-200 text-center space-y-1">
                 {hasReviews ? (
                   <>
