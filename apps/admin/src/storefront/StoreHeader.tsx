@@ -24,6 +24,15 @@ interface StoreHeaderProps {
 }
 
 const TRENDING_SEARCHES = ["Biển mica LED", "Ly giữ nhiệt", "Đồ treo cây", "Quà cho mẹ", "Cún cưng"];
+const STORE_NAV_ITEMS = [
+  ["Quà tặng", "#store-catalog"],
+  ["Nhà cửa & đời sống", "#store-catalog"],
+  ["Đồ uống", "#store-catalog"],
+  ["Thời trang", "#store-catalog"],
+  ["Phụ kiện", "#store-catalog"],
+  ["Theo sở thích", "#store-occasions-section"],
+  ["Quà mới", "#store-catalog"]
+] as const;
 
 export const StoreHeader: React.FC<StoreHeaderProps> = ({
   config,
@@ -82,12 +91,6 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             </span>
           </a>
 
-          <nav aria-label="Điều hướng chính" className="hidden items-center gap-5 text-[13px] font-semibold text-white/70 lg:flex">
-            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-catalog">Tất cả quà</a>
-            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-occasions-section">Theo dịp tặng</a>
-            <a className="mc-focus-ring rounded-md transition-colors hover:text-white" href="#store-catalog">Bán chạy</a>
-          </nav>
-
           <div className="ml-auto hidden max-w-[390px] flex-1 md:block">
             <label className="sr-only" htmlFor="store-search-desktop">Tìm sản phẩm</label>
             <div className="relative">
@@ -112,6 +115,10 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({
             </button>
           </div>
         </div>
+
+        <nav aria-label="Danh mục cửa hàng" className="mc-no-scrollbar mt-3 hidden items-center gap-6 overflow-x-auto border-t border-white/10 pt-3 text-[12px] font-semibold text-white/70 lg:flex">
+          {STORE_NAV_ITEMS.map(([label, href]) => <a key={label} href={href} className="mc-focus-ring shrink-0 rounded-md transition-colors hover:text-white">{label}</a>)}
+        </nav>
 
         <div className="mt-3 md:hidden">
           <label className="sr-only" htmlFor="store-search-mobile">Tìm sản phẩm</label>

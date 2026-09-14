@@ -25,6 +25,15 @@ Design intent: Macorner must make discovering, personalizing, and purchasing a m
 - Dense controls must remain structured through grouping, whitespace, and progressive disclosure rather than reduced target sizes.
 - Decorative motion should be restrained and must never block input or obscure content.
 
+### 2.1 Reference extraction: Macorner storefront
+
+Reviewed against [macorner.co](https://macorner.co/) and a live personalized product page on 14 September 2026. The reference uses a black utility/header shell, a prominent search field, compact order/cart actions, and a category layer organized by occasion, recipient, product family, and price. The catalog leads with editorial collection blocks and a dense two-to-four-column product grid. The PDP keeps the conversion path in one column: gallery and thumbnails, title/rating, price and volume offer, delivery context, variant controls, personalization controls, a preview action, quantity, and a single dominant add-to-cart action. Long-form description, shipping/returns, personalization notes, and reviews sit below the purchase area as separate content sections.
+
+- The store implementation should reproduce this information hierarchy and rhythm, not copy Macorner trademarks, product photography, or proprietary copy.
+- Store navigation should expose short category labels and keep search, cart, and order tracking visible without competing with the product grid.
+- PDP controls should use concise labels; explanatory how-to copy belongs in optional help, not in the primary purchase path.
+- Personalization must make the generated preview the visual anchor and keep the selected physical variant visible beside the custom controls.
+
 ## 3. Design tokens and foundations
 
 ### 3.1 Primitive values
@@ -217,7 +226,7 @@ Anatomy: group legend, option buttons, optional swatch/image, selected SKU summa
 - Selecting one option must preserve compatible selections where possible and must resolve to an existing SKU.
 - Impossible combinations must be disabled and must never create a synthetic SKU.
 - Selection changes must update price, stock, image/mockup, and selected summary from the resolved SKU.
-- Long option lists must wrap or use a bounded scroll area while retaining 44px targets.
+- Long option lists should wrap in normal document flow; a bounded scroll area is allowed only for exceptionally large catalogs and must not trap page scrolling.
 
 States:
 
@@ -343,7 +352,7 @@ States:
 
 - At 320–639px, filters must use the modal sheet, product grids must use two columns, PDP content must stack, and purchase actions must remain reachable above mobile navigation.
 - At 640–1023px, the UI should use two or three product columns based on available width.
-- At 1024px and above, the PDP should use a two-column layout with the purchase configuration column allowed to remain sticky.
+- At 1024px and above, the PDP should use a two-column layout with the preview and purchase configuration in normal document flow; sticky positioning is optional only when the full column remains shorter than the viewport.
 - Long translated titles, option labels, personalization values, and attribute values must not overlap adjacent actions.
 - Zero products must render a resettable empty state.
 - Zero variants or zero sellable variants must disable purchase and show an explicit availability message.
