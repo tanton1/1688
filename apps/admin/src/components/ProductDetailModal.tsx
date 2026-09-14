@@ -1585,10 +1585,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       <h3 className="text-sm font-bold text-slate-900">Kho asset custom đã lưu</h3>
                       <p className="mt-1 text-xs text-slate-500">Ảnh gốc của lựa chọn cá nhân hóa được lưu riêng để tái sử dụng cho sản phẩm khác.</p>
                     </div>
-                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">{formData.customizerAssets.length} asset</span>
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">{(formData.customizerAssets || []).length} asset</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3 p-4 sm:grid-cols-5 lg:grid-cols-8">
-                    {formData.customizerAssets.map(asset => (
+                    {(formData.customizerAssets || []).map(asset => (
                       <figure key={asset.id} className="group min-w-0">
                         <div className="aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                           <img src={asset.url} alt={asset.label || "Custom asset"} loading="lazy" className="h-full w-full object-contain p-1 transition group-hover:scale-105" />
