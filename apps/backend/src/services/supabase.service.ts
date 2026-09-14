@@ -722,9 +722,9 @@ export class SupabaseDataService {
       const variantRows = product.variants.map(v => ({
         product_id: createdProd.id,
         source_sku_id: v.sourceSkuId,
-        color_name: v.colorName || null,
+        color_name: v.colorName || "",
         color_name_en: v.colorNameEN || null,
-        size_name: v.sizeName || null,
+        size_name: v.sizeName || "",
         size_name_en: v.sizeNameEN || null,
         cost_price_vnd: v.costPriceVND,
         source_price: v.sourcePrice || null,
@@ -845,9 +845,9 @@ export class SupabaseDataService {
         const variantRows = updates.variants.map(v => ({
           product_id: id,
           source_sku_id: v.sourceSkuId,
-          color_name: v.colorName || null,
+          color_name: v.colorName || "",
           color_name_en: v.colorNameEN || null,
-          size_name: v.sizeName || null,
+          size_name: v.sizeName || "",
           size_name_en: v.sizeNameEN || null,
           cost_price_vnd: v.costPriceVND,
           source_price: v.sourcePrice || null,
