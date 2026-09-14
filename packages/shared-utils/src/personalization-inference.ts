@@ -81,8 +81,9 @@ const hintsToFields = (
   required: hint.required !== false,
   maxLength: hint.maxLength,
   accept: hint.accept,
+  placeholder: hint.placeholder,
   maxFileSizeMB: hint.type === "IMAGE_UPLOAD" ? 12 : undefined,
-  helpText: hint.type === "IMAGE_UPLOAD" ? "Ảnh rõ nét giúp bản in đẹp hơn." : undefined
+  helpText: hint.helpText || (hint.type === "IMAGE_UPLOAD" ? "Ảnh rõ nét giúp bản in đẹp hơn." : undefined)
 }));
 
 /**
@@ -133,4 +134,3 @@ export const inferPersonalizationSchema = (
     }
   };
 };
-

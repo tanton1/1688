@@ -52,3 +52,20 @@ test("customizer text and upload evidence maps to explicit fields", () => {
   assert.deepEqual(result.personalizationFields.map(field => field.type), ["TEXT", "IMAGE_UPLOAD"]);
   assert.equal(result.personalizationFields[0].maxLength, 40);
 });
+
+test("customizer input copy is preserved from source evidence", () => {
+  const result = inferPersonalizationSchema({
+    customizationEvidence: {
+      textFields: [{
+        id: "name",
+        label: "Enter name",
+        type: "TEXT",
+        placeholder: "Type a name",
+        helpText: "Up to 30 characters"
+      }]
+    }
+  });
+
+  assert.equal(result.personalizationFields[0].placeholder, "Type a name");
+  assert.equal(result.personalizationFields[0].helpText, "Up to 30 characters");
+});

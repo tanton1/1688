@@ -702,6 +702,18 @@ test("single import preserves customizer metadata separately from the SKU matrix
           required: true,
           values: [{ id: "jan", label: "January", imageUrl: "https://cdn.example.com/january.jpg" }]
         }],
+        customizationEvidence: {
+          hasCustomTextInput: true,
+          textFields: [{
+            id: "recipient-name",
+            label: "Recipient name",
+            type: "TEXT",
+            required: true,
+            maxLength: 30,
+            placeholder: "Enter a name",
+            helpText: "Up to 30 characters"
+          }]
+        },
         description: { images: [] },
         rawSnapshot: {
           offerId: sourceId,
@@ -721,12 +733,14 @@ test("single import preserves customizer metadata separately from the SKU matrix
 
   const product = response.body.product;
   assert.equal(product.isPersonalized, true);
-  assert.equal(product.personalizationFields.length, 1);
+  assert.equal(product.personalizationFields.length, 2);
   assert.equal(product.personalizationFields[0].type, "ASSET_PICKER");
   assert.equal(product.variants.length, 1);
   assert.equal(product.variants[0].sourceSkuId, "native-qty-1");
   assert.equal(product.variants[0].sourceSkuId.includes("__custom_"), false);
   assert.equal(product.personalizationFields[0].options[0].previewAssetUrl, "https://cdn.example.com/january.jpg");
+  assert.equal(product.personalizationFields[1].placeholder, "Enter a name");
+  assert.equal(product.personalizationFields[1].helpText, "Up to 30 characters");
   assert.ok(product.galleryImages.includes("https://cdn.example.com/january.jpg"));
   inMemoryProducts.delete(product.id);
 });

@@ -63,6 +63,10 @@ export interface CustomizationTextFieldHint {
   required?: boolean;
   maxLength?: number;
   accept?: string[];
+  /** Optional copy captured from the source customizer input. */
+  placeholder?: string;
+  /** Optional helper copy captured from the source customizer input. */
+  helpText?: string;
 }
 
 export interface CustomizationEvidence {

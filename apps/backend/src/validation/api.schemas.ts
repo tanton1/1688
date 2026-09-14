@@ -74,7 +74,9 @@ const customizationEvidence = z.object({
     type: z.enum(["TEXT", "TEXTAREA", "IMAGE_UPLOAD"]),
     required: z.boolean().optional(),
     maxLength: z.number().int().positive().max(10_000).optional(),
-    accept: z.array(z.string().max(200)).max(20).optional()
+    accept: z.array(z.string().max(200)).max(20).optional(),
+    placeholder: optionalText(1_000),
+    helpText: optionalText(1_000)
   }).strict()).max(100).optional(),
   confidence: z.number().finite().min(0).max(1).optional(),
   reviewRequired: z.boolean().optional()
