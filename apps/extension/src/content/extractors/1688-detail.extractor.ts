@@ -238,9 +238,7 @@ export class Detail1688Extractor {
           if (val.imageUrl && !images.includes(val.imageUrl)) {
             images.push(val.imageUrl);
           }
-          if (images.length >= 10) break;
         }
-        if (images.length >= 10) break;
       }
     }
 
@@ -330,14 +328,23 @@ export class Detail1688Extractor {
     ];
     const descImgEls = document.querySelectorAll(descSelectors.join(", "));
     descImgEls.forEach(img => {
-      let src = (img as HTMLImageElement).getAttribute("data-lazyload-src") ||
-                (img as HTMLImageElement).getAttribute("data-src") ||
-                (img as HTMLImageElement).getAttribute("data-original") ||
+      const image = img as HTMLImageElement;
+      let src = image.getAttribute("data-zoom-image") || image.getAttribute("data-original") || image.getAttribute("data-lazyload-src") ||
+                image.getAttribute("data-src") ||
                 (img as HTMLImageElement).src;
       if (src && !src.includes("dummy") && !src.includes("spacer") && !src.includes("icon") && !src.includes("data:image")) {
         if (src.startsWith("//")) src = "https:" + src;
         src = src.replace(/_\d+x\d+.*$/, "");
         if (!descriptionImages.includes(src)) descriptionImages.push(src);
+      }
+      const srcset = image.getAttribute("data-srcset") || image.getAttribute("srcset") || "";
+      if (srcset) {
+        const largest = srcset.split(",").map(entry => {
+          const [url, descriptor] = entry.trim().split(/\s+/);
+          const width = descriptor?.endsWith("w") ? Number.parseInt(descriptor, 10) : descriptor?.endsWith("x") ? Number.parseFloat(descriptor) * 1000 : 0;
+          return { url, width: Number.isFinite(width) ? width : 0 };
+        }).sort((a, b) => b.width - a.width)[0]?.url;
+        if (largest && !descriptionImages.includes(largest)) descriptionImages.push(largest);
       }
     });
 

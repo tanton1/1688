@@ -132,6 +132,36 @@ async function extractCommerceProductFromDom(): Promise<any> {
       try { return new URL(image, window.location.href).href; } catch { return undefined; }
     };
 
+    const collectHtmlImageUrls = (markup: string): string[] => {
+      const urls: string[] = [];
+      const add = (value: any) => {
+        const normalized = normalizeImageUrl(value);
+        if (normalized && !urls.includes(normalized)) urls.push(normalized);
+      };
+      for (const match of markup.matchAll(/<img\b[^>]*>/gi)) {
+        const tag = match[0];
+        const candidates: Array<{ url: string; score: number }> = [];
+        for (const attr of ["data-zoom-image", "data-original", "data-lazyload-src", "data-lazy-src", "data-src", "src"]) {
+          const value = tag.match(new RegExp(`\\b${attr}=["']([^"']+)["']`, "i"))?.[1];
+          const normalized = normalizeImageUrl(value);
+          if (normalized) candidates.push({ url: normalized, score: attr === "data-zoom-image" ? 7 : attr === "data-original" ? 6 : attr === "src" ? 1 : 4 });
+        }
+        for (const attr of ["data-srcset", "srcset"]) {
+          const value = tag.match(new RegExp(`\\b${attr}=["']([^"']+)["']`, "i"))?.[1];
+          value?.split(",").forEach((entry, index) => {
+            const parts = entry.trim().split(/\s+/);
+            const normalized = normalizeImageUrl(parts[0]);
+            const descriptor = parts[1] || "";
+            const width = descriptor.endsWith("w") ? Number.parseInt(descriptor, 10) : descriptor.endsWith("x") ? Number.parseFloat(descriptor) * 1000 : index;
+            if (normalized) candidates.push({ url: normalized, score: (Number.isFinite(width) ? width : 0) + 100 });
+          });
+        }
+        candidates.sort((a, b) => b.score - a.score);
+        if (candidates[0]) add(candidates[0].url);
+      }
+      return urls;
+    };
+
     const parsePriceText = (value: any): number => {
       const text = String(value ?? "").replace(/\u00a0/g, " ").trim();
       const match = text.match(/(?:\d[\d\s.,]*\d|\d+(?:[.,]\d+)?)/);
@@ -395,7 +425,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
         if ((categoryId && usedCategoryIds.has(categoryId)) || groups.some(group => group.name.toLowerCase() === label.toLowerCase())) return;
         const values: any[] = [];
         category.cliparts.forEach((clipart: any, index: number) => {
-          const imageUrl = assetUrl(clipart?.thumbnail || clipart?.file?.key);
+          const imageUrl = assetUrl(clipart?.file?.key || clipart?.file?.url || clipart?.url || clipart?.thumbnail);
           const clipartLabel = String(clipart?.title || clipart?.name || `Tùy chọn ${index + 1}`).trim();
           if (!clipartLabel || values.some(value => value.label.toLowerCase() === clipartLabel.toLowerCase())) return;
           values.push({
@@ -405,6 +435,8 @@ async function extractCommerceProductFromDom(): Promise<any> {
             imageUrl
           });
           addImage(imageUrl);
+          addImage(assetUrl(clipart?.thumbnail));
+          addImage(assetUrl(clipart?.file?.url));
         });
         if (values.length === 0) return;
         groups.push({
@@ -469,6 +501,18 @@ async function extractCommerceProductFromDom(): Promise<any> {
         if (/flower|hoa/i.test(title) && !groups.some(group => /flower|hoa/i.test(group.name))) addCategoryGroup(category, "Choose Birth Flower", String(category.id));
         else if (/font/i.test(title) && !groups.some(group => /font/i.test(group.name))) addCategoryGroup(category, "Choose Font", String(category.id));
       });
+      const collectAssetUrls = (value: any, depth = 0): void => {
+        if (!value || depth > 10 || customImages.length >= 5_000) return;
+        if (Array.isArray(value)) { value.forEach(item => collectAssetUrls(item, depth + 1)); return; }
+        if (typeof value !== "object") return;
+        Object.entries(value).forEach(([key, item]) => {
+          if (typeof item === "string" && /(?:image|thumbnail|preview|mockup|file|asset|url|key)/i.test(key)) {
+            const normalized = assetUrl(item);
+            if (normalized && /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(normalized)) addImage(normalized);
+          } else if (item && typeof item === "object") collectAssetUrls(item, depth + 1);
+        });
+      };
+      collectAssetUrls(config);
 
       let customizerMockupTemplateUrl: string | undefined;
       const mockupKey = config.mockups?.[0]?.layers?.find((layer: any) => layer?.file?.key)?.file?.key;
@@ -563,18 +607,14 @@ async function extractCommerceProductFromDom(): Promise<any> {
             // Trích xuất hình ảnh mô tả chi tiết từ Shopify description / body_html
             const detailImages: string[] = [];
             const descHtml = shopifyData.body_html || shopifyData.description || "";
-            if (descHtml) {
-              const imgMatches = descHtml.match(/<img\b[^>]*\b(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi);
-              if (imgMatches) {
-                imgMatches.forEach((m: string) => {
-                  const srcMatch = m.match(/(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["']/i);
-                  if (srcMatch) {
-                    let u = srcMatch[1].trim();
-                    if (u.startsWith("//")) u = "https:" + u;
-                    if (!detailImages.includes(u)) detailImages.push(u);
-                  }
-                });
-              }
+            if (descHtml) detailImages.push(...collectHtmlImageUrls(descHtml));
+            const descriptionMarkup = Array.from(doc.querySelectorAll(
+              ".product__description, .product-single__description, [data-product-description], .product-description, .rte, #description, #product-description, .product-detail-tab, #desc-lazyload-container, .content-detail, [class*='detail-desc'], [data-e2e='product-description']"
+            )).map(node => (node as HTMLElement).outerHTML).join("\n");
+            if (descriptionMarkup) {
+              collectHtmlImageUrls(descriptionMarkup).forEach(image => {
+                if (!detailImages.includes(image)) detailImages.push(image);
+              });
             }
 
             const prices = rawVariants.map((v: any) => normalizePrice(v.price)).filter((price: number) => price > 0);
@@ -604,6 +644,7 @@ async function extractCommerceProductFromDom(): Promise<any> {
               options: mergedOptions,
               variants: rawVariants,
               customOptionGroups: uniqueCustomGroups,
+              customImages,
               customizationEvidence,
               customizerMockupTemplateUrl: externalCustomizer?.customizerMockupTemplateUrl
             };
@@ -1260,6 +1301,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       rawOptions: domData.options,
       optionGroups: domData.optionGroups || [],
       customOptionGroups: domData.customOptionGroups || [],
+      customImages: domData.customImages || [],
       customizationEvidence: domData.customizationEvidence,
       customizerMockupTemplateUrl: domData.customizerMockupTemplateUrl,
       extractionStatus: "LIVE",
@@ -1351,7 +1393,8 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
   const title = String(preview.originalTitle || preview.translatedTitleVI || "").trim();
   const images = [
     preview.primaryImage,
-    ...(preview.galleryImages?.length ? preview.galleryImages : (preview.detailImages || []).slice(0, 8))
+    ...(preview.galleryImages?.length ? preview.galleryImages : (preview.detailImages || [])),
+    ...(preview.customImages || [])
   ].filter(Boolean);
   if (!sourceProductId || title.length < 3 || images.length === 0 || Number(preview.originalPriceMin) <= 0) {
     throw new Error("EXTRACTION_FAILED: Preview thiếu ID, tiêu đề, ảnh hoặc giá xác thực");
@@ -1580,6 +1623,7 @@ function convertClonePreviewToRawProduct(preview: any, url: string): Raw1688Prod
     images,
     descriptionImages: preview.detailImages || [],
     customOptionGroups: preview.customOptionGroups || [],
+    customImages: preview.customImages || [],
     optionGroups,
     customizationEvidence: preview.customizationEvidence,
     customizerMockupTemplateUrl: preview.customizerMockupTemplateUrl,

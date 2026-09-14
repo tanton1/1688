@@ -521,9 +521,9 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({
                               ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
                               : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
                           }`}
-                          title="Bấm để đổi trạng thái"
+                          title={product.status === "PUBLISHED" ? "Bấm để chuyển về bản nháp" : "Mở chi tiết và review trước khi đăng"}
                         >
-                          {product.status === "PUBLISHED" ? "ĐANG BÁN" : "BẢN NHÁP"}
+                          {product.status === "PUBLISHED" ? "ĐANG BÁN" : "REVIEW & ĐĂNG"}
                         </button>
                       </td>
 

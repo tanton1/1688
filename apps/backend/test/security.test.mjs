@@ -170,6 +170,71 @@ test("quality gate rejects an incomplete product", async () => {
   inMemoryProducts.delete(id);
 });
 
+test("quality gate requires personalized fields to be bound to a print area or layer", async () => {
+  const id = "test-personalization-binding-gate";
+  inMemoryProducts.set(id, {
+    id, version: 1, slug: id, skuCode: "CUSTOM-1", titleVI: "Quà cá nhân hóa kiểm thử", categoryName: "Test",
+    primaryImage: "https://example.com/1.jpg", galleryImages: ["https://example.com/2.jpg", "https://example.com/3.jpg", "https://example.com/4.jpg"],
+    fullDescVI: "Mô tả sản phẩm đủ dài để vượt qua quality gate và kiểm tra riêng liên kết cá nhân hóa.", status: "DRAFT", qualityScore: 0,
+    minPriceVND: 200000, maxPriceVND: 200000, isTitleLocked: false, isDescLocked: false, isImagesLocked: false, isPriceAutoSync: false, isStockAutoSync: false,
+    sourceProductId: "binding-source", sourceUrl: "https://example.com/source", supplierName: "Test", isPersonalized: true,
+    personalizationFields: [{ id: "name", label: "Tên", type: "TEXT", required: true }],
+    customizerCanvas: { printAreas: [], layers: [] },
+    variants: [{ sourceSkuId: "CUSTOM-1", costPriceVND: 50000, sellingPriceVND: 200000, stockQuantity: 5, sourceAvailable: true, selectedForSale: true }]
+  });
+  const response = await request.post(`/api/v1/products/${id}/publish`).set("Authorization", "Bearer test-admin-token").expect(422);
+  assert.ok(response.body.blockers.some(item => /vùng in|nối/.test(item)));
+  inMemoryProducts.delete(id);
+});
+
+test("product update accepts nullable Supabase fields and a connected customization canvas", async () => {
+  const id = "test-nullable-product-update";
+  inMemoryProducts.set(id, {
+    id, version: 1, slug: id, skuCode: "CUSTOM-NULL-1", titleVI: "Sản phẩm cá nhân hóa", categoryName: "Quà tặng",
+    primaryImage: "https://example.com/1.jpg", galleryImages: [], status: "DRAFT", qualityScore: 0,
+    minPriceVND: 200000, maxPriceVND: 200000, isTitleLocked: false, isDescLocked: false, isImagesLocked: false,
+    isPriceAutoSync: false, isStockAutoSync: false, variants: [], sourceProductId: "nullable-source",
+    sourceUrl: "https://example.com/source", supplierName: "Test"
+  });
+  const response = await request.put(`/api/v1/products/${id}`)
+    .set("Authorization", "Bearer test-admin-token")
+    .send({
+      version: 1,
+      titleEN: null,
+      metaTitle: null,
+      metaDescription: null,
+      warrantyPolicy: null,
+      shippingPolicy: null,
+      customizerMockupTemplateUrl: null,
+      isPersonalized: true,
+      personalizationFields: [{ id: "name", label: "Tên", type: "TEXT", required: true }],
+      customizerCanvas: {
+        width: null,
+        height: null,
+        idea: null,
+        printAreas: [{
+          id: "front", label: null, sceneId: null, xPercent: 20, yPercent: 20,
+          widthPercent: 60, heightPercent: 60, rotationDeg: null, shape: null,
+          fit: null, safeZonePercent: null, fieldIds: ["name"]
+        }],
+        layers: [{
+          id: "name-layer", label: null, source: "FIELD", fieldId: "name",
+          printAreaId: "front", sceneId: null, zIndex: 0, opacity: null,
+          blendMode: null, fit: null
+        }]
+      },
+      variants: [{
+        id: null, sourceVariantId: null, sourceSkuId: "CUSTOM-NULL-1", colorName: null,
+        colorNameEN: null, sizeName: null, sizeNameEN: null, costPriceVND: 50000,
+        sellingPriceVND: 200000, stockQuantity: 5, imageUrl: null,
+        sourceAvailable: true, selectedForSale: true
+      }]
+    }).expect(200);
+  assert.equal(response.body.product.customizerCanvas.printAreas[0].fieldIds[0], "name");
+  assert.equal(response.body.product.variants[0].colorName, null);
+  inMemoryProducts.delete(id);
+});
+
 test("generic product update cannot bypass the publish quality gate", async () => {
   const id = "test-publish-bypass";
   inMemoryProducts.set(id, {

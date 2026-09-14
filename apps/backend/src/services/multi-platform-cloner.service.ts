@@ -21,7 +21,8 @@ import {
   parseHtmlProductMetadata,
   SUPPORTED_PLATFORMS_META,
   evaluateProductQuality,
-  inferPersonalizationSchema
+  inferPersonalizationSchema,
+  buildCustomizerAssets
 } from "@hub1688/shared-utils";
 import { TranslationEngineService } from "./translation.service.js";
 import { PricingEngineService } from "./pricing.service.js";
@@ -30,6 +31,7 @@ import { aiGatewayService } from "./ai-gateway.service.js";
 import { inMemoryProducts } from "../controllers/import.controller.js";
 import { ENV } from "../config/env.js";
 import { safeFetch } from "../utils/safe-network.js";
+import { mediaMirrorService } from "./media-mirror.service.js";
 
 const getSourceInventoryState = (variant: any): { stock: number; available: boolean; inventoryTracked: boolean } => {
   const hasSourceQuantity = Number.isFinite(variant?.inventory_quantity);
@@ -78,7 +80,9 @@ export function buildExternalCustomizerMetadata(config: any): ExternalCustomizer
     if ((categoryId && usedCategoryIds.has(categoryId)) || groups.some(group => group.name.toLowerCase() === label.toLowerCase())) return;
     const values: SourceOptionGroup["values"] = [];
     category.cliparts.forEach((clipart: any, index: number) => {
-      const imageUrl = assetUrl(clipart?.thumbnail || clipart?.file?.key);
+      // Prefer the original file key over thumbnail; keep both URLs in the
+      // custom asset manifest so the shop can use full-resolution artwork later.
+      const imageUrl = assetUrl(clipart?.file?.key || clipart?.file?.url || clipart?.url || clipart?.thumbnail);
       const clipartLabel = String(clipart?.title || clipart?.name || ("Tùy chọn " + (index + 1))).trim();
       if (!clipartLabel || values.some(value => value.label.toLowerCase() === clipartLabel.toLowerCase())) return;
       values.push({
@@ -88,6 +92,8 @@ export function buildExternalCustomizerMetadata(config: any): ExternalCustomizer
         imageUrl
       });
       addImage(imageUrl);
+      addImage(assetUrl(clipart?.thumbnail));
+      addImage(assetUrl(clipart?.file?.url));
     });
     if (values.length === 0) return;
     groups.push({
@@ -143,6 +149,26 @@ export function buildExternalCustomizerMetadata(config: any): ExternalCustomizer
     if (/flower|hoa/i.test(title) && !groups.some(group => /flower|hoa/i.test(group.name))) addCategoryGroup(category, "Choose Birth Flower", String(category.id));
     else if (/font/i.test(title) && !groups.some(group => /font/i.test(group.name))) addCategoryGroup(category, "Choose Font", String(category.id));
   });
+  // Some assets are not attached to a visible layer (for example hidden
+  // shape-dependent choices). Preserve every image-bearing clipart record.
+  categories.forEach(category => (category.cliparts || []).forEach((clipart: any) => {
+    addImage(assetUrl(clipart?.file?.key || clipart?.file?.url || clipart?.url));
+    addImage(assetUrl(clipart?.thumbnail));
+  }));
+  const collectAssetUrls = (value: any, depth = 0): void => {
+    if (!value || depth > 10 || customImages.length >= 5_000) return;
+    if (Array.isArray(value)) { value.forEach(item => collectAssetUrls(item, depth + 1)); return; }
+    if (typeof value !== "object") return;
+    for (const [key, item] of Object.entries(value)) {
+      if (typeof item === "string" && /(?:image|thumbnail|preview|mockup|file|asset|url|key)/i.test(key)) {
+        const normalized = assetUrl(item);
+        if (normalized && /\.(?:avif|gif|jpe?g|png|webp)(?:[?#]|$)/i.test(normalized)) addImage(normalized);
+      } else if (item && typeof item === "object") {
+        collectAssetUrls(item, depth + 1);
+      }
+    }
+  };
+  collectAssetUrls(config);
   const mockupKey = config.mockups?.[0]?.layers?.find((layer: any) => layer?.file?.key)?.file?.key;
   return {
     customOptionGroups: groups,
@@ -414,10 +440,31 @@ export class MultiPlatformClonerService {
             // currency field. Preserve that verified store currency here.
             if (!shopifyRes.currency && /(?:^|\.)macorner\.co$/i.test(new URL(url).hostname)) shopifyRes.currency = "USD";
             const preview = this.formatShopifyJsonToPreviewResponse(url, platform, productId, shopifyRes);
+            // Shopify's `.js` endpoint intentionally omits lazy-loaded rich
+            // description markup. Fetch the storefront HTML as a second source
+            // so every infographic, size chart, and responsive `srcset` image
+            // is retained instead of stopping at the product gallery.
+            try {
+              const storefrontHtml = await this.fetchPageHtml(url);
+              const htmlMetadata = parseHtmlProductMetadata(storefrontHtml);
+              preview.detailImages = Array.from(new Set([
+                ...(preview.detailImages || []),
+                ...(htmlMetadata.detailImages || [])
+              ]));
+              if (htmlMetadata.images?.length) {
+                preview.galleryImages = Array.from(new Set([
+                  ...preview.galleryImages,
+                  ...htmlMetadata.images.filter(image => image !== preview.primaryImage)
+                ]));
+              }
+            } catch {
+              preview.warnings.push("Không đọc được một phần HTML lazy-load; ảnh trong Shopify JSON vẫn được giữ lại");
+            }
             if (externalCustomizer) {
               preview.customOptionGroups = externalCustomizer.customOptionGroups;
               preview.customizationEvidence = externalCustomizer.customizationEvidence;
               preview.customizerMockupTemplateUrl = externalCustomizer.customizerMockupTemplateUrl;
+              preview.customImages = externalCustomizer.customImages;
               preview.galleryImages = Array.from(new Set([
                 ...preview.galleryImages,
                 ...externalCustomizer.customImages
@@ -557,6 +604,12 @@ export class MultiPlatformClonerService {
       isPersonalized: personalization.isPersonalized,
       personalizationFields: personalization.personalizationFields,
       customizerMockupTemplateUrl: preview.customizerMockupTemplateUrl,
+      customizerAssets: buildCustomizerAssets(
+        preview.customOptionGroups || [],
+        preview.customizerMockupTemplateUrl,
+        preview.sourceProductId,
+        preview.customImages || []
+      ),
       sourceProductId: preview.sourceProductId,
       sourceUrl: preview.sourceUrl,
       supplierName: preview.supplierName,
@@ -570,6 +623,11 @@ export class MultiPlatformClonerService {
     if (request.autoPublish) {
       if (!qualityResult.canPublish) throw new Error(`QUALITY_GATE_FAILED: ${qualityResult.blockers.join(", ")}`);
       newProduct.status = "PUBLISHED";
+    }
+
+    if (request.mirrorMedia !== false && ENV.NODE_ENV !== "test") {
+      const mirrored = await mediaMirrorService.mirrorProductAllImages(newProduct);
+      Object.assign(newProduct, mirrored.product);
     }
 
     // Lưu vào inMemory cache
@@ -1121,6 +1179,7 @@ export class MultiPlatformClonerService {
       rawOptions,
       optionGroups,
       customOptionGroups: extracted.customOptionGroups || [],
+      customImages: extracted.customImages || [],
       customizationEvidence: extracted.customizationEvidence,
       categorySuggested: "Thời trang & Phụ kiện",
       rawAttributes: [

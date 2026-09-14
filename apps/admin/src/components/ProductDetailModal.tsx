@@ -109,6 +109,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [variants, setVariants] = useState<WebProductVariant[]>([...product.variants]);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [showPublishReview, setShowPublishReview] = useState(false);
+  const [publishReviewError, setPublishReviewError] = useState<string | null>(null);
   const [variantSearch, setVariantSearch] = useState("");
   const [customVideoInput, setCustomVideoInput] = useState("");
   const [serpDevice, setSerpDevice] = useState<"desktop" | "mobile">("desktop");
@@ -291,6 +293,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   }, [formData]);
 
   const qualityAudit = useMemo(() => evaluateProductQuality({ ...formData, variants }), [formData, variants]);
+  const personalizationFields = formData.personalizationFields || [];
+  const personalizationAreas = formData.customizerCanvas?.printAreas || [];
+  const personalizationLayers = formData.customizerCanvas?.layers || [];
+  const personalizationBindings = personalizationFields.map(field => ({
+    field,
+    area: personalizationAreas.find(area => area.fieldIds?.includes(field.id)),
+    layer: personalizationLayers.find(layer =>
+      layer.source === "FIELD" &&
+      layer.fieldId === field.id &&
+      personalizationAreas.some(area => area.id === layer.printAreaId)
+    )
+  }));
 
   // Cập nhật trường thông tin cơ bản
   const handleFieldChange = (field: keyof WebProduct, value: any) => {
@@ -439,7 +453,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       status,
       qualityScore: qualityAudit.totalScore,
       displayLanguage: editLang,
-      variants,
+      variants: variants.map((variant, variantIndex) => ({
+        ...variant,
+        sourceSkuId: variant.sourceSkuId || `sku-${Date.now()}-${variantIndex}`,
+        costPriceVND: Number(variant.costPriceVND) || 0,
+        sellingPriceVND: Number(variant.sellingPriceVND) || 0,
+        stockQuantity: Math.max(0, Number(variant.stockQuantity) || 0),
+        sourceAvailable: variant.sourceAvailable ?? (variant.inventoryTracked === false || (Number(variant.stockQuantity) || 0) > 0),
+        selectedForSale: variant.selectedForSale ?? true
+      })),
       seo: {
         ...(formData.seo || {}),
         metaTitleVI: formData.metaTitle,
@@ -466,14 +488,24 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
   };
 
-  const handlePublish = async () => {
+  const handlePublish = () => {
     if (!onPublish) return;
+    setPublishReviewError(null);
+    setShowPublishReview(true);
+  };
+
+  const confirmPublish = async () => {
+    if (!onPublish || !qualityAudit.canPublish) return;
     setIsPublishing(true);
+    setPublishReviewError(null);
     try {
       const published = await onPublish(buildUpdatedProduct("DRAFT"));
       setFormData(published);
+      setShowPublishReview(false);
       setTemplateToast("Đã đăng sản phẩm lên storefront. Khách hàng có thể xem ngay.");
       setTimeout(() => setTemplateToast(null), 3500);
+    } catch (error: any) {
+      setPublishReviewError(error?.message || "Không thể đăng sản phẩm lên storefront.");
     } finally {
       setIsPublishing(false);
     }
@@ -1545,6 +1577,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {((formData.customizerAssets || []).length > 0) && (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-5 py-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Kho asset custom đã lưu</h3>
+                      <p className="mt-1 text-xs text-slate-500">Ảnh gốc của lựa chọn cá nhân hóa được lưu riêng để tái sử dụng cho sản phẩm khác.</p>
+                    </div>
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">{formData.customizerAssets.length} asset</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 p-4 sm:grid-cols-5 lg:grid-cols-8">
+                    {formData.customizerAssets.map(asset => (
+                      <figure key={asset.id} className="group min-w-0">
+                        <div className="aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                          <img src={asset.url} alt={asset.label || "Custom asset"} loading="lazy" className="h-full w-full object-contain p-1 transition group-hover:scale-105" />
+                        </div>
+                        <figcaption className="mt-1 truncate text-[10px] font-semibold text-slate-600" title={asset.label || asset.category || "Custom asset"}>{asset.label || asset.category || "Custom asset"}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 1. Video Sản Phẩm 1688 */}
               <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 shadow-lg border border-slate-800">
@@ -2821,7 +2875,39 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             {onPublish && <button type="button" onClick={handlePublish} disabled={isSaving || isPublishing} className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-orange-600 px-3 text-[11px] font-bold text-white shadow-sm disabled:opacity-50"><Globe className="h-3.5 w-3.5" /> {formData.status === "PUBLISHED" ? "Cập nhật" : "Đăng bán"}</button>}
           </div>
         </div>
-      </div>
+        </div>
+
+        {showPublishReview && (
+          <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="publish-review-title">
+            <div className="mx-auto my-4 w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl sm:my-10">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-950 px-4 py-4 text-white sm:px-6">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-300">Kiểm tra trước khi đăng</p>
+                  <h3 id="publish-review-title" className="mt-1 text-base font-extrabold">Review storefront listing</h3>
+                  <p className="mt-1 text-xs text-slate-300">Xác nhận nội dung, SKU và vùng cá nhân hóa trước khi khách nhìn thấy sản phẩm.</p>
+                </div>
+                <button type="button" onClick={() => setShowPublishReview(false)} aria-label="Đóng review đăng bán" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-300 hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button>
+              </div>
+
+              <div className="space-y-4 p-4 sm:p-6">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className={`rounded-xl border p-3 ${qualityAudit.canPublish ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}><p className="text-[10px] font-bold uppercase text-slate-500">Quality</p><p className="mt-1 text-lg font-black text-slate-900">{qualityAudit.totalScore}/100</p><p className={`text-[10px] font-bold ${qualityAudit.canPublish ? "text-emerald-700" : "text-rose-700"}`}>{qualityAudit.canPublish ? "Đủ điều kiện" : "Chưa đủ điều kiện"}</p></div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">SKU bán</p><p className="mt-1 text-lg font-black text-slate-900">{variants.filter(variant => variant.selectedForSale).length}/{variants.length}</p><p className="text-[10px] font-semibold text-slate-500">phân loại</p></div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Media</p><p className="mt-1 text-lg font-black text-slate-900">{mediaCount}</p><p className="text-[10px] font-semibold text-slate-500">tài nguyên</p></div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">Cá nhân hóa</p><p className="mt-1 text-lg font-black text-slate-900">{personalizationFields.length}</p><p className="text-[10px] font-semibold text-slate-500">trường khách nhập</p></div>
+                </div>
+
+                {qualityAudit.blockers.length > 0 && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3" role="alert"><p className="text-xs font-extrabold text-rose-800">Chưa thể đăng vì:</p><ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-rose-700">{qualityAudit.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul></div>}
+                {qualityAudit.warnings.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-extrabold text-amber-800">Khuyến nghị trước khi đăng:</p><ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-amber-700">{qualityAudit.warnings.slice(0, 4).map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+
+                {personalizationFields.length > 0 && <div className="overflow-hidden rounded-xl border border-slate-200"><div className="border-b border-slate-200 bg-slate-50 px-3 py-2.5"><p className="text-xs font-extrabold text-slate-800">Bảng nối bước khách ↔ vùng in</p><p className="mt-0.5 text-[10px] text-slate-500">Mỗi field cần có vùng in hoặc layer tương ứng để xuất hiện trong preview.</p></div><div className="divide-y divide-slate-100">{personalizationBindings.map(({ field, area, layer }) => <div key={field.id} className="grid gap-2 px-3 py-2.5 sm:grid-cols-[1.2fr_1fr_auto] sm:items-center"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-800">{field.label}{field.required && <span className="ml-1 text-rose-600">*</span>}</p><p className="text-[10px] text-slate-500">{field.step || "Bước cá nhân hóa"}</p></div><div className="min-w-0 text-[10px] text-slate-600"><span className="font-semibold">Vùng:</span> {area?.label || (layer?.printAreaId ? personalizationAreas.find(candidate => candidate.id === layer.printAreaId)?.label : "Chưa gán") || "Chưa gán"}</div><span className={`rounded-full px-2 py-1 text-center text-[10px] font-bold ${area || layer ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{area || layer ? "Đã nối" : "Thiếu nối"}</span></div>)}</div></div>}
+
+                {publishReviewError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-semibold text-rose-700" role="alert">{publishReviewError}</div>}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => { setShowPublishReview(false); setActiveTab("quality"); }} className="min-h-11 rounded-xl border border-slate-300 px-4 text-xs font-bold text-slate-700 hover:bg-slate-50">Mở bảng chất lượng</button><button type="button" onClick={() => setShowPublishReview(false)} className="min-h-11 rounded-xl border border-slate-300 px-4 text-xs font-bold text-slate-700 hover:bg-slate-50">Quay lại chỉnh sửa</button><button type="button" onClick={() => void confirmPublish()} disabled={isPublishing || !qualityAudit.canPublish} className="min-h-11 rounded-xl bg-orange-600 px-5 text-xs font-extrabold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{isPublishing ? "Đang đăng…" : formData.status === "PUBLISHED" ? "Xác nhận cập nhật" : "Xác nhận đăng lên storefront"}</button></div>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Modal xem mã Schema JSON-LD */}
       {showJsonLdModal && (

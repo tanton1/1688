@@ -126,6 +126,38 @@ export class ProductsController {
     res.json(product);
   }
 
+  /** Reusable customizer artwork library aggregated from imported products. */
+  public async listCustomizerAssets(req: Request, res: Response): Promise<void> {
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const assetType = String(req.query.assetType || "").trim().toUpperCase();
+    let products: WebProduct[] = [];
+    if (supabaseService.isConfigured()) {
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await supabaseService.getProducts({ page, pageSize: 100 });
+        if (!result) { res.status(503).json({ error: "PERSISTENCE_FAILED" }); return; }
+        products.push(...result.items);
+        total = result.total;
+        page++;
+      } while (products.length < total);
+    } else {
+      products = Array.from(inMemoryProducts.values());
+    }
+    const assets = new Map<string, any>();
+    products.forEach(product => (product.customizerAssets || []).forEach(asset => {
+      if (assetType && asset.assetType !== assetType) return;
+      if (search && !`${asset.label || ""} ${asset.category || ""} ${asset.sourceProductId || ""}`.toLowerCase().includes(search)) return;
+      const key = asset.originalUrl || asset.url;
+      if (!assets.has(key)) assets.set(key, { ...asset, usedBy: [product.id] });
+      else {
+        const existing = assets.get(key);
+        if (product.id && !existing.usedBy.includes(product.id)) existing.usedBy.push(product.id);
+      }
+    }));
+    res.json({ total: assets.size, items: Array.from(assets.values()).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
+  }
+
   /**
    * Cập nhật thông tin sản phẩm (Tiêu đề, mô tả, biến thể, giá bán, SEO, ngôn ngữ)
    */

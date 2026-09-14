@@ -215,7 +215,8 @@ export const App: React.FC = () => {
 
   const handlePublishFromEditor = async (updated: WebProduct): Promise<WebProduct> => {
     try {
-      const saved = await AdminApi.updateProduct(updated.id!, { ...updated, status: "DRAFT" });
+      const { id: _id, skuCode: _skuCode, sourceProductId: _sourceProductId, sourceUrl: _sourceUrl, supplierName: _supplierName, createdAt: _createdAt, updatedAt: _updatedAt, minPriceVND: _minPriceVND, maxPriceVND: _maxPriceVND, ...editable } = updated;
+      const saved = await AdminApi.updateProduct(updated.id!, { ...editable, status: "DRAFT" });
       const published = await AdminApi.publishProduct(saved.product.id!);
       setProducts(prev => prev.map(product => product.id === published.product.id ? published.product : product));
       setSelectedProduct(published.product);
@@ -269,18 +270,20 @@ export const App: React.FC = () => {
     const prod = products.find(p => p.id === id);
     if (!prod) return;
 
-    const newStatus: "PUBLISHED" | "DRAFT" = prod.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
+    // A draft must always pass through the editor review. Publishing directly
+    // from the table hid quality blockers and personalization bindings from
+    // the merchant, which made a rejected publish look like a sync failure.
+    if (prod.status !== "PUBLISHED") {
+      setSelectedProduct(prod);
+      showToast("Kiểm tra bảng review trong chi tiết sản phẩm rồi xác nhận đăng lên storefront.");
+      return;
+    }
+
     try {
-      const result = newStatus === "PUBLISHED"
-        ? await AdminApi.publishProduct(id)
-        : await AdminApi.updateProduct(id, { status: "DRAFT" });
+      const result = await AdminApi.updateProduct(id, { status: "DRAFT", version: prod.version });
       setProducts(prev => prev.map(p => (p.id === id ? result.product : p)));
       void refreshDashboardStats();
-      showToast(
-        newStatus === "PUBLISHED"
-          ? "Đã xuất bản sản phẩm lên website!"
-          : "Đã chuyển sản phẩm về bản nháp!"
-      );
+      showToast("Đã chuyển sản phẩm về bản nháp!");
     } catch (err: any) {
       showToast(err.message || "Lỗi khi đổi trạng thái", "error");
     }

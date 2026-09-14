@@ -8,7 +8,8 @@ import {
   BulkImportRequest,
   ImportJobStatus
 } from "@hub1688/shared-types";
-import { evaluateProductQuality, inferPersonalizationSchema } from "@hub1688/shared-utils";
+import { evaluateProductQuality, inferPersonalizationSchema, buildCustomizerAssets } from "@hub1688/shared-utils";
+import { mediaMirrorService } from "../services/media-mirror.service.js";
 import { TranslationEngineService } from "../services/translation.service.js";
 import { PricingEngineService } from "../services/pricing.service.js";
 import { SkuMappingService } from "../services/sku-mapping.service.js";
@@ -261,9 +262,10 @@ export class ImportController {
     const productId = existing?.id || crypto.randomUUID();
     const skuCode = existing?.skuCode || `SP-${Date.now().toString().slice(-6)}`;
 
-    const detailImagesList = (normalized.description?.images && normalized.description.images.length > 0)
-      ? normalized.description.images
-      : (raw?.descriptionImages || []);
+    const detailImagesList = Array.from(new Set([
+      ...(normalized.description?.images || []),
+      ...(raw?.descriptionImages || [])
+    ]));
 
     // Customizer metadata is intentionally resolved independently from the
     // commercial SKU matrix. Older extension payloads may only keep the raw
@@ -287,6 +289,13 @@ export class ImportController {
     customOptionImages.forEach(image => {
       if (!galleryImagesList.includes(image) && image !== normalized.media.images[0]) galleryImagesList.push(image);
     });
+    const customizerGroups = normalized.customOptionGroups || raw?.customOptionGroups || [];
+    const customizerAssets = buildCustomizerAssets(
+      customizerGroups,
+      normalized.customizerMockupTemplateUrl || raw?.customizerMockupTemplateUrl,
+      normalized.sourceProductId,
+      normalized.customImages || raw?.customImages || []
+    );
 
     // 5. Tự động sinh trọn gói SEO Metadata (Meta Title, Description, Image Alt, FAQs, JSON-LD)
     const seoPackage = translationService.generateCompleteSEOPackage({
@@ -356,6 +365,7 @@ export class ImportController {
       isPersonalized: personalization.isPersonalized,
       personalizationFields: personalization.personalizationFields,
       customizerMockupTemplateUrl: normalized.customizerMockupTemplateUrl || raw?.customizerMockupTemplateUrl,
+      customizerAssets,
       sourcePlatform: normalized.sourcePlatform,
       sourceCurrency: raw?.originalCurrency || "CNY",
       sourceProductId: normalized.sourceProductId,
@@ -478,6 +488,14 @@ export class ImportController {
         return;
       }
       newProduct.status = "PUBLISHED";
+    }
+
+    // Keep source URLs in the draft when the caller opted out. The extension
+    // defaults this flag to true, so normal imports mirror all product/detail
+    // and customizer assets before returning the product to the merchant.
+    if (settings.copyDescriptionImages !== false && ENV.NODE_ENV !== "test") {
+      const mirrored = await mediaMirrorService.mirrorProductAllImages(newProduct);
+      Object.assign(newProduct, mirrored.product);
     }
 
     // Lưu vào database (in-memory cache)

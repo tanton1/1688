@@ -108,6 +108,7 @@ export interface Normalized1688Product {
   optionGroups?: SourceOptionGroup[];
   /** Options owned by an external/custom personalization UI. */
   customOptionGroups?: SourceOptionGroup[];
+  customImages?: string[];
   personalizationFields?: PersonalizationField[];
   customizationEvidence?: CustomizationEvidence;
   customizerMockupTemplateUrl?: string;

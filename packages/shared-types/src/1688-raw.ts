@@ -80,6 +80,8 @@ export interface Raw1688Product {
   optionGroups?: SourceOptionGroup[];
   /** External customizer metadata; never treated as native SKU axes. */
   customOptionGroups?: SourceOptionGroup[];
+  /** Full artwork URLs discovered in an external customizer payload. */
+  customImages?: string[];
   customizationEvidence?: CustomizationEvidence;
   customizerMockupTemplateUrl?: string;
   extractedAt: string; // ISO date string

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { WebProduct, WebProductVariant } from "@hub1688/shared-types";
+import { WebProduct, WebProductVariant, CustomizerAsset } from "@hub1688/shared-types";
 import { supabaseService } from "./supabase.service.js";
 import { ENV } from "../config/env.js";
 import { safeFetch } from "../utils/safe-network.js";
@@ -119,7 +119,7 @@ export class MediaMirrorService {
   /**
    * Mirror một ảnh duy nhất
    */
-  public async mirrorSingleImage(originalUrl: string, productId: string, prefix: string): Promise<string> {
+  public async mirrorSingleImage(originalUrl: string, productId: string, prefix: string, rootFolder = "mirrored"): Promise<string> {
     if (!originalUrl || originalUrl.startsWith("/uploads/") || originalUrl.includes("supabase.co/storage")) {
       // Đã được mirror rồi, không cần mirror lại
       return originalUrl;
@@ -138,7 +138,7 @@ export class MediaMirrorService {
     const hash = crypto.createHash("md5").update(originalUrl).digest("hex").substring(0, 8);
     const filename = `${productId}/${prefix}_${hash}${ext}`;
 
-    const hostedUrl = await this.uploadToStorage(downloaded.buffer, downloaded.contentType, filename);
+    const hostedUrl = await this.uploadToStorage(downloaded.buffer, downloaded.contentType, filename, rootFolder);
     return hostedUrl || originalUrl;
   }
 
@@ -147,50 +147,74 @@ export class MediaMirrorService {
    */
   public async mirrorProductAllImages(product: WebProduct): Promise<{
     product: WebProduct;
-    stats: { total: number; succeeded: number; failed: number };
+    stats: {
+      total: number;
+      succeeded: number;
+      failed: number;
+      productImages: { total: number; succeeded: number; failed: number };
+      detailImages: { total: number; succeeded: number; failed: number };
+      customAssets: { total: number; succeeded: number; failed: number };
+    };
   }> {
     const prodId = (product.id || product.sourceProductId || `prod_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-    let total = 0;
-    let succeeded = 0;
-    let failed = 0;
+    const stats = {
+      total: 0,
+      succeeded: 0,
+      failed: 0,
+      productImages: { total: 0, succeeded: 0, failed: 0 },
+      detailImages: { total: 0, succeeded: 0, failed: 0 },
+      customAssets: { total: 0, succeeded: 0, failed: 0 }
+    };
 
     const cloned: WebProduct = JSON.parse(JSON.stringify(product));
 
+    const mirroredUrls = new Map<string, string>();
+    const mirror = async (url: string, prefix: string, bucket: "productImages" | "detailImages" | "customAssets", rootFolder = "mirrored") => {
+      stats.total++;
+      stats[bucket].total++;
+      const original = url;
+      let newUrl = mirroredUrls.get(`${rootFolder}:${original}`);
+      if (!newUrl) {
+        newUrl = await this.mirrorSingleImage(original, prodId, prefix, rootFolder);
+        mirroredUrls.set(`${rootFolder}:${original}`, newUrl);
+      }
+      const alreadyHosted = original.startsWith("/uploads/") || original.includes("supabase.co/storage");
+      if (newUrl !== original || alreadyHosted) {
+        stats.succeeded++;
+        stats[bucket].succeeded++;
+      } else {
+        stats.failed++;
+        stats[bucket].failed++;
+      }
+      return newUrl;
+    };
+    const mapWithConcurrency = async <T, R>(items: T[], worker: (item: T, index: number) => Promise<R>, concurrency = 6): Promise<R[]> => {
+      const output: R[] = new Array(items.length);
+      let cursor = 0;
+      const run = async () => {
+        while (true) {
+          const index = cursor++;
+          if (index >= items.length) return;
+          output[index] = await worker(items[index], index);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => run()));
+      return output;
+    };
+
     // 1. Primary Image
     if (cloned.primaryImage) {
-      total++;
-      const newUrl = await this.mirrorSingleImage(cloned.primaryImage, prodId, "primary");
-      if (newUrl !== cloned.primaryImage) succeeded++;
-      else failed++;
-      cloned.primaryImage = newUrl;
+      cloned.primaryImage = await mirror(cloned.primaryImage, "primary", "productImages");
     }
 
     // 2. Gallery Images
     if (cloned.galleryImages && cloned.galleryImages.length > 0) {
-      const newGallery: string[] = [];
-      for (let i = 0; i < cloned.galleryImages.length; i++) {
-        total++;
-        const oldUrl = cloned.galleryImages[i];
-        const newUrl = await this.mirrorSingleImage(oldUrl, prodId, `gallery_${i + 1}`);
-        if (newUrl !== oldUrl) succeeded++;
-        else failed++;
-        newGallery.push(newUrl);
-      }
-      cloned.galleryImages = newGallery;
+      cloned.galleryImages = await mapWithConcurrency(cloned.galleryImages, (oldUrl, i) => mirror(oldUrl, `gallery_${i + 1}`, "productImages"));
     }
 
     // 3. Detail Images
     if (cloned.detailImages && cloned.detailImages.length > 0) {
-      const newDetail: string[] = [];
-      for (let i = 0; i < cloned.detailImages.length; i++) {
-        total++;
-        const oldUrl = cloned.detailImages[i];
-        const newUrl = await this.mirrorSingleImage(oldUrl, prodId, `detail_${i + 1}`);
-        if (newUrl !== oldUrl) succeeded++;
-        else failed++;
-        newDetail.push(newUrl);
-      }
-      cloned.detailImages = newDetail;
+      cloned.detailImages = await mapWithConcurrency(cloned.detailImages, (oldUrl, i) => mirror(oldUrl, `detail_${i + 1}`, "detailImages"));
     }
 
     // 4. Variants Images
@@ -198,22 +222,77 @@ export class MediaMirrorService {
       for (let i = 0; i < cloned.variants.length; i++) {
         const v = cloned.variants[i];
         if (v.imageUrl) {
-          total++;
-          const oldUrl = v.imageUrl;
-          const newUrl = await this.mirrorSingleImage(oldUrl, prodId, `var_${i + 1}`);
-          if (newUrl !== oldUrl) succeeded++;
-          else failed++;
-          v.imageUrl = newUrl;
+          v.imageUrl = await mirror(v.imageUrl, `var_${i + 1}`, "productImages");
         }
       }
     }
 
-    cloned.isMediaMirrored = true;
+    // 5. Customizer artwork: persist a reusable manifest and mirror every
+    // option thumbnail, mockup, and canvas scene independently of the gallery.
+    const customAssets: CustomizerAsset[] = Array.isArray(cloned.customizerAssets)
+      ? cloned.customizerAssets.map(asset => ({ ...asset }))
+      : [];
+    const assetByUrl = new Map(customAssets.map(asset => [asset.originalUrl || asset.url, asset]));
+    const addCustomAsset = async (url: string | undefined, label: string, category: string, sourceGroupId?: string, assetType: CustomizerAsset["assetType"] = "OPTION") => {
+      if (!url) return url;
+      const existing = assetByUrl.get(url);
+      const mirrored = await mirror(url, `asset_${crypto.createHash("md5").update(url).digest("hex").slice(0, 12)}`, "customAssets", "customizer-assets");
+      if (existing) {
+        existing.originalUrl = existing.originalUrl || url;
+        existing.url = mirrored;
+      } else {
+        const asset: CustomizerAsset = {
+          id: `asset_${crypto.createHash("md5").update(url).digest("hex").slice(0, 12)}`,
+          url: mirrored,
+          originalUrl: url,
+          label,
+          category,
+          sourceProductId: cloned.sourceProductId,
+          sourceGroupId,
+          assetType,
+          createdAt: new Date().toISOString()
+        };
+        customAssets.push(asset);
+        assetByUrl.set(url, asset);
+      }
+      return mirrored;
+    };
+    if (cloned.customizerMockupTemplateUrl) {
+      cloned.customizerMockupTemplateUrl = await addCustomAsset(cloned.customizerMockupTemplateUrl, "Customizer mockup", "Mockup", undefined, "MOCKUP");
+    }
+    if (Array.isArray(cloned.customizerCanvas?.scenes)) {
+      for (const scene of cloned.customizerCanvas.scenes) {
+        if (scene.mockupUrl) scene.mockupUrl = await addCustomAsset(scene.mockupUrl, scene.label, "Mockup", scene.id, "MOCKUP");
+        if (scene.variantMockupUrls) {
+          for (const [sku, url] of Object.entries(scene.variantMockupUrls)) {
+            scene.variantMockupUrls[sku] = await addCustomAsset(url, scene.label, "Mockup", scene.id, "MOCKUP") as string;
+          }
+        }
+      }
+    }
+    if (Array.isArray(cloned.personalizationFields)) {
+      for (const field of cloned.personalizationFields) {
+        for (const option of field.options || []) {
+          const source = option.previewAssetUrl || option.thumbnail;
+          if (!source) continue;
+          const mirrored = await addCustomAsset(source, option.label, field.label, field.id);
+          if (option.previewAssetUrl) option.previewAssetUrl = mirrored;
+          if (option.thumbnail) option.thumbnail = mirrored;
+        }
+      }
+    }
+    for (const asset of customAssets) {
+      const mirrored = await addCustomAsset(asset.originalUrl || asset.url, asset.label || "Custom asset", asset.category || "Customizer", asset.sourceGroupId, asset.assetType);
+      asset.url = mirrored as string;
+    }
+    cloned.customizerAssets = customAssets;
+
+    cloned.isMediaMirrored = stats.failed === 0;
     cloned.mirroredAt = new Date().toISOString();
 
     return {
       product: cloned,
-      stats: { total, succeeded, failed }
+      stats
     };
   }
 }

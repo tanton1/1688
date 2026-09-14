@@ -229,6 +229,24 @@ export interface PersonalizationOptionItem {
   priceDeltaVND?: number;
 }
 
+/** A reusable, mirrored artwork asset captured from a source customizer. */
+export type CustomizerAssetType = "OPTION" | "MOCKUP" | "BACKGROUND" | "FLOWER" | "FONT" | "SHAPE";
+
+export interface CustomizerAsset {
+  id: string;
+  url: string;
+  originalUrl?: string;
+  label?: string;
+  category?: string;
+  sourceProductId?: string;
+  sourceGroupId?: string;
+  assetType: CustomizerAssetType;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  createdAt?: string;
+}
+
 export interface PersonalizationField {
   id: string;
   label: string;
@@ -345,6 +363,8 @@ export interface WebProduct {
   isPersonalized?: boolean;
   personalizationFields?: PersonalizationField[];
   customizerMockupTemplateUrl?: string;
+  /** Full source customizer artwork, mirrored independently for reuse. */
+  customizerAssets?: CustomizerAsset[];
   customizerCanvas?: PersonalizationCanvas;
   volumeDiscountTiers?: VolumeDiscountTier[];
   giftAddons?: GiftAddonItem[];
@@ -412,6 +432,7 @@ export interface ClonePreviewResponse {
   rawOptions?: Array<{ name: string; values: string[] }>;
   optionGroups?: SourceOptionGroup[];
   customOptionGroups?: SourceOptionGroup[];
+  customImages?: string[];
   customizationEvidence?: CustomizationEvidence;
   customizerMockupTemplateUrl?: string;
   qualityScorePreview: number;
@@ -429,6 +450,8 @@ export interface CloneExecuteRequest {
   pricingRuleId?: string;
   categoryName?: string;
   autoPublish?: boolean;
+  /** Mirror product/detail/customizer media into the configured storage. */
+  mirrorMedia?: boolean;
 }
 
 export interface BatchCloneRequest {

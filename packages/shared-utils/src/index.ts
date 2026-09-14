@@ -9,4 +9,5 @@ export * from "./platform-detector.js";
 export * from "./storefront-pricing.js";
 export * from "./personalization.js";
 export * from "./personalization-inference.js";
+export * from "./customizer-assets.js";
 export * from "./storefront-catalog.js";

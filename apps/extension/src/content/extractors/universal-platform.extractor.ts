@@ -179,6 +179,7 @@ export class UniversalPlatformExtractor {
       skuMap,
       optionGroups: this.extractNativeOptionGroups(platform),
       customOptionGroups: personalization.customOptionGroups,
+      customImages: personalization.customOptionGroups.flatMap(group => group.values.map(value => value.imageUrl).filter(Boolean) as string[]),
       customizationEvidence: personalization.customizationEvidence,
       extractedAt: new Date().toISOString()
     };
@@ -347,7 +348,7 @@ export class UniversalPlatformExtractor {
       });
     }
 
-    return images.slice(0, 10);
+    return images;
   }
 
   private static extractDescriptionImages(platform: SourcePlatform): string[] {
@@ -387,10 +388,19 @@ export class UniversalPlatformExtractor {
 
     document.querySelectorAll(descSelectors.join(", ")).forEach(img => {
       const el = img as HTMLImageElement;
-      addDescImg(el.getAttribute("data-src") || el.getAttribute("data-lazyload-src") || el.getAttribute("data-original") || el.src);
+      addDescImg(el.getAttribute("data-zoom-image") || el.getAttribute("data-original") || el.getAttribute("data-lazyload-src") || el.getAttribute("data-src") || el.src);
+      const srcset = el.getAttribute("data-srcset") || el.getAttribute("srcset") || "";
+      if (srcset) {
+        const candidates = srcset.split(",").map(entry => {
+          const [url, descriptor] = entry.trim().split(/\s+/);
+          const width = descriptor?.endsWith("w") ? Number.parseInt(descriptor, 10) : descriptor?.endsWith("x") ? Number.parseFloat(descriptor) * 1000 : 0;
+          return { url, width: Number.isFinite(width) ? width : 0 };
+        }).sort((a, b) => b.width - a.width);
+        addDescImg(candidates[0]?.url);
+      }
     });
 
-    return descImages.slice(0, 15);
+    return descImages;
   }
 
   private static extractPriceInfo(platform: SourcePlatform): {

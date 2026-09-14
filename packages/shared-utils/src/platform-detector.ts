@@ -232,6 +232,55 @@ function appendJsonLdImages(target: string[], imageValue: any): void {
   }
 }
 
+function normalizeHtmlImageUrl(value: string): string | null {
+  let normalized = decodeHtmlEntities(value).trim();
+  if (!normalized || /^(?:data|blob):/i.test(normalized)) return null;
+  if (normalized.startsWith("//")) normalized = `https:${normalized}`;
+  if (normalized.startsWith("http://")) normalized = `https://${normalized.slice(7)}`;
+  if (!/^https?:\/\//i.test(normalized)) return null;
+  return normalized.replace(/_([0-9]+x[0-9]*|small|compact|medium|large|grande|pico)(\.[a-zA-Z0-9]+)/, "$2");
+}
+
+/**
+ * Read lazy-loaded and responsive image attributes without silently keeping a
+ * thumbnail. A single <img> contributes its highest-resolution srcset entry;
+ * distinct <img> elements remain distinct and are not capped.
+ */
+function appendHtmlImageCandidates(target: string[], markup: string): void {
+  const tagRegex = /<img\b[^>]*>/gi;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRegex.exec(markup)) !== null) {
+    const tag = tagMatch[0];
+    const candidates: Array<{ url: string; width: number; priority: number }> = [];
+    const attrs: Array<{ name: string; priority: number }> = [
+      { name: "data-zoom-image", priority: 7 },
+      { name: "data-original", priority: 6 },
+      { name: "data-lazyload-src", priority: 5 },
+      { name: "data-lazy-src", priority: 4 },
+      { name: "data-src", priority: 3 },
+      { name: "src", priority: 1 }
+    ];
+    for (const attr of attrs) {
+      const match = tag.match(new RegExp(`\\b${attr.name}=["']([^"']+)["']`, "i"));
+      const url = match ? normalizeHtmlImageUrl(match[1]) : null;
+      if (url) candidates.push({ url, width: 0, priority: attr.priority });
+    }
+    for (const attrName of ["data-srcset", "srcset"]) {
+      const match = tag.match(new RegExp(`\\b${attrName}=["']([^"']+)["']`, "i"));
+      if (!match) continue;
+      match[1].split(",").forEach((entry, index) => {
+        const parts = entry.trim().split(/\s+/);
+        const url = normalizeHtmlImageUrl(parts[0] || "");
+        const descriptor = parts[1] || "";
+        const width = descriptor.endsWith("w") ? Number.parseInt(descriptor, 10) : descriptor.endsWith("x") ? Number.parseFloat(descriptor) * 1_000 : index;
+        if (url) candidates.push({ url, width: Number.isFinite(width) ? width : 0, priority: 8 });
+      });
+    }
+    const selected = candidates.sort((a, b) => b.width - a.width || b.priority - a.priority)[0]?.url;
+    if (selected && !target.includes(selected)) target.push(selected);
+  }
+}
+
 function readJsonLdOffers(offersValue: any): { prices: number[]; currency?: SourceCurrency } {
   const prices: number[] = [];
   let currency: SourceCurrency | undefined;
@@ -319,19 +368,7 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
       }
 
       if (shopifyData.description || shopifyData.body_html) {
-        const descHtml = shopifyData.description || shopifyData.body_html;
-        const dImgRegex = /<img\b[^>]*\b(?:src|data-src)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
-        let dm: RegExpExecArray | null;
-        while ((dm = dImgRegex.exec(descHtml)) !== null) {
-          let u = dm[1].trim();
-          if (u.startsWith("//")) u = "https:" + u;
-          if (u.startsWith("http://")) u = u.replace("http://", "https://");
-          if (!result.detailImages!.includes(u)) result.detailImages!.push(u);
-        }
-      }
-
-      if (result.images.length > 0) {
-        return result;
+        appendHtmlImageCandidates(result.detailImages!, shopifyData.description || shopifyData.body_html);
       }
     }
   } catch {}
@@ -494,29 +531,21 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
   }
 
   // 4. Trích xuất ảnh chi tiết dài (Detail & Gallery Images) từ HTML content
-  const imgRegex = /<img\b[^>]*\b(?:src|data-src|data-original)=["']((?:https?:)?\/\/[^"'\s>]+)["'][^>]*>/gi;
-  let imgMatch: RegExpExecArray | null;
-  const detailImgs: string[] = [];
-  while ((imgMatch = imgRegex.exec(html)) !== null) {
-    let url = imgMatch[1].trim();
-    if (url.startsWith("//")) url = "https:" + url;
-    if (url.startsWith("http://")) url = url.replace("http://", "https://");
+  const allHtmlImages: string[] = [];
+  appendHtmlImageCandidates(allHtmlImages, html);
+  const detailImgs = allHtmlImages.filter(url => {
+    // Filter obvious UI chrome while retaining product infographics and CDN
+    // assets. `/assets/` alone is not junk: customizers often store artwork there.
+    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b|\.svg\b|recommend|related|cart|payment|trust|rating|review|halloween_badge|search-|img-menu|default-img|footer|header|menu/i.test(url);
+    return !isIgnored && !result.images.includes(url);
+  });
+  result.detailImages = Array.from(new Set([...(result.detailImages || []), ...detailImgs]));
 
-    // Loại trừ icon nhỏ, tracking pixel, banner, logo, review stars, recommendation items
-    const isIgnored = /icon|logo|badge|pixel|tracking|avatar|spacer|\.gif\b|\.svg\b|recommend|related|cart|payment|trust|rating|review|halloween_badge|search-|img-menu|default-img|footer|header|menu|\/assets\//i.test(url);
-    if (!isIgnored && !result.images.includes(url) && !detailImgs.includes(url)) {
-      const cleanUrl = url.replace(/_([0-9]+x[0-9]*|small|compact|medium|large|grande|pico)(\.[a-zA-Z0-9]+)/, "$2");
-      detailImgs.push(cleanUrl);
-    }
-  }
-  result.detailImages = detailImgs.slice(0, 15);
-
-  if (result.images.length <= 1 && detailImgs.length > 0) {
-    for (const dImg of detailImgs) {
+  if (result.images.length <= 1 && result.detailImages.length > 0) {
+    for (const dImg of result.detailImages) {
       if (!result.images.includes(dImg)) {
         result.images.push(dImg);
       }
-      if (result.images.length >= 8) break;
     }
   }
 

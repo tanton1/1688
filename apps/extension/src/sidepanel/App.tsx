@@ -228,6 +228,7 @@ export const App: React.FC = () => {
       }),
       optionGroups: product.optionGroups,
       customOptionGroups: product.customOptionGroups,
+      customImages: product.customImages,
       customizationEvidence: product.customizationEvidence,
       customizerMockupTemplateUrl: product.customizerMockupTemplateUrl,
       description: {

@@ -17,7 +17,8 @@ import {
   StorefrontConfig,
   StorefrontCheckoutRequest,
   CustomerOrder,
-  PersonalizationImageValue
+  PersonalizationImageValue,
+  CustomizerAsset
 } from "@hub1688/shared-types";
 
 export interface AISEOContentDraft {
@@ -101,7 +102,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
       const blockerText = Array.isArray(errBody.blockers) && errBody.blockers.length > 0
         ? `: ${errBody.blockers.map((item: unknown) => typeof item === "string" ? item : JSON.stringify(item)).join("; ")}`
         : "";
-      throw new Error(`${errBody.message || errBody.error || `Lỗi HTTP ${res.status}: ${res.statusText}`}${blockerText}`);
+      const issueText = Array.isArray(errBody.details?.issues) && errBody.details.issues.length > 0
+        ? `: ${errBody.details.issues.slice(0, 5).map((issue: any) => `${Array.isArray(issue.path) && issue.path.length ? issue.path.join(".") : "dữ liệu"} — ${issue.message}`).join("; ")}`
+        : "";
+      throw new Error(`${errBody.message || errBody.error || `Lỗi HTTP ${res.status}: ${res.statusText}`}${blockerText || issueText}`);
     }
 
     return await res.json();
@@ -443,6 +447,13 @@ export const AdminApi = {
     return request(`/api/v1/products/${productId}/mirror-images`, {
       method: "POST"
     });
+  },
+
+  async getCustomizerAssets(params?: { search?: string; assetType?: string }): Promise<{ total: number; items: CustomizerAsset[] }> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.assetType) query.set("assetType", params.assetType);
+    return request(`/api/v1/products/customizer-assets${query.toString() ? `?${query.toString()}` : ""}`);
   },
 
   // 25. AI Inpainting (Xóa chữ tiếng Trung & tem mác trên ảnh)

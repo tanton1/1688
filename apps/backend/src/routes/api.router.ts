@@ -54,7 +54,7 @@ const ordersCtrl = new OrdersController();
 const authCtrl = new AuthController();
 const urlSchema = z.string().url().refine(value => value.startsWith("https://") || value.startsWith("http://"));
 const clonePreviewSchema = z.object({ url: urlSchema, platform: z.string().max(40).optional() });
-const cloneExecuteSchema = z.object({ url: urlSchema, platform: z.string().max(40).optional(), customTitle: z.string().max(250).optional(), pricingRuleId: z.string().max(64).optional(), categoryName: z.string().max(120).optional(), autoPublish: z.boolean().optional() });
+const cloneExecuteSchema = z.object({ url: urlSchema, platform: z.string().max(40).optional(), customTitle: z.string().max(250).optional(), pricingRuleId: z.string().max(64).optional(), categoryName: z.string().max(120).optional(), autoPublish: z.boolean().optional(), mirrorMedia: z.boolean().optional() });
 const cloneBatchSchema = z.object({ urls: z.array(urlSchema).min(1).max(50), pricingRuleId: z.string().max(64).optional(), categoryName: z.string().max(120).optional(), autoPublish: z.boolean().optional() });
 const idsSchema = z.object({ ids: z.array(z.string().min(1).max(128)).min(1).max(100) });
 const trackingLimiter = rateLimit({
@@ -115,6 +115,7 @@ apiRouter.post("/sync/resolve-diff", requirePersistence, validateBody(resolveDif
 
 // 3. Web Products Management
 apiRouter.get("/products", (req, res) => productsCtrl.listProducts(req, res));
+apiRouter.get("/products/customizer-assets", (req, res) => productsCtrl.listCustomizerAssets(req, res));
 apiRouter.post("/products/sync-batch", requireRole("ADMIN"), (req, res) => productsCtrl.syncBatch(req, res));
 apiRouter.get("/products/:id", (req, res) => productsCtrl.getProductById(req, res));
 apiRouter.put("/products/:id", requirePersistence, validateBody(productUpdateSchema), (req, res) => productsCtrl.updateProduct(req, res));

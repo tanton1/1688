@@ -26,6 +26,7 @@ export class SupabaseDataService {
   private inventoryTrackedColumnAvailable: boolean | null = null;
   private sourceAvailableColumnAvailable: boolean | null = null;
   private customizerCanvasColumnAvailable: boolean | null = null;
+  private customizerAssetsColumnAvailable: boolean | null = null;
 
   constructor() {
     const key = ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -656,6 +657,7 @@ export class SupabaseDataService {
         is_personalized: Boolean(product.isPersonalized),
         personalization_fields: product.personalizationFields || [],
         customizer_template_url: product.customizerMockupTemplateUrl || null,
+        customizer_assets: product.customizerAssets || [],
         customizer_canvas: product.customizerCanvas || { printAreas: [] },
         volume_discount_tiers: product.volumeDiscountTiers || [],
         gift_addons: product.giftAddons || [],
@@ -685,12 +687,23 @@ export class SupabaseDataService {
         updated_at: product.updatedAt || new Date().toISOString()
       };
       if (this.customizerCanvasColumnAvailable === false) delete dbRow.customizer_canvas;
+      if (this.customizerAssetsColumnAvailable === false) delete dbRow.customizer_assets;
 
       let { data: createdProd, error: prodErr } = await this.client
         .from("products")
         .upsert(dbRow, { onConflict: "id" })
         .select("id")
         .single();
+
+      if (prodErr && this.isMissingProductColumn(prodErr, "customizer_assets")) {
+        this.customizerAssetsColumnAvailable = false;
+        delete dbRow.customizer_assets;
+        ({ data: createdProd, error: prodErr } = await this.client
+          .from("products")
+          .upsert(dbRow, { onConflict: "id" })
+          .select("id")
+          .single());
+      }
 
       if (prodErr && this.isMissingProductColumn(prodErr, "customizer_canvas")) {
         this.customizerCanvasColumnAvailable = false;
@@ -792,6 +805,7 @@ export class SupabaseDataService {
       if (updates.isPersonalized !== undefined) dbUpdates.is_personalized = updates.isPersonalized;
       if (updates.personalizationFields !== undefined) dbUpdates.personalization_fields = updates.personalizationFields;
       if (updates.customizerMockupTemplateUrl !== undefined) dbUpdates.customizer_template_url = updates.customizerMockupTemplateUrl;
+      if (updates.customizerAssets !== undefined && this.customizerAssetsColumnAvailable !== false) dbUpdates.customizer_assets = updates.customizerAssets;
       if (updates.customizerCanvas !== undefined && this.customizerCanvasColumnAvailable !== false) dbUpdates.customizer_canvas = updates.customizerCanvas;
       if (updates.volumeDiscountTiers !== undefined) dbUpdates.volume_discount_tiers = updates.volumeDiscountTiers;
       if (updates.giftAddons !== undefined) dbUpdates.gift_addons = updates.giftAddons;
@@ -820,6 +834,14 @@ export class SupabaseDataService {
         .eq("id", id);
       if (expectedVersion !== undefined) updateQuery = updateQuery.eq("version", expectedVersion);
       let { data: updatedRows, error } = await updateQuery.select("id");
+
+      if (error && this.isMissingProductColumn(error, "customizer_assets")) {
+        this.customizerAssetsColumnAvailable = false;
+        delete dbUpdates.customizer_assets;
+        updateQuery = this.client.from("products").update(dbUpdates).eq("id", id);
+        if (expectedVersion !== undefined) updateQuery = updateQuery.eq("version", expectedVersion);
+        ({ data: updatedRows, error } = await updateQuery.select("id"));
+      }
 
       if (error && this.isMissingProductColumn(error, "customizer_canvas")) {
         this.customizerCanvasColumnAvailable = false;
@@ -954,6 +976,7 @@ export class SupabaseDataService {
       isPersonalized: Boolean(row.is_personalized),
       personalizationFields: row.personalization_fields || [],
       customizerMockupTemplateUrl: row.customizer_template_url,
+      customizerAssets: row.customizer_assets || [],
       customizerCanvas: row.customizer_canvas || undefined,
       volumeDiscountTiers: row.volume_discount_tiers || [],
       giftAddons: row.gift_addons || [],

@@ -57,6 +57,29 @@ export function evaluateProductQuality(product: Partial<WebProduct>): QualitySco
     blockers.push("Chưa tạo ma trận biến thể SKU");
   }
 
+  // 4b. Cá nhân hóa phải có đường nối rõ ràng từ bước khách nhập tới vùng in/layer.
+  if (product.isPersonalized && (product.personalizationFields || []).length > 0) {
+    const fields = product.personalizationFields || [];
+    const areas = product.customizerCanvas?.printAreas || [];
+    const layers = product.customizerCanvas?.layers || [];
+    if (!areas.length && !layers.length) {
+      blockers.push("Cá nhân hóa chưa có vùng in trên mockup");
+    } else {
+      const unbound = fields.filter(field => {
+        const boundToArea = areas.some(area => area.fieldIds?.includes(field.id));
+        const boundToLayer = layers.some(layer =>
+          layer.source === "FIELD" &&
+          layer.fieldId === field.id &&
+          areas.some(area => area.id === layer.printAreaId)
+        );
+        return !boundToArea && !boundToLayer;
+      });
+      if (unbound.length > 0) {
+        blockers.push(`Chưa nối ${unbound.length} bước cá nhân hóa với vùng in`);
+      }
+    }
+  }
+
   // 5. Định giá & Biên lợi nhuận (15 điểm)
   let priceScore = 0;
   if (variants.length > 0) {
