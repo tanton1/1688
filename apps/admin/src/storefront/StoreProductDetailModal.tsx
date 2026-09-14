@@ -8,6 +8,8 @@ import {
   getStorefrontVariantMaxQuantity,
   isStorefrontVariantAvailable,
   isStorefrontVariantOptionAvailable,
+  getPersonalizationImageUrl,
+  isPersonalizationFieldVisible,
   validatePersonalizationValues,
   calculateStorefrontUnitPrice
 } from "@hub1688/shared-utils";
@@ -29,7 +31,10 @@ import {
   Star,
   Layers,
   Maximize2,
-  ImageOff
+  ImageOff,
+  Eye,
+  ChevronDown,
+  CheckCircle2
 } from "lucide-react";
 
 interface StoreProductDetailModalProps {
@@ -88,7 +93,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState(false);
   const [showMobilePurchaseBar, setShowMobilePurchaseBar] = useState(false);
+  const [showCustomizationReview, setShowCustomizationReview] = useState(false);
   const purchaseActionsRef = React.useRef<HTMLDivElement>(null);
+  const primaryPreviewRef = React.useRef<HTMLDivElement>(null);
   const lightboxRef = useAccessibleDialog<HTMLDivElement>(isLightboxOpen, () => setIsLightboxOpen(false));
 
   useEffect(() => {
@@ -165,8 +172,9 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
         }
       });
       const draftKey = `hub1688_customization_draft:${product.id || product.slug}:${firstVar?.sourceSkuId || "default"}`;
+      const sharedDraftKey = `hub1688_customization_draft:${product.id || product.slug}:shared`;
       try {
-        const draft = JSON.parse(localStorage.getItem(draftKey) || "null");
+        const draft = JSON.parse(localStorage.getItem(draftKey) || localStorage.getItem(sharedDraftKey) || "null");
         setCustomizationValues(draft?.values && typeof draft.values === "object" ? { ...initialCustom, ...draft.values } : initialCustom);
         setCustomizationId(typeof draft?.customizationId === "string" ? draft.customizationId : createCustomizationId());
       } catch {
@@ -176,6 +184,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       setRenderedPreviewUrl(undefined);
       setPersistedPreviewUrl(undefined);
       setShowCustomizationValidation(false);
+      setShowCustomizationReview(false);
       setPurchaseError("");
       setSelectedAddons((product.giftAddons || []).filter(a => a.defaultChecked).map(a => a.id));
     }
@@ -202,8 +211,11 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   const handleSelectVariant = (variant: WebProductVariant) => {
     if (product.isPersonalized && selectedVariant) {
       const currentKey = `hub1688_customization_draft:${product.id || product.slug}:${selectedVariant.sourceSkuId || "default"}`;
+      const sharedKey = `hub1688_customization_draft:${product.id || product.slug}:shared`;
       try {
-        localStorage.setItem(currentKey, JSON.stringify({ customizationId, values: customizationValues, updatedAt: new Date().toISOString() }));
+        const draft = JSON.stringify({ customizationId, values: customizationValues, updatedAt: new Date().toISOString() });
+        localStorage.setItem(currentKey, draft);
+        localStorage.setItem(sharedKey, draft);
       } catch {
         // Storage may be disabled; keep the active customization in memory.
       }
@@ -224,19 +236,16 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
       setMediaView("mockup");
     }
     if (product.isPersonalized) {
-      const defaults = Object.fromEntries((product.personalizationFields || []).filter(field => field.defaultValue !== undefined).map(field => [field.id, field.defaultValue]));
       const nextKey = `hub1688_customization_draft:${product.id || product.slug}:${variant.sourceSkuId || "default"}`;
       try {
-        const draft = JSON.parse(localStorage.getItem(nextKey) || "null");
-        setCustomizationValues(draft?.values && typeof draft.values === "object" ? { ...defaults, ...draft.values } : defaults);
-        setCustomizationId(typeof draft?.customizationId === "string" ? draft.customizationId : createCustomizationId());
+        // Keep the active answers when customers compare colors/designs. A
+        // per-SKU copy is still written so the draft can be restored later.
+        localStorage.setItem(nextKey, JSON.stringify({ customizationId, values: customizationValues, updatedAt: new Date().toISOString() }));
       } catch {
-        setCustomizationValues(defaults);
-        setCustomizationId(createCustomizationId());
+        // Storage may be disabled; the in-memory answers are still preserved.
       }
       setRenderedPreviewUrl(undefined);
       setPersistedPreviewUrl(undefined);
-      setShowCustomizationValidation(false);
       setPurchaseError("");
     }
   };
@@ -295,8 +304,11 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     }
     if (selectedVariant) {
       const draftKey = `hub1688_customization_draft:${product.id || product.slug}:${selectedVariant.sourceSkuId || "default"}`;
+      const sharedDraftKey = `hub1688_customization_draft:${product.id || product.slug}:shared`;
       try {
-        localStorage.setItem(draftKey, JSON.stringify({ customizationId, values: newValues, updatedAt: new Date().toISOString() }));
+        const draft = JSON.stringify({ customizationId, values: newValues, updatedAt: new Date().toISOString() });
+        localStorage.setItem(draftKey, draft);
+        localStorage.setItem(sharedDraftKey, draft);
       } catch {
         // Storage may be disabled; personalization still works for the active page.
       }
@@ -307,6 +319,37 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
     () => validatePersonalizationValues(product.personalizationFields || [], customizationValues),
     [product.personalizationFields, customizationValues]
   );
+
+  const visiblePersonalizationFields = useMemo(
+    () => (product.personalizationFields || []).filter(field => isPersonalizationFieldVisible(field, customizationValues)),
+    [product.personalizationFields, customizationValues]
+  );
+
+  type CustomizationSummaryItem = { id: string; label: string; value: string; imageUrl?: string };
+  const customizationSummaryItems = useMemo<CustomizationSummaryItem[]>(() => visiblePersonalizationFields.flatMap<CustomizationSummaryItem>(field => {
+    const value = customizationValues[field.id];
+    const hasValue = field.type === "CHECKBOX"
+      ? value === true
+      : Array.isArray(value)
+        ? value.length > 0
+        : value !== undefined && value !== null && String(value).trim() !== "";
+    if (!hasValue) return [];
+    if (field.type === "IMAGE_UPLOAD") {
+      const imageUrl = getPersonalizationImageUrl(value);
+      const fileName = value && typeof value === "object" ? value.fileName : undefined;
+      return [{ id: field.id, label: field.label, value: fileName || "Ảnh khách đã tải lên", imageUrl }];
+    }
+    if (field.type === "REPEAT_GROUP" && Array.isArray(value)) {
+      return [{ id: field.id, label: field.label, value: `${value.length} ${field.repeat?.itemLabel?.toLowerCase() || "mục"}`, imageUrl: undefined }];
+    }
+    const option = field.options?.find(candidate => String(candidate.value) === String(value));
+    return [{ id: field.id, label: field.label, value: field.type === "CHECKBOX" ? "Đã xác nhận" : option?.label || String(value), imageUrl: option?.thumbnail || option?.previewAssetUrl }];
+  }), [visiblePersonalizationFields, customizationValues]);
+
+  const openLargePreview = () => {
+    setMediaView("mockup");
+    primaryPreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const resolvePersistentPreview = async (): Promise<string | undefined> => {
     if (!renderedPreviewUrl?.startsWith("data:")) return renderedPreviewUrl;
@@ -395,7 +438,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           {/* Cột Trái: Media Gallery & Video */}
           <div className="lg:col-span-6 space-y-3 sm:space-y-4">
             {/* Active Display Window */}
-            <div className="relative aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-200/90 shadow-inner group">
+            <div ref={primaryPreviewRef} className="relative aspect-square rounded-2xl overflow-hidden bg-stone-100 border border-stone-200/90 shadow-inner group scroll-mt-6">
               {mediaLoadError ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 bg-stone-100 px-6 text-center text-stone-500" role="img" aria-label="Không thể tải ảnh sản phẩm">
                   <ImageOff className="h-8 w-8" aria-hidden="true" />
@@ -521,7 +564,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
           </div>
 
           {/* Cột Phải: Thông Tin, Trình Customizer & Đặt Mua */}
-          <div className={`lg:col-span-6 flex flex-col justify-between space-y-4 sm:space-y-5 ${fullPage ? "lg:sticky lg:top-24 lg:self-start" : ""}`}>
+          <div className="lg:col-span-6 flex flex-col justify-between space-y-4 sm:space-y-5">
             <div>
               {/* Category & Ratings */}
               <div className="flex items-center justify-between gap-2">
@@ -563,6 +606,18 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
                 )}
               </div>
               {selectedVariant?.inventoryTracked !== false && maxQuantity > 0 && maxQuantity <= 10 && <div className="mt-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />Chỉ còn {maxQuantity.toLocaleString("vi-VN")} sản phẩm cho phân loại này</div>}
+
+              {product.isPersonalized && <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-3.5" aria-label="Tiến trình đặt sản phẩm cá nhân hóa">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-orange-700">Lộ trình đặt hàng</p><p className="mt-0.5 text-[11px] font-semibold text-stone-600">Hoàn tất từng bước, xem mockup rồi mới đặt</p></div>
+                  <span className="shrink-0 text-[11px] font-black text-orange-700">{customizationValidation.completedRequired}/{customizationValidation.totalRequired || 0}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px] font-bold">
+                  <div className="flex items-center gap-1.5 rounded-xl bg-white px-2 py-2 text-stone-800 ring-1 ring-orange-200"><span className="grid h-5 w-5 place-items-center rounded-full bg-orange-600 text-[9px] text-white">1</span><span className="truncate">Chọn biến thể</span></div>
+                  <div className={`flex items-center gap-1.5 rounded-xl px-2 py-2 ring-1 ${customizationValidation.valid ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-stone-800 ring-orange-200"}`}><span className={`grid h-5 w-5 place-items-center rounded-full text-[9px] text-white ${customizationValidation.valid ? "bg-emerald-600" : "bg-orange-600"}`}>{customizationValidation.valid ? <Check className="h-3 w-3" /> : "2"}</span><span className="truncate">Nhập nội dung</span></div>
+                  <button type="button" onClick={() => { setShowCustomizationReview(true); openLargePreview(); }} className="mc-focus-ring flex min-h-9 items-center gap-1.5 rounded-xl bg-white px-2 py-2 text-left font-bold text-stone-800 ring-1 ring-orange-200 transition hover:bg-orange-100"><span className="grid h-5 w-5 place-items-center rounded-full bg-orange-600 text-[9px] text-white">3</span><span className="truncate">Xem & đặt hàng</span></button>
+                </div>
+              </div>}
 
               {/* Volume Discount Tiers */}
               {product.volumeDiscountTiers && product.volumeDiscountTiers.length > 1 && (
@@ -636,16 +691,28 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
 
               {/* Live Customizer Engine (Macorner Feature) */}
               {product.isPersonalized && (
-                <div className="mt-4 pt-4 border-t border-stone-100">
+                <div className="mt-4 border-t border-stone-100 pt-4">
                   <LiveCustomizerEngine
                     product={product}
                     variant={selectedVariant}
                     values={customizationValues}
                     onChange={handleCustomizerChange}
                     showValidation={showCustomizationValidation}
+                    onPreviewRequest={openLargePreview}
                   />
                 </div>
               )}
+
+              {product.isPersonalized && <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5" aria-labelledby="customization-review-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2"><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${customizationValidation.valid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>{customizationValidation.valid ? <CheckCircle2 className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</span><div className="min-w-0"><h3 id="customization-review-heading" className="truncate text-xs font-black text-slate-900">Kiểm tra thiết kế trước khi đặt</h3><p className="text-[10px] text-slate-500">{customizationSummaryItems.length ? `${customizationSummaryItems.length} nội dung đã sẵn sàng` : "Chưa có nội dung cá nhân hóa"}</p></div></div>
+                  <button type="button" onClick={() => setShowCustomizationReview(current => !current)} aria-expanded={showCustomizationReview} className="mc-focus-ring inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[11px] font-black text-orange-700 hover:bg-orange-100"><span>{showCustomizationReview ? "Thu gọn" : "Xem lại"}</span><ChevronDown className={`h-4 w-4 transition-transform ${showCustomizationReview ? "rotate-180" : ""}`} /></button>
+                </div>
+                {showCustomizationReview && <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                  <button type="button" onClick={openLargePreview} className="mc-focus-ring flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-xs font-black text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100"><Eye className="h-4 w-4 text-orange-600" /> Xem mockup cỡ lớn</button>
+                  {customizationSummaryItems.length > 0 ? <div className="grid gap-2 sm:grid-cols-2">{customizationSummaryItems.map(item => <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-xl bg-white px-2.5 py-2 ring-1 ring-slate-200"><div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-100">{item.imageUrl ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" /> : <Check className="h-4 w-4 text-emerald-600" />}</div><div className="min-w-0"><p className="truncate text-[10px] font-semibold text-slate-500">{item.label}</p><p className="truncate text-[11px] font-black text-slate-800">{item.value}</p></div></div>)}</div> : <p className="rounded-xl bg-white px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">Nhập thông tin ở trên để xem tóm tắt thiết kế.</p>}
+                </div>}
+              </section>}
 
               {/* Gift Add-ons */}
               {product.giftAddons && product.giftAddons.length > 0 && (
@@ -879,6 +946,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
             <div className="text-base font-black text-[var(--mc-color-accent-strong)] leading-tight">
               {totalPriceCalculated.toLocaleString("vi-VN")}đ
             </div>
+            {product.isPersonalized && !customizationValidation.valid && <div className="truncate text-[9px] font-bold text-orange-700">{customizationValidation.completedRequired}/{customizationValidation.totalRequired} mục bắt buộc</div>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -888,7 +956,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               className="mc-focus-ring min-h-11 px-3.5 py-2.5 rounded-xl font-bold text-xs bg-orange-50 text-[var(--mc-color-accent-strong)] border border-orange-200 flex items-center gap-1 transition-colors hover:bg-orange-100 active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400 cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : "Thêm Giỏ"}</span>
+              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : product.isPersonalized && !customizationValidation.valid ? "Hoàn tất" : "Thêm Giỏ"}</span>
             </button>
             <button
               type="button"
@@ -897,7 +965,7 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
               className="mc-focus-ring min-h-11 px-4 py-2.5 rounded-xl font-bold text-xs text-white bg-[var(--mc-color-action-primary)] shadow-md shadow-orange-950/20 flex items-center gap-1 transition-colors hover:bg-[var(--mc-color-action-primary-hover)] active:scale-95 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none cursor-pointer"
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : "Mua Ngay"}</span>
+              <span>{isPreparingPurchase ? "Đang lưu…" : isOutOfStock ? "Hết hàng" : product.isPersonalized && !customizationValidation.valid ? "Xem lại" : "Mua Ngay"}</span>
             </button>
           </div>
         </div>}

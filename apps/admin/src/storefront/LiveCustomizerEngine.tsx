@@ -21,7 +21,8 @@ import {
   Loader2,
   Plus,
   Sparkles,
-  Trash2
+  Trash2,
+  ChevronDown
 } from "lucide-react";
 import { AdminApi } from "../services/api";
 import { getVariantVisual } from "./VariantMockupPreview";
@@ -33,6 +34,7 @@ interface LiveCustomizerEngineProps {
   values: Record<string, any>;
   onChange: (newValues: Record<string, any>, renderedPreviewUrl?: string) => void;
   onValidationChange?: (result: PersonalizationValidationResult) => void;
+  onPreviewRequest?: () => void;
   showValidation?: boolean;
   className?: string;
 }
@@ -111,6 +113,7 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   values,
   onChange,
   onValidationChange,
+  onPreviewRequest,
   showValidation = false,
   className = ""
 }) => {
@@ -123,6 +126,8 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
   const [previewExportable, setPreviewExportable] = useState(true);
   const [cropFieldId, setCropFieldId] = useState<string | null>(null);
+  const [activeGroupIndex, setActiveGroupIndex] = useState(0);
+  const [showAllGroups, setShowAllGroups] = useState(false);
   const scenes = useMemo(() => product.customizerCanvas?.scenes || [], [product.customizerCanvas]);
   const [activeSceneId, setActiveSceneId] = useState<string>(() => scenes[0]?.id || "default");
 
@@ -159,6 +164,13 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
   useEffect(() => {
     if (scenes.length && !scenes.some(scene => scene.id === activeSceneId)) setActiveSceneId(scenes[0].id);
   }, [scenes, activeSceneId]);
+  useEffect(() => {
+    if (activeGroupIndex >= fieldGroups.length) setActiveGroupIndex(Math.max(0, fieldGroups.length - 1));
+  }, [activeGroupIndex, fieldGroups.length]);
+  useEffect(() => {
+    setActiveGroupIndex(0);
+    setShowAllGroups(false);
+  }, [product.id, product.slug]);
 
   const handleFieldChange = (fieldId: string, value: unknown) => {
     setUploadErrors(current => ({ ...current, [fieldId]: "" }));
@@ -428,29 +440,31 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
     <section id="product-personalizer" className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
       <div className="border-b border-slate-200 bg-slate-950 px-4 py-3 text-white">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5"><span className="grid h-8 w-8 place-items-center rounded-lg bg-orange-500"><Sparkles className="h-4 w-4" /></span><div><h3 className="text-sm font-black">Cá nhân hoá sản phẩm</h3><p className="text-[10px] text-slate-300">Xem trước trực tiếp · không cần đăng nhập</p></div></div>
+          <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-orange-500"><Sparkles className="h-4 w-4" /></span><div className="min-w-0"><h3 className="truncate text-sm font-black">Bước 2 · Cá nhân hoá sản phẩm</h3><p className="truncate text-[10px] text-slate-300">Xem trước trực tiếp · không cần đăng nhập</p></div></div>
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${validation.valid ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-200"}`}>{validation.completedRequired}/{validation.totalRequired} bắt buộc</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all" style={{ width: `${validation.totalRequired ? validation.completedRequired / validation.totalRequired * 100 : 100}%` }} /></div>
-        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[9px] font-semibold text-slate-300" aria-label="Quy trình cá nhân hóa">
-          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">1 · Chọn phân loại</span>
-          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">2 · Nhập nội dung</span>
-          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">3 · Kiểm tra preview</span>
+        <div className="mt-3 grid grid-cols-2 gap-1.5 text-[9px] font-semibold text-slate-300 sm:grid-cols-3" aria-label="Quy trình cá nhân hóa">
+          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">1 · Chọn biến thể</span>
+          <span className="rounded-lg bg-orange-500/25 px-2 py-1.5 text-center text-white">2 · Nhập nội dung</span>
+          <button type="button" onClick={onPreviewRequest} className="mc-focus-ring col-span-2 rounded-lg bg-white/10 px-2 py-1.5 text-center hover:bg-white/20 sm:col-span-1">3 · Xem & kiểm tra</button>
         </div>
         {scenes.length > 1 && <div className="mt-3 flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Mặt mockup"><span className="self-center pr-1 text-[10px] font-bold text-slate-400">Xem mặt:</span>{scenes.map(scene => <button key={scene.id} type="button" role="tab" aria-selected={activeScene?.id === scene.id} onClick={() => setActiveSceneId(scene.id)} className={`min-h-9 shrink-0 rounded-lg px-3 text-[10px] font-bold transition ${activeScene?.id === scene.id ? "bg-white text-slate-900" : "bg-white/10 text-slate-200 hover:bg-white/20"}`}>{scene.label}</button>)}</div>}
       </div>
 
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_210px]">
-        <div className="order-2 space-y-4 overflow-visible p-4 sm:p-5 md:order-1 md:max-h-[560px] md:overflow-y-auto">
+        <div className="order-2 space-y-4 overflow-visible p-4 sm:p-5 md:order-1">
           {fieldGroups.length > 0 ? fieldGroups.map((group, groupIndex) => {
             const requiredCount = group.fields.filter(field => field.required).length;
             const completedCount = group.fields.filter(field => field.required && !validation.errors[field.id]).length;
-            return <fieldset key={group.key} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-              <legend className="px-1 text-xs font-black text-slate-900"><span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-orange-100 text-[10px] text-orange-700">{groupIndex + 1}</span>{group.label}</legend>
-              <p className="mb-3 mt-1 text-[10px] font-semibold text-slate-500">{requiredCount ? `${completedCount}/${requiredCount} mục bắt buộc đã hoàn thành` : "Thông tin tùy chọn"}</p>
-              <div className="space-y-4">{group.fields.map(renderField)}</div>
+            const isOpen = showAllGroups || activeGroupIndex === groupIndex;
+            return <fieldset key={group.key} className={`rounded-xl border bg-slate-50/70 transition-colors ${isOpen ? "border-orange-200" : "border-slate-200"}`}>
+              <legend className="sr-only">{group.label}</legend>
+              <button type="button" aria-expanded={isOpen} onClick={() => { setActiveGroupIndex(groupIndex); setShowAllGroups(false); }} className="mc-focus-ring flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2.5 text-left sm:px-4"><span className="flex min-w-0 items-center gap-2"><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-black ${completedCount === requiredCount && requiredCount > 0 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>{completedCount === requiredCount && requiredCount > 0 ? <Check className="h-3.5 w-3.5" /> : groupIndex + 1}</span><span className="truncate text-xs font-black text-slate-900">{group.label}</span></span><span className="flex shrink-0 items-center gap-2"><span className="text-[10px] font-semibold text-slate-500">{requiredCount ? `${completedCount}/${requiredCount}` : "Tùy chọn"}</span><ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} /></span></button>
+              {isOpen && <div className="border-t border-slate-200 px-3 pb-3 pt-2.5 sm:px-4"><p className="mb-3 text-[10px] font-semibold text-slate-500">{requiredCount ? `${completedCount}/${requiredCount} mục bắt buộc đã hoàn thành` : "Thông tin tùy chọn"}</p><div className="space-y-4">{group.fields.map(renderField)}</div>{groupIndex < fieldGroups.length - 1 && <button type="button" onClick={() => { setActiveGroupIndex(groupIndex + 1); setShowAllGroups(false); }} className="mc-focus-ring mt-4 min-h-11 w-full rounded-xl bg-slate-900 text-xs font-black text-white transition hover:bg-slate-800">Tiếp theo: {fieldGroups[groupIndex + 1].label}</button>}</div>}
             </fieldset>;
           }) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Sản phẩm chưa có trường cá nhân hoá. Hãy cấu hình trong trang quản trị.</p>}
+          {fieldGroups.length > 1 && <button type="button" onClick={() => setShowAllGroups(current => !current)} className="mc-focus-ring min-h-10 w-full rounded-xl border border-dashed border-slate-300 bg-white text-[11px] font-bold text-slate-600 hover:border-orange-400 hover:text-orange-700">{showAllGroups ? "Thu gọn các bước" : "Hiện tất cả bước để rà soát"}</button>}
           <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-800"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Bản nháp được tự động lưu trên thiết bị. Ảnh sau khi chọn được tải lên kho riêng của cửa hàng.</span></div>
         </div>
         <div className="order-1 border-b border-slate-200 bg-slate-100 p-3 md:order-2 md:border-b-0 md:border-l">
