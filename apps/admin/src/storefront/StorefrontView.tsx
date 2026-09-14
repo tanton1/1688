@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { WebProduct, WebProductVariant, StorefrontConfig, CustomerOrder } from "@hub1688/shared-types";
 import { calculateStorefrontUnitPrice, getStorefrontVariantMaxQuantity, isStorefrontVariantAvailable, normalizeCatalogKey } from "@hub1688/shared-utils";
 import { AdminApi } from "../services/api";
-import { StoreHeader } from "./StoreHeader";
+import { StoreHeader, StoreHeaderNavigationTarget } from "./StoreHeader";
 import { StoreHeroBanner } from "./StoreHeroBanner";
+import { StoreDiscoverySections } from "./StoreDiscoverySections";
 import { StoreProductCard } from "./StoreProductCard";
 import { StoreProductDetailModal } from "./StoreProductDetailModal";
 import { StoreCollectionFilters } from "./StoreCollectionFilters";
@@ -47,8 +48,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 }) => {
   // Store Config
   const [config, setConfig] = useState<StorefrontConfig>({
-    storeName: "MACORNER",
-    tagline: "Quà cá nhân hóa cho những người bạn yêu",
+    storeName: "1688 STORE",
+    tagline: "Quà tặng chọn riêng cho người quan trọng",
     hotline: "",
     freeShipThresholdVND: 500000,
     shippingFeeVND: 30000,
@@ -117,6 +118,14 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
 
   const catalogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const storeName = config.storeName?.trim() || "1688 STORE";
+    const tagline = config.tagline?.trim() && config.tagline !== "Cửa hàng trực tuyến"
+      ? config.tagline
+      : "Quà tặng chọn riêng cho người quan trọng";
+    document.title = `${storeName} — ${tagline}`;
+  }, [config.storeName, config.tagline]);
 
   const collectionCategory = useMemo(
     () => initialCollection
@@ -564,6 +573,56 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleHeaderNavigation = (target: StoreHeaderNavigationTarget) => {
+    setIsProductRoute(false);
+    setDetailProduct(null);
+    setRelatedProducts([]);
+    if (target.kind === "category") {
+      setSelectedCategory(target.value);
+      setSearchTerm("");
+      setActiveOccasion("all");
+      setActiveRecipient("all");
+      setPriceBand("ALL");
+      setPersonalizedOnly(false);
+    } else if (target.kind === "occasion") {
+      setSelectedCategory("ALL");
+      setSearchTerm("");
+      setActiveOccasion(target.value);
+      setActiveRecipient("all");
+      setPriceBand("ALL");
+      setPersonalizedOnly(false);
+    } else if (target.kind === "recipient") {
+      setSelectedCategory("ALL");
+      setSearchTerm("");
+      setActiveRecipient(target.value);
+      setActiveOccasion("all");
+      setPriceBand("ALL");
+      setPersonalizedOnly(false);
+    } else if (target.kind === "price") {
+      setSelectedCategory("ALL");
+      setSearchTerm("");
+      setActiveOccasion("all");
+      setActiveRecipient("all");
+      setPriceBand(target.value);
+      setPersonalizedOnly(false);
+    } else if (target.kind === "personalized") {
+      setSelectedCategory("ALL");
+      setSearchTerm("");
+      setActiveOccasion("all");
+      setActiveRecipient("all");
+      setPriceBand("ALL");
+      setPersonalizedOnly(true);
+    } else if (target.kind === "search") {
+      setSelectedCategory("ALL");
+      setActiveOccasion("all");
+      setActiveRecipient("all");
+      setPriceBand("ALL");
+      setPersonalizedOnly(false);
+      setSearchTerm(target.value);
+    }
+    window.setTimeout(() => scrollToCatalog(), 0);
+  };
+
   return (
     <div className="mc-storefront flex min-h-screen flex-col pb-20 selection:bg-[var(--mc-color-accent)] selection:text-white md:pb-0">
       {/* 1. Header */}
@@ -578,11 +637,22 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           setIsTrackerOpen(true);
         }}
         onBackToAdmin={onBackToAdmin}
+        onNavigateToCatalog={handleHeaderNavigation}
       />
 
       {!isProductRoute && <>
         {/* 2. Hero Banner */}
         {!initialCollection && <StoreHeroBanner config={config} onExploreClick={scrollToCatalog} />}
+
+        {!initialCollection && !isLoading && (
+          <StoreDiscoverySections
+            products={products}
+            categories={categories}
+            onCategorySelect={(category) => handleHeaderNavigation({ kind: "category", value: category })}
+            onSelectProduct={navigateToProduct}
+            onQuickAdd={handleQuickAdd}
+          />
+        )}
 
         {(catalogMode === "DEMO" || loadError) && (
           <div className={`${catalogMode === "DEMO" ? "bg-[var(--mc-color-surface-muted)] text-[var(--mc-color-text-tertiary)]" : "bg-[var(--mc-color-danger)] text-white"} border-y border-[var(--mc-color-border-default)]/20 px-4 py-2.5 text-center text-xs font-semibold`} role="status">
@@ -691,6 +761,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
 
       {detailProduct && <StoreProductDetailModal
         product={detailProduct}
+        storeName={config.storeName}
         fullPage={isProductRoute}
         demoMode={catalogMode === "DEMO"}
         relatedProducts={relatedProducts.length > 0 ? relatedProducts : products.filter(product => product.id !== detailProduct.id).slice(0, 4)}
@@ -710,9 +781,9 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                 <div className="flex h-9 w-9 items-center justify-center rounded-[var(--mc-radius-xs)] bg-[var(--mc-color-surface-strong)] text-[var(--mc-color-accent)]">
                   <Layers className="h-4 w-4" aria-hidden="true" />
                 </div>
-                <span className="text-sm font-bold text-white">{config.storeName && config.storeName !== "1688 STORE" ? config.storeName : "MACORNER"}</span>
+                <span className="text-sm font-bold text-white">{config.storeName?.trim() || "1688 STORE"}</span>
               </div>
-              <p className="max-w-xs text-sm leading-6 text-white/60">{config.tagline && config.tagline !== "Cửa hàng trực tuyến" ? config.tagline : "Quà cá nhân hóa cho những người bạn yêu"}</p>
+              <p className="max-w-xs text-sm leading-6 text-white/60">{config.tagline?.trim() && config.tagline !== "Cửa hàng trực tuyến" ? config.tagline : "Quà tặng chọn riêng cho người quan trọng"}</p>
               <div className="flex items-start gap-2 text-xs font-semibold text-white/80">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--mc-color-accent)]" aria-hidden="true" />
                 <span>Giá và tồn kho được xác nhận khi đặt hàng</span>
@@ -771,7 +842,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           </div>
 
           <div className="flex flex-col items-center justify-between gap-2 pt-6 text-[11px] text-white/45 sm:flex-row">
-            <span>© {new Date().getFullYear()} {config.storeName && config.storeName !== "1688 STORE" ? config.storeName : "MACORNER"}. All rights reserved.</span>
+            <span>© {new Date().getFullYear()} {config.storeName?.trim() || "1688 STORE"}. All rights reserved.</span>
             <div className="flex items-center gap-4">
               <button type="button" onClick={onBackToAdmin} className="mc-focus-ring rounded text-[var(--mc-color-accent)] hover:underline">
                 Quay về quản trị

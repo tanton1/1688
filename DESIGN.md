@@ -348,6 +348,16 @@ States:
 - Loading must retain the prompt and show “AI đang tạo bản nháp…”.
 - Error must preserve the prompt and expose a retry action.
 
+### 4.13 Mega-menu and editorial discovery
+
+- Desktop navigation should group destinations by occasion, recipient, product family, interest, and price rather than exposing one long undifferentiated category list.
+- Mega-menu items must update the real storefront filters and scroll to the resulting catalog; placeholder anchors are prohibited.
+- Only one desktop mega-menu may be open at a time. It must close on selection, outside pointer press, and Escape.
+- Homepage discovery blocks must be driven by live published products. A category tile may use the first published product image from that category, but must not advertise a category with no product.
+- “Trending” sections may reuse the current server-ranked catalog until a dedicated popularity signal exists; the label must not claim sales figures that are not available.
+- Horizontal discovery rails must preserve page scrolling, hide only their own decorative scrollbar, and keep every card keyboard reachable.
+- Reference brands, logos, product photography, and trademarked copy must never be used as storefront fallbacks; the visible brand and document title must come from shop configuration.
+
 ## 5. Responsive and edge-case behavior
 
 - At 320–639px, filters must use the modal sheet, product grids must use two columns, PDP content must stack, and purchase actions must remain reachable above mobile navigation.

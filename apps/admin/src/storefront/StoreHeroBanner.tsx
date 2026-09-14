@@ -8,6 +8,7 @@ interface StoreHeroBannerProps {
 }
 
 export const StoreHeroBanner: React.FC<StoreHeroBannerProps> = ({ config, onExploreClick }) => {
+  const brandName = config.storeName?.trim() || "1688 STORE";
   return (
     <section className="relative overflow-hidden bg-[var(--mc-color-surface-base)] text-[var(--mc-color-text-tertiary)]" aria-labelledby="store-hero-title">
       <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[var(--mc-color-accent)]/15 blur-3xl" aria-hidden="true" />
@@ -17,7 +18,7 @@ export const StoreHeroBanner: React.FC<StoreHeroBannerProps> = ({ config, onExpl
         <div className="max-w-2xl">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/75">
             <Sparkles className="h-3.5 w-3.5 text-[var(--mc-color-accent)]" aria-hidden="true" />
-            <span>Macorner · thiết kế theo câu chuyện của bạn</span>
+            <span>{brandName} · thiết kế theo câu chuyện của bạn</span>
           </div>
           <h1 id="store-hero-title" className="max-w-[13ch] text-4xl font-semibold leading-[1.08] tracking-[-0.055em] text-white sm:text-5xl lg:text-6xl">
             {config.bannerTitle || "Một món quà, một câu chuyện riêng."}
@@ -60,7 +61,7 @@ export const StoreHeroBanner: React.FC<StoreHeroBannerProps> = ({ config, onExpl
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-color-text-secondary)]">Personalized</p>
             <p className="mt-0.5 text-sm font-bold">Tạo riêng cho bạn</p>
           </div>
-          <div className="absolute -right-2 top-8 rounded-full bg-[var(--mc-color-accent)] px-3 py-2 text-xs font-bold text-white shadow-lg sm:-right-5">Quà có ý nghĩa ✦</div>
+          <div className="absolute -right-2 top-8 inline-flex items-center gap-1.5 rounded-full bg-[var(--mc-color-accent)] px-3 py-2 text-xs font-bold text-white shadow-lg sm:-right-5"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />Quà có ý nghĩa</div>
         </div>
       </div>
     </section>

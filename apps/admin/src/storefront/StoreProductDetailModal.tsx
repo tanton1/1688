@@ -39,6 +39,7 @@ import {
 
 interface StoreProductDetailModalProps {
   product: WebProduct;
+  storeName?: string;
   fullPage?: boolean;
   demoMode?: boolean;
   relatedProducts?: WebProduct[];
@@ -68,6 +69,7 @@ interface StoreProductDetailModalProps {
 
 export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = ({
   product,
+  storeName,
   fullPage = false,
   demoMode = false,
   relatedProducts = [],
@@ -101,10 +103,10 @@ export const StoreProductDetailModal: React.FC<StoreProductDetailModalProps> = (
   useEffect(() => {
     if (!fullPage) return;
     const previousTitle = document.title;
-    document.title = `${product.titleVI} — Macorner`;
+    document.title = `${product.titleVI} — ${storeName?.trim() || "1688 STORE"}`;
     window.scrollTo({ top: 0, behavior: "auto" });
     return () => { document.title = previousTitle; };
-  }, [fullPage, product.titleVI]);
+  }, [fullPage, product.titleVI, storeName]);
 
   useEffect(() => setMediaLoadError(false), [activeMedia.url, activeMedia.type, mediaView]);
 
