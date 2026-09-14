@@ -141,6 +141,16 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
     [fields, values]
   );
   const validation = useMemo(() => validatePersonalizationValues(fields, values), [fields, values]);
+  const fieldGroups = useMemo(() => {
+    const groups: Array<{ key: string; label: string; fields: PersonalizationField[] }> = [];
+    visibleFields.forEach(field => {
+      const key = (field.step || "Thông tin sản phẩm").trim() || "Thông tin sản phẩm";
+      const existing = groups.find(group => group.key === key);
+      if (existing) existing.fields.push(field);
+      else groups.push({ key, label: key.replace(/^\d+\.\s*/, ""), fields: [field] });
+    });
+    return groups;
+  }, [visibleFields]);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { validationChangeRef.current = onValidationChange; }, [onValidationChange]);
@@ -422,15 +432,28 @@ export const LiveCustomizerEngine: React.FC<LiveCustomizerEngineProps> = ({
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${validation.valid ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-200"}`}>{validation.completedRequired}/{validation.totalRequired} bắt buộc</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all" style={{ width: `${validation.totalRequired ? validation.completedRequired / validation.totalRequired * 100 : 100}%` }} /></div>
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[9px] font-semibold text-slate-300" aria-label="Quy trình cá nhân hóa">
+          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">1 · Chọn phân loại</span>
+          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">2 · Nhập nội dung</span>
+          <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center">3 · Kiểm tra preview</span>
+        </div>
         {scenes.length > 1 && <div className="mt-3 flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Mặt mockup"><span className="self-center pr-1 text-[10px] font-bold text-slate-400">Xem mặt:</span>{scenes.map(scene => <button key={scene.id} type="button" role="tab" aria-selected={activeScene?.id === scene.id} onClick={() => setActiveSceneId(scene.id)} className={`min-h-9 shrink-0 rounded-lg px-3 text-[10px] font-bold transition ${activeScene?.id === scene.id ? "bg-white text-slate-900" : "bg-white/10 text-slate-200 hover:bg-white/20"}`}>{scene.label}</button>)}</div>}
       </div>
 
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_210px]">
-        <div className="max-h-[560px] space-y-4 overflow-y-auto p-4 sm:p-5">
-          {visibleFields.length > 0 ? visibleFields.map(renderField) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Sản phẩm chưa có trường cá nhân hoá. Hãy cấu hình trong trang quản trị.</p>}
+        <div className="order-2 space-y-4 overflow-visible p-4 sm:p-5 md:order-1 md:max-h-[560px] md:overflow-y-auto">
+          {fieldGroups.length > 0 ? fieldGroups.map((group, groupIndex) => {
+            const requiredCount = group.fields.filter(field => field.required).length;
+            const completedCount = group.fields.filter(field => field.required && !validation.errors[field.id]).length;
+            return <fieldset key={group.key} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+              <legend className="px-1 text-xs font-black text-slate-900"><span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-orange-100 text-[10px] text-orange-700">{groupIndex + 1}</span>{group.label}</legend>
+              <p className="mb-3 mt-1 text-[10px] font-semibold text-slate-500">{requiredCount ? `${completedCount}/${requiredCount} mục bắt buộc đã hoàn thành` : "Thông tin tùy chọn"}</p>
+              <div className="space-y-4">{group.fields.map(renderField)}</div>
+            </fieldset>;
+          }) : <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Sản phẩm chưa có trường cá nhân hoá. Hãy cấu hình trong trang quản trị.</p>}
           <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10px] leading-4 text-emerald-800"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Bản nháp được tự động lưu trên thiết bị. Ảnh sau khi chọn được tải lên kho riêng của cửa hàng.</span></div>
         </div>
-        <div className="border-t border-slate-200 bg-slate-100 p-3 md:border-l md:border-t-0">
+        <div className="order-1 border-b border-slate-200 bg-slate-100 p-3 md:order-2 md:border-b-0 md:border-l">
           <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Bản xem trước</p>
           <canvas ref={canvasRef} className="aspect-square w-full rounded-xl border border-slate-200 bg-white object-contain shadow-sm" />
           <p className="mt-2 text-center text-[9px] leading-3 text-slate-500">Màu sắc thực tế có thể chênh lệch nhẹ khi in.{!previewExportable && " Nhà cung cấp ảnh đang chặn xuất preview, ảnh gốc vẫn được lưu."}</p>

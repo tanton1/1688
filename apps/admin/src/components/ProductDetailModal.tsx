@@ -79,6 +79,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [copyStyle, setCopyStyle] = useState<AICopywritingStyle>("AIDA");
   const [copyLang, setCopyLang] = useState<"VI" | "EN">(product.displayLanguage || "VI");
   const [generatedCopy, setGeneratedCopy] = useState<AIGeneratedProductCopy | null>(null);
+  const [aiGenerationMode, setAiGenerationMode] = useState<"DEMO" | "LIVE" | null>(null);
   const [seoFocusKeyword, setSeoFocusKeyword] = useState(product.focusKeywords?.[0] || extractSEOKeywords(product.titleVI, product.categoryName, "VI")[0] || product.titleVI);
   const [seoTone, setSeoTone] = useState<"TRUSTWORTHY" | "CONVERSION" | "PREMIUM" | "FRIENDLY">("TRUSTWORTHY");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -488,6 +489,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
     setIsGeneratingAI(true);
     setAiGenerationError(null);
+    setAiGenerationMode(null);
     try {
       const secondaryKeywords = (formData.focusKeywords || []).filter(item => item.toLowerCase() !== keyword.toLowerCase());
       const response = await AdminApi.generateAICopy(formData.id, {
@@ -498,6 +500,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         tone: seoTone
       });
       setGeneratedCopy(response.copy);
+      setAiGenerationMode(response.mode || "LIVE");
     } catch (error: any) {
       setAiGenerationError(error?.message || "Không thể tạo nội dung AI lúc này.");
     } finally {
@@ -1883,7 +1886,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-extrabold">AI SEO Workspace</h3>
-                          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Xử lý tại backend</span>
+                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">{aiGenerationMode === "DEMO" ? "Bản mô phỏng" : aiGenerationMode === "LIVE" ? "AI LIVE · apikey.fun" : "Xử lý tại backend"}</span>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-slate-400">
                           Tạo mới tiêu đề, mô tả ngắn, mô tả HTML, meta, URL, FAQ và ALT ảnh từ dữ liệu sản phẩm đã xác minh.
@@ -2490,15 +2493,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div id="product-editor-panel-copywriter" role="tabpanel" aria-labelledby="product-editor-tab-copywriter" tabIndex={0} className="space-y-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
               {/* Header Box */}
               <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 border border-pink-200/80 rounded-2xl p-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-pink-500 text-white flex items-center justify-center shadow-sm shadow-pink-500/30">
                       <Sparkles className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">
-                        Động Cơ Sinh Nội Dung Bán Hàng AI Copywriter
-                      </h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">Động Cơ Sinh Nội Dung Bán Hàng AI Copywriter</h4>
+                        <span className="rounded-full border border-pink-200 bg-white/70 px-2 py-0.5 text-[10px] font-bold text-pink-700">{aiGenerationMode === "DEMO" ? "Bản mô phỏng" : aiGenerationMode === "LIVE" ? "AI LIVE · apikey.fun" : "Sẵn sàng"}</span>
+                      </div>
                       <p className="text-xs text-slate-600 mt-0.5">
                         Tự động viết bài quảng cáo, bài PR chuyển đổi cao theo các công thức kinh điển (AIDA, PAS, Storytelling, Social Ads)
                       </p>
@@ -2506,11 +2510,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
 
                   {/* Language Selector */}
-                  <div className="flex items-center bg-white border border-pink-200 rounded-lg p-1 shadow-xs">
+                  <div className="grid w-full grid-cols-2 items-center bg-white border border-pink-200 rounded-lg p-1 shadow-xs sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setCopyLang("VI")}
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                        className={`min-h-10 px-3 py-1 text-xs font-bold rounded-md transition-all ${
                         copyLang === "VI"
                           ? "bg-pink-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900"
@@ -2521,7 +2525,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setCopyLang("EN")}
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                        className={`min-h-10 px-3 py-1 text-xs font-bold rounded-md transition-all ${
                         copyLang === "EN"
                           ? "bg-pink-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900"
@@ -2533,7 +2537,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 {/* Formula Selection Cards */}
-                <div className="grid grid-cols-4 gap-3 mt-4">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     {
                       id: "AIDA",
@@ -2587,12 +2591,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 {/* Generate Button */}
-                <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex justify-stretch sm:justify-end">
                   <button
                     type="button"
                     onClick={handleGenerateAISEO}
                     disabled={isGeneratingAI}
-                    className="px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-pink-500/30 flex items-center gap-2 transition-all disabled:cursor-wait disabled:opacity-60"
+                    className="min-h-11 w-full justify-center px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-pink-500/30 flex items-center gap-2 transition-all disabled:cursor-wait disabled:opacity-60 sm:w-auto"
                   >
                     <Sparkles className="w-4 h-4" />
                     {isGeneratingAI ? "AI đang viết…" : "Sinh bài viết bằng AI"}
