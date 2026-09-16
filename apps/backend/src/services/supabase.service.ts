@@ -920,6 +920,102 @@ export class SupabaseDataService {
     }
   }
 
+  public async upsertChannelAccount(account: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client
+      .from("channel_accounts")
+      .upsert(account, { onConflict: "platform,shop_id" })
+      .select("*")
+      .single();
+    if (error) {
+      console.error("[Supabase upsertChannelAccount error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async getChannelAccount(platform: string, accountId?: string): Promise<any | null> {
+    if (!this.client) return null;
+    let query = this.client.from("channel_accounts").select("*").eq("platform", platform);
+    if (accountId) query = query.eq("id", accountId);
+    const { data, error } = await query.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+      console.error("[Supabase getChannelAccount error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async listChannelAccounts(): Promise<any[]> {
+    if (!this.client) return [];
+    const { data, error } = await this.client
+      .from("channel_accounts")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (error) {
+      console.error("[Supabase listChannelAccounts error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  public async upsertChannelListing(listing: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client
+      .from("channel_listings")
+      .upsert(listing, { onConflict: "channel_account_id,product_id" })
+      .select("*")
+      .single();
+    if (error) {
+      console.error("[Supabase upsertChannelListing error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async getChannelListing(accountId: string, productId: string): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client
+      .from("channel_listings")
+      .select("*")
+      .eq("channel_account_id", accountId)
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (error) {
+      console.error("[Supabase getChannelListing error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async listChannelListings(platform?: string): Promise<any[]> {
+    if (!this.client) return [];
+    let query = this.client.from("channel_listings").select("*");
+    if (platform) query = query.eq("platform", platform);
+    const { data, error } = await query.order("updated_at", { ascending: false }).limit(200);
+    if (error) {
+      console.error("[Supabase listChannelListings error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  public async replaceChannelSkus(listingId: string, rows: Array<Record<string, unknown>>): Promise<boolean> {
+    if (!this.client) return false;
+    const { error: deleteError } = await this.client.from("channel_skus").delete().eq("channel_listing_id", listingId);
+    if (deleteError) return false;
+    if (!rows.length) return true;
+    const { error } = await this.client.from("channel_skus").insert(rows);
+    if (error) console.error("[Supabase replaceChannelSkus error]", error);
+    return !error;
+  }
+
+  public async recordChannelEvent(event: Record<string, unknown>): Promise<void> {
+    if (!this.client) return;
+    const { error } = await this.client.from("channel_sync_events").insert(event);
+    if (error) console.error("[Supabase recordChannelEvent error]", error);
+  }
+
   private mapDbRowToWebProduct(row: any): WebProduct {
     const sourcePlatform = String(row.source_platform || "1688").toUpperCase();
     const legacyUntrackedSource = sourcePlatform === "SHOPIFY" || sourcePlatform === "MACORNER";

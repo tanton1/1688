@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { WebProduct } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
+import { ShopeePublishingPanel } from "./ShopeePublishingPanel";
 import {
   Share2,
   Globe,
@@ -189,7 +190,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 Kênh Đẩy Dữ Liệu Bán Hàng & Cảnh Báo (Omnichannel Hub)
               </h3>
               <p className="text-xs text-slate-500">
-                Đồng bộ 1-Click lên WooCommerce, Shopify, xuất CSV Shopee/TikTok & cảnh báo Telegram
+                Đăng trực tiếp lên Shopee, đồng bộ web bán hàng và quản lý dữ liệu đa kênh
               </p>
             </div>
           </div>
@@ -203,7 +204,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-5 gap-4">
+        <div className="flex shrink-0 gap-4 overflow-x-auto border-b border-slate-200 bg-slate-50 px-5">
           <button
             type="button"
             onClick={() => setActiveTab("WOOCOMMERCE")}
@@ -237,8 +238,8 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Download className="w-4 h-4" />
-            Xuất CSV Sàn TMĐT
+            <Layers className="w-4 h-4" />
+            Shopee / TikTok Shop
           </button>
           <button
             type="button"
@@ -257,7 +258,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
         {/* Body Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
           {/* Target Product Selector for Single-product pushes */}
-          {(activeTab === "WOOCOMMERCE" || activeTab === "SHOPIFY") && (
+          {(activeTab === "WOOCOMMERCE" || activeTab === "SHOPIFY" || activeTab === "MARKETPLACE") && (
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Sản phẩm đồng bộ:
@@ -410,57 +411,27 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: Marketplace CSV */}
+          {/* TAB 3: Marketplace publishing */}
           {activeTab === "MARKETPLACE" && (
             <div className="space-y-4">
-              <p className="text-xs text-slate-600">
-                Xuất các sản phẩm đã duyệt thành CSV theo cấu trúc hiện tại của từng kênh. Hãy kiểm tra lại cột bắt buộc trên Kênh Người Bán trước khi tải lên.
-              </p>
+              <ShopeePublishingPanel
+                product={currentProduct}
+                onShowToast={onShowToast}
+                onExportCsv={() => void handleExportCSV("SHOPEE")}
+              />
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* Shopee Box */}
-                <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <div className="w-8 h-8 rounded-lg bg-orange-500 text-white font-bold flex items-center justify-center text-xs mb-2">
-                      S
-                    </div>
-                    <h4 className="font-bold text-sm text-slate-900">Shopee Seller Center</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      File CSV mã hóa UTF-8 BOM, chỉ điền màu, size, giá, kho và ảnh khi sản phẩm có dữ liệu.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => handleExportCSV("SHOPEE")}
-                    className="mt-4 w-full py-2 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Tải File CSV Shopee
-                  </button>
+              <div className="flex flex-col gap-3 rounded-2xl bg-slate-950 p-4 text-white sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-slate-950">TT</div>
+                  <h4 className="text-sm font-black">TikTok Shop Connector</h4>
+                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-400">
+                    Adapter TikTok Shop sẽ dùng chung Channel Listing vừa triển khai. Trong lúc chờ tạo Custom App và scope, vẫn có thể xuất CSV dự phòng.
+                  </p>
                 </div>
-
-                {/* TikTok Shop Box */}
-                <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-col justify-between">
-                  <div>
-                    <div className="w-8 h-8 rounded-lg bg-white text-slate-900 font-bold flex items-center justify-center text-xs mb-2">
-                      TT
-                    </div>
-                    <h4 className="font-bold text-sm text-white">TikTok Shop Seller Center</h4>
-                    <p className="text-xs text-slate-400 mt-1">
-                      File đăng sản phẩm hàng loạt với tên, biến thể và ảnh hiện có trong catalog.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => handleExportCSV("TIKTOK_SHOP")}
-                    className="mt-4 w-full py-2 text-xs font-bold text-slate-900 bg-white hover:bg-slate-100 rounded-xl shadow-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Tải File CSV TikTok Shop
-                  </button>
-                </div>
+                <button type="button" disabled={isProcessing} onClick={() => handleExportCSV("TIKTOK_SHOP")}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 text-xs font-black text-slate-950 hover:bg-slate-100">
+                  <Download className="h-4 w-4" /> Tải CSV TikTok Shop
+                </button>
               </div>
             </div>
           )}

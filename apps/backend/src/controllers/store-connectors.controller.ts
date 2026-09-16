@@ -4,6 +4,7 @@ import {
   ShopifyConfig,
   AICopywritingStyle,
   AITemplateDraftRequest,
+  ShopeeListingDraft,
   WebProduct
 } from "@hub1688/shared-types";
 import { storeConnectorsService } from "../services/store-connectors.service.js";
@@ -12,8 +13,22 @@ import { supabaseService } from "../services/supabase.service.js";
 import { AiGatewayError, aiGatewayService } from "../services/ai-gateway.service.js";
 import { inMemoryProducts } from "./import.controller.js";
 import { ENV } from "../config/env.js";
+import {
+  ShopeeConnectorError,
+  shopeeConnectorService,
+  validateShopeeListing
+} from "../services/shopee-connector.service.js";
 
 export class StoreConnectorsController {
+  private sendShopeeError(res: Response, error: unknown): void {
+    if (error instanceof ShopeeConnectorError) {
+      res.status(error.status).json({ success: false, error: error.code, message: error.message });
+      return;
+    }
+    console.error("[ShopeeConnector] unexpected error", error);
+    res.status(500).json({ success: false, error: "SHOPEE_INTERNAL_ERROR", message: "Không thể xử lý yêu cầu Shopee" });
+  }
+
   private sendAiError(res: Response, error: unknown): void {
     if (error instanceof AiGatewayError) {
       const status = error.code === "AI_NOT_CONFIGURED" ? 503 : error.code === "AI_MODEL_NOT_SUPPORTED" ? 400 : 502;
@@ -189,6 +204,118 @@ export class StoreConnectorsController {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(csvContent);
+  }
+
+  public async getShopeeStatus(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, account: await shopeeConnectorService.getStatus() });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public getShopeeAuthorizationUrl(req: Request, res: Response): void {
+    try {
+      const authorizationUrl = shopeeConnectorService.getAuthorizationUrl(req.auth?.id || "admin");
+      res.json({ success: true, authorizationUrl });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async handleShopeeCallback(req: Request, res: Response): Promise<void> {
+    const code = String(req.query.code || "");
+    const shopId = String(req.query.shop_id || "");
+    const state = String(req.query.state || "");
+    try {
+      if (!code || !shopId || !state) throw new ShopeeConnectorError("SHOPEE_CALLBACK_INVALID", "Callback Shopee thiếu code, shop_id hoặc state", 400);
+      await shopeeConnectorService.handleCallback(code, shopId, state);
+      if (ENV.PUBLIC_APP_URL) {
+        const target = new URL(ENV.PUBLIC_APP_URL);
+        target.searchParams.set("channel", "shopee");
+        target.searchParams.set("connection", "success");
+        res.redirect(302, target.toString());
+        return;
+      }
+      res.status(200).send("Đã kết nối Shopee thành công. Bạn có thể đóng cửa sổ này.");
+    } catch (error) {
+      if (ENV.PUBLIC_APP_URL) {
+        const target = new URL(ENV.PUBLIC_APP_URL);
+        target.searchParams.set("channel", "shopee");
+        target.searchParams.set("connection", "failed");
+        target.searchParams.set("reason", error instanceof ShopeeConnectorError ? error.code : "SHOPEE_CALLBACK_FAILED");
+        res.redirect(302, target.toString());
+        return;
+      }
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async getShopeeCategories(req: Request, res: Response): Promise<void> {
+    try {
+      const categories = await shopeeConnectorService.getCategories(req.query.accountId ? String(req.query.accountId) : undefined);
+      res.json({ success: true, categories });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async getShopeeAttributes(req: Request, res: Response): Promise<void> {
+    try {
+      const categoryId = String(req.params.categoryId || "").trim();
+      if (!categoryId) throw new ShopeeConnectorError("CATEGORY_REQUIRED", "categoryId là bắt buộc", 400);
+      const attributes = await shopeeConnectorService.getAttributes(categoryId, req.query.accountId ? String(req.query.accountId) : undefined);
+      res.json({ success: true, attributes });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async getShopeeLogistics(req: Request, res: Response): Promise<void> {
+    try {
+      const logistics = await shopeeConnectorService.getLogistics(req.query.accountId ? String(req.query.accountId) : undefined);
+      res.json({ success: true, logistics });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async validateShopeeListing(req: Request, res: Response): Promise<void> {
+    try {
+      const draft = req.body as ShopeeListingDraft;
+      const product = await this.findProduct(draft.productId);
+      if (!product) {
+        res.status(404).json({ success: false, error: "PRODUCT_NOT_FOUND", message: "Không tìm thấy sản phẩm" });
+        return;
+      }
+      const readiness = validateShopeeListing(product, draft);
+      res.json({ success: readiness.isReady, readiness });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async publishShopeeListing(req: Request, res: Response): Promise<void> {
+    try {
+      const draft = req.body as ShopeeListingDraft;
+      const product = await this.findProduct(draft.productId);
+      if (!product) {
+        res.status(404).json({ success: false, error: "PRODUCT_NOT_FOUND", message: "Không tìm thấy sản phẩm" });
+        return;
+      }
+      const result = await shopeeConnectorService.publish(product, draft);
+      res.status(201).json(result);
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async listShopeeListings(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, listings: await shopeeConnectorService.listListings() });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
   }
 
   /**

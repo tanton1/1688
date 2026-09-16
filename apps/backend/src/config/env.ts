@@ -48,6 +48,12 @@ export const ENV = {
   SHOPIFY_API_VERSION: process.env.SHOPIFY_API_VERSION || "2025-01",
   SHOPIFY_STORE_CURRENCY: (process.env.SHOPIFY_STORE_CURRENCY || "VND").toUpperCase() === "USD" ? "USD" as const : "VND" as const,
   SHOPIFY_VND_PER_USD: Number.parseFloat(process.env.SHOPIFY_VND_PER_USD || "0"),
+  CHANNEL_TOKEN_ENCRYPTION_KEY: process.env.CHANNEL_TOKEN_ENCRYPTION_KEY || "",
+  SHOPEE_PARTNER_ID: process.env.SHOPEE_PARTNER_ID || "",
+  SHOPEE_PARTNER_KEY: process.env.SHOPEE_PARTNER_KEY || "",
+  SHOPEE_REDIRECT_URL: process.env.SHOPEE_REDIRECT_URL || "",
+  SHOPEE_API_BASE_URL: process.env.SHOPEE_API_BASE_URL || "https://partner.shopeemobile.com",
+  SHOPEE_REGION: (process.env.SHOPEE_REGION || "VN").toUpperCase(),
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || ""
 };

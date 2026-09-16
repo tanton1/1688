@@ -129,6 +129,22 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
+  useEffect(() => {
+    if (!currentUser) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("channel") !== "shopee") return;
+    const connected = url.searchParams.get("connection") === "success";
+    setShowConnectorsModal(true);
+    showToast(
+      connected ? "Đã kết nối tài khoản Shopee Seller thành công." : `Kết nối Shopee thất bại (${url.searchParams.get("reason") || "không xác định"}).`,
+      connected ? "success" : "error"
+    );
+    url.searchParams.delete("channel");
+    url.searchParams.delete("connection");
+    url.searchParams.delete("reason");
+    window.history.replaceState({}, "", url.toString());
+  }, [currentUser]);
+
   const handleLogin = (user: CurrentUser) => {
     setCurrentUser(user);
     sessionStorage.setItem("hub1688_user", JSON.stringify(user));

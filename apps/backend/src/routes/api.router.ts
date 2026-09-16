@@ -29,6 +29,7 @@ import {
   orderWebhookSchema,
   productUpdateSchema,
   resolveDiffSchema,
+  shopeeListingDraftSchema,
   shopifySyncSchema,
   storeSettingsSchema,
   storefrontCustomizationUploadSchema,
@@ -69,6 +70,7 @@ const passwordResetLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 5, standa
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "CHECKOUT_RATE_LIMITED" } });
 const customizationUploadLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "UPLOAD_RATE_LIMITED", message: "Đã tải quá nhiều ảnh; vui lòng thử lại sau" } });
 const aiLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "AI_RATE_LIMITED" } });
+const shopeeCallbackLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: { error: "SHOPEE_CALLBACK_RATE_LIMITED" } });
 
 // Public endpoints: login and platform metadata only.
 apiRouter.post("/auth/login", loginLimiter, (req, res) => authCtrl.login(req, res));
@@ -76,6 +78,7 @@ apiRouter.post("/auth/refresh", loginLimiter, (req, res) => authCtrl.refresh(req
 apiRouter.post("/auth/password-reset/request", passwordResetLimiter, (req, res) => authCtrl.requestPasswordReset(req, res));
 apiRouter.post("/auth/password-reset/confirm", passwordResetLimiter, (req, res) => authCtrl.confirmPasswordReset(req, res));
 apiRouter.get("/clone/supported-platforms", (req, res) => cloneController.getSupportedPlatforms(req, res));
+apiRouter.get("/connectors/shopee/callback", shopeeCallbackLimiter, (req, res) => connectorsCtrl.handleShopeeCallback(req, res));
 apiRouter.get("/sync/cron", requireCronSecret, (req, res) => syncCtrl.runCronSync(req, res));
 apiRouter.post("/sync/cron", requireCronSecret, (req, res) => syncCtrl.runCronSync(req, res));
 
@@ -141,6 +144,14 @@ apiRouter.post("/glossary", requirePersistence, (req, res) => glossaryCtrl.setTe
 apiRouter.post("/connectors/woocommerce/sync", requireRole("ADMIN"), validateBody(wooCommerceSyncSchema), (req, res) => connectorsCtrl.syncWooCommerce(req, res));
 apiRouter.post("/connectors/shopify/sync", requireRole("ADMIN"), validateBody(shopifySyncSchema), (req, res) => connectorsCtrl.syncShopify(req, res));
 apiRouter.post("/connectors/export-csv", requireRole("ADMIN"), validateBody(exportCsvSchema), (req, res) => connectorsCtrl.exportMarketplaceCSV(req, res));
+apiRouter.get("/connectors/shopee/status", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeStatus(req, res));
+apiRouter.post("/connectors/shopee/authorization-url", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAuthorizationUrl(req, res));
+apiRouter.get("/connectors/shopee/categories", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeCategories(req, res));
+apiRouter.get("/connectors/shopee/categories/:categoryId/attributes", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAttributes(req, res));
+apiRouter.get("/connectors/shopee/logistics", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeLogistics(req, res));
+apiRouter.post("/connectors/shopee/listings/validate", requireRole("ADMIN"), validateBody(shopeeListingDraftSchema), (req, res) => connectorsCtrl.validateShopeeListing(req, res));
+apiRouter.post("/connectors/shopee/listings/publish", requireRole("ADMIN"), requirePersistence, validateBody(shopeeListingDraftSchema), (req, res) => connectorsCtrl.publishShopeeListing(req, res));
+apiRouter.get("/connectors/shopee/listings", requireRole("ADMIN"), (req, res) => connectorsCtrl.listShopeeListings(req, res));
 
 // 7. Telegram Alerts
 apiRouter.post("/connectors/telegram/test", requireRole("ADMIN"), validateBody(telegramTestSchema), (req, res) => connectorsCtrl.testTelegram(req, res));

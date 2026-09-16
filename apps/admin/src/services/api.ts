@@ -18,7 +18,15 @@ import {
   StorefrontCheckoutRequest,
   CustomerOrder,
   PersonalizationImageValue,
-  CustomizerAsset
+  CustomizerAsset,
+  ChannelAccountSummary,
+  ChannelListingSummary,
+  ChannelPublishResult,
+  ChannelReadinessResult,
+  ShopeeAttributeOption,
+  ShopeeCategoryOption,
+  ShopeeListingDraft,
+  ShopeeLogisticsOption
 } from "@hub1688/shared-types";
 
 export interface AISEOContentDraft {
@@ -320,6 +328,41 @@ export const AdminApi = {
       throw new Error(`Xuất CSV thất bại: HTTP ${res.status}`);
     }
     return res.blob();
+  },
+
+  async getShopeeStatus(): Promise<{ success: boolean; account: ChannelAccountSummary }> {
+    return request("/api/v1/connectors/shopee/status");
+  },
+
+  async getShopeeAuthorizationUrl(): Promise<{ success: boolean; authorizationUrl: string }> {
+    return request("/api/v1/connectors/shopee/authorization-url", { method: "POST", body: JSON.stringify({}) });
+  },
+
+  async getShopeeCategories(accountId?: string): Promise<{ success: boolean; categories: ShopeeCategoryOption[] }> {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+    return request(`/api/v1/connectors/shopee/categories${query}`);
+  },
+
+  async getShopeeAttributes(categoryId: string, accountId?: string): Promise<{ success: boolean; attributes: ShopeeAttributeOption[] }> {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+    return request(`/api/v1/connectors/shopee/categories/${encodeURIComponent(categoryId)}/attributes${query}`);
+  },
+
+  async getShopeeLogistics(accountId?: string): Promise<{ success: boolean; logistics: ShopeeLogisticsOption[] }> {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+    return request(`/api/v1/connectors/shopee/logistics${query}`);
+  },
+
+  async validateShopeeListing(draft: ShopeeListingDraft): Promise<{ success: boolean; readiness: ChannelReadinessResult }> {
+    return request("/api/v1/connectors/shopee/listings/validate", { method: "POST", body: JSON.stringify(draft) });
+  },
+
+  async publishShopeeListing(draft: ShopeeListingDraft): Promise<ChannelPublishResult> {
+    return request("/api/v1/connectors/shopee/listings/publish", { method: "POST", body: JSON.stringify(draft) });
+  },
+
+  async getShopeeListings(): Promise<{ success: boolean; listings: ChannelListingSummary[] }> {
+    return request("/api/v1/connectors/shopee/listings");
   },
 
   // 19. Telegram Alerts

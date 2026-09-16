@@ -455,6 +455,41 @@ export const visualSourcingSchema = z.object({
   }
 });
 export const exportCsvSchema = z.object({ productIds: z.array(id).min(1).max(500), platform: z.enum(["SHOPEE", "TIKTOK_SHOP", "SHOPIFY", "WOOCOMMERCE", "HARAVAN"]) }).strict();
+const shopeeAttributeValueSchema = z.object({
+  attributeId: id,
+  valueId: optionalText(128),
+  valueName: optionalText(500)
+}).strict().refine(value => Boolean(value.valueId || value.valueName), "Thuộc tính cần valueId hoặc valueName");
+const shopeeLogisticsSchema = z.object({
+  logisticId: id,
+  enabled: z.boolean(),
+  shippingFeeVND: money.optional(),
+  freeShipping: z.boolean().optional()
+}).strict();
+export const shopeeListingDraftSchema = z.object({
+  productId: id,
+  accountId: id.optional(),
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(30_000),
+  categoryId: z.string().trim().max(128),
+  categoryPath: optionalText(1_000),
+  brandId: optionalText(128),
+  brandName: optionalText(500),
+  weightKg: z.number().finite().nonnegative().max(1_000),
+  dimensions: z.object({
+    lengthCm: z.number().finite().positive().max(10_000).optional(),
+    widthCm: z.number().finite().positive().max(10_000).optional(),
+    heightCm: z.number().finite().positive().max(10_000).optional()
+  }).strict().optional(),
+  attributes: z.array(shopeeAttributeValueSchema).max(500),
+  requiredAttributeIds: z.array(id).max(500).optional(),
+  logistics: z.array(shopeeLogisticsSchema).max(100),
+  selectedVariantIds: z.array(id).max(1_000).optional(),
+  primaryVariationName: optionalText(100),
+  secondaryVariationName: optionalText(100),
+  stockBuffer: z.number().int().nonnegative().max(1_000_000).optional(),
+  priceAdjustmentPercent: z.number().finite().min(-90).max(1_000).optional()
+}).strict();
 export const checkExistingSchema = z.object({ sourceProductIds: z.array(id).min(1).max(500) }).strict();
 export const triggerDiffSchema = z.object({ rawLatestProduct: rawProduct }).strict();
 export const resolveDiffSchema = z.object({ webProductId: id, action: z.enum(["APPLY", "IGNORE"]) }).strict();

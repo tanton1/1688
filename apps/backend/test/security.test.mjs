@@ -420,6 +420,20 @@ test("connector endpoints reject browser-supplied secrets", async () => {
   assert.equal(response.body.error, "VALIDATION_ERROR");
 });
 
+test("Shopee connector exposes capability status without leaking credentials", async () => {
+  const response = await request.get("/api/v1/connectors/shopee/status")
+    .set("Authorization", "Bearer test-admin-token")
+    .expect(200);
+  assert.equal(response.body.account.platform, "SHOPEE");
+  assert.equal(response.body.account.status, "NOT_CONFIGURED");
+  assert.equal(JSON.stringify(response.body).includes("partnerKey"), false);
+  assert.equal(JSON.stringify(response.body).includes("access_token"), false);
+
+  await request.get("/api/v1/connectors/shopee/status")
+    .set("Authorization", "Bearer test-extension-token")
+    .expect(403);
+});
+
 test("store connectors reject products that have not passed the publish gate", async () => {
   const id = "draft-connector-product";
   inMemoryProducts.set(id, {
