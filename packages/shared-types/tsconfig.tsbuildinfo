@@ -1,1 +1,1 @@
-{"root":["./src/1688-raw.ts","./src/channel-listing.ts","./src/index.ts","./src/normalized-product.ts","./src/pricing-rules.ts","./src/quality-score.ts","./src/sync-contracts.ts","./src/web-product.ts"],"version":"5.9.3"}
+{"root":["./src/1688-raw.ts","./src/channel-listing.ts","./src/custom-connector.ts","./src/index.ts","./src/normalized-product.ts","./src/pricing-rules.ts","./src/quality-score.ts","./src/sync-contracts.ts","./src/web-product.ts"],"version":"5.9.3"}

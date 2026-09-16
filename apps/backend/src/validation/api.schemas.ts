@@ -467,6 +467,31 @@ export const shopeeInventorySyncSchema = z.object({
   accountId: id.optional(),
   limit: z.number().int().min(1).max(50).optional()
 }).strict();
+const connectorPath = z.string().trim().min(1).max(1_000).regex(/^\/(?!\/)[^\\]*$/, "Endpoint phải bắt đầu bằng /");
+export const customStoreConnectionSchema = z.object({
+  id: id.optional(),
+  name: text(100),
+  baseUrl: httpUrl,
+  protocol: z.enum(["REST_JSON", "GRAPHQL", "WEBHOOK"]).optional(),
+  authType: z.enum(["NONE", "BEARER", "API_KEY_HEADER", "BASIC"]).optional(),
+  authHeaderName: z.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/).optional(),
+  secret: z.string().trim().min(1).max(2_000).optional(),
+  publishPath: connectorPath,
+  updatePath: connectorPath.optional(),
+  inventoryPath: connectorPath.optional(),
+  graphqlMutation: z.string().trim().min(1).max(20_000).optional()
+}).strict().superRefine((value, context) => {
+  if (value.protocol === "GRAPHQL" && !value.graphqlMutation) {
+    context.addIssue({ code: "custom", path: ["graphqlMutation"], message: "GraphQL mutation là bắt buộc" });
+  }
+  if (value.authType === "API_KEY_HEADER" && !value.authHeaderName) {
+    context.addIssue({ code: "custom", path: ["authHeaderName"], message: "Tên API key header là bắt buộc" });
+  }
+});
+export const customStoreProductActionSchema = z.object({
+  connectionId: id,
+  productId: id
+}).strict();
 const shopeeAttributeValueSchema = z.object({
   attributeId: id,
   valueId: optionalText(128),

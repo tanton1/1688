@@ -503,6 +503,47 @@ test("Shopee app credentials can be saved by admins without returning the Partne
   assert.equal(configs.body.configs.length, 2);
 });
 
+test("generic website connectors encrypt secrets and expose payload preview without credentials", async () => {
+  ENV.CHANNEL_TOKEN_ENCRYPTION_KEY = "test-channel-encryption-key-at-least-32-characters";
+  await request.get("/api/v1/connectors/custom")
+    .set("Authorization", "Bearer test-extension-token")
+    .expect(403);
+
+  const secret = "private-api-key-never-returned";
+  const saved = await request.post("/api/v1/connectors/custom")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({
+      name: "Website khác",
+      baseUrl: "https://example.com",
+      protocol: "REST_JSON",
+      authType: "API_KEY_HEADER",
+      authHeaderName: "X-API-Key",
+      secret,
+      publishPath: "/api/products",
+      inventoryPath: "/api/products/{externalProductId}/inventory"
+    })
+    .expect(201);
+  assert.equal(saved.body.connection.secretConfigured, true);
+  assert.equal(JSON.stringify(saved.body).includes(secret), false);
+
+  const productId = "custom-connector-preview-product";
+  inMemoryProducts.set(productId, {
+    id: productId, slug: productId, skuCode: "CUSTOM-1", titleVI: "Sản phẩm website khác",
+    categoryName: "Test", primaryImage: "https://example.com/image.jpg", galleryImages: [],
+    status: "PUBLISHED", qualityScore: 100, minPriceVND: 100000, maxPriceVND: 100000,
+    isTitleLocked: false, isDescLocked: false, isImagesLocked: false, isPriceAutoSync: true,
+    isStockAutoSync: true, sourceProductId: "source-custom", sourceUrl: "https://example.com/source",
+    supplierName: "Test", variants: [{ sourceSkuId: "SKU-1", costPriceVND: 50000, sellingPriceVND: 100000, stockQuantity: 4, sourceAvailable: true, selectedForSale: true }]
+  });
+  const preview = await request.post("/api/v1/connectors/custom/preview")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({ connectionId: saved.body.connection.id, productId })
+    .expect(200);
+  assert.equal(preview.body.payload.variants[0].sku, "SKU-1");
+  assert.equal(JSON.stringify(preview.body).includes(secret), false);
+  inMemoryProducts.delete(productId);
+});
+
 test("store connectors reject products that have not passed the publish gate", async () => {
   const id = "draft-connector-product";
   inMemoryProducts.set(id, {

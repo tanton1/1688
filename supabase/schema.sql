@@ -530,6 +530,45 @@ CREATE INDEX IF NOT EXISTS idx_channel_skus_external ON channel_skus(channel_lis
 CREATE INDEX IF NOT EXISTS idx_channel_jobs_queue ON channel_jobs(status, available_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_channel_sync_events_listing ON channel_sync_events(channel_listing_id, created_at DESC);
 
+-- 16. GENERIC WEBSITE CONNECTORS
+CREATE TABLE IF NOT EXISTS custom_store_connections (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    protocol VARCHAR(20) NOT NULL DEFAULT 'REST_JSON' CHECK (protocol IN ('REST_JSON', 'GRAPHQL', 'WEBHOOK')),
+    auth_type VARCHAR(30) NOT NULL DEFAULT 'NONE' CHECK (auth_type IN ('NONE', 'BEARER', 'API_KEY_HEADER', 'BASIC')),
+    auth_header_name TEXT,
+    auth_secret_ciphertext TEXT,
+    publish_path TEXT NOT NULL DEFAULT '/api/products',
+    update_path TEXT,
+    inventory_path TEXT,
+    graphql_mutation TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_tested_at TIMESTAMPTZ,
+    last_error TEXT,
+    created_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS custom_store_listings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    connection_id UUID NOT NULL REFERENCES custom_store_connections(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    external_product_id TEXT,
+    external_url TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('SUBMITTING', 'LIVE', 'SYNC_ERROR')),
+    latest_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_error TEXT,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_custom_store_listing UNIQUE (connection_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_custom_store_connections_active ON custom_store_connections(is_active, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_custom_store_listings_sync ON custom_store_listings(connection_id, status, updated_at DESC);
+
 -- RLS is enabled on every application table. No browser policy is created: all
 -- writes go through authenticated API endpoints using the server-only service role.
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
@@ -552,6 +591,8 @@ ALTER TABLE channel_skus ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_category_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_sync_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_store_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_store_listings ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
 

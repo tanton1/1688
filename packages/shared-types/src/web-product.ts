@@ -81,7 +81,7 @@ export interface ProductSEOMetadata {
   }>;
 }
 
-export type StoreConnectorType = "WOOCOMMERCE" | "SHOPIFY" | "SHOPEE" | "TIKTOK_SHOP";
+export type StoreConnectorType = "WOOCOMMERCE" | "SHOPIFY" | "SHOPEE" | "TIKTOK_SHOP" | "CUSTOM";
 
 export interface WooCommerceConfig {
   storeUrl: string;

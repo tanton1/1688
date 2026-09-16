@@ -4,6 +4,7 @@ import {
   ShopifyConfig,
   AICopywritingStyle,
   AITemplateDraftRequest,
+  CustomStoreConnectionInput,
   ShopeeAppConfigInput,
   ShopeeListingDraft,
   WebProduct
@@ -19,6 +20,10 @@ import {
   shopeeConnectorService,
   validateShopeeListing
 } from "../services/shopee-connector.service.js";
+import {
+  CustomConnectorError,
+  customStoreConnectorService
+} from "../services/custom-store-connector.service.js";
 
 export class StoreConnectorsController {
   private sendShopeeError(res: Response, error: unknown): void {
@@ -44,6 +49,15 @@ export class StoreConnectorsController {
 
     console.error("[StoreConnectorsController] unexpected AI error");
     res.status(500).json({ success: false, error: "INTERNAL_ERROR" });
+  }
+
+  private sendCustomConnectorError(res: Response, error: unknown): void {
+    if (error instanceof CustomConnectorError) {
+      res.status(error.status).json({ success: false, error: error.code, message: error.message });
+      return;
+    }
+    console.error("[CustomStoreConnector] unexpected error", error);
+    res.status(500).json({ success: false, error: "CUSTOM_CONNECTOR_INTERNAL_ERROR", message: "Không thể xử lý connector website" });
   }
 
   /**
@@ -146,6 +160,76 @@ export class StoreConnectorsController {
       success: result.status === "SUCCESS",
       result
     });
+  }
+
+  public async listCustomStoreConnections(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, connections: await customStoreConnectorService.listConnections() });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
+  }
+
+  public async saveCustomStoreConnection(req: Request, res: Response): Promise<void> {
+    try {
+      const input = { ...req.body, ...(req.params.id ? { id: String(req.params.id) } : {}) } as CustomStoreConnectionInput;
+      const connection = await customStoreConnectorService.saveConnection(input, req.auth?.id || "admin");
+      res.status(input.id ? 200 : 201).json({ success: true, connection });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
+  }
+
+  public async testCustomStoreConnection(req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, connection: await customStoreConnectorService.testConnection(String(req.params.id)) });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
+  }
+
+  public async previewCustomStoreProduct(req: Request, res: Response): Promise<void> {
+    try {
+      const { connectionId, productId } = req.body as { connectionId: string; productId: string };
+      const product = await this.findProduct(productId);
+      if (!product) {
+        res.status(404).json({ success: false, error: "PRODUCT_NOT_FOUND", message: "Không tìm thấy sản phẩm" });
+        return;
+      }
+      res.json({ success: true, payload: await customStoreConnectorService.preview(connectionId, product) });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
+  }
+
+  public async publishCustomStoreProduct(req: Request, res: Response): Promise<void> {
+    try {
+      const { connectionId, productId } = req.body as { connectionId: string; productId: string };
+      const product = await this.findProduct(productId);
+      if (!product) {
+        res.status(404).json({ success: false, error: "PRODUCT_NOT_FOUND", message: "Không tìm thấy sản phẩm" });
+        return;
+      }
+      const result = await customStoreConnectorService.publish(connectionId, product);
+      res.status(result.success ? 201 : 502).json({ success: result.success, result });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
+  }
+
+  public async syncCustomStoreInventory(req: Request, res: Response): Promise<void> {
+    try {
+      const { connectionId, productId } = req.body as { connectionId: string; productId: string };
+      const product = await this.findProduct(productId);
+      if (!product) {
+        res.status(404).json({ success: false, error: "PRODUCT_NOT_FOUND", message: "Không tìm thấy sản phẩm" });
+        return;
+      }
+      const result = await customStoreConnectorService.syncInventory(connectionId, product);
+      res.status(result.success ? 200 : 502).json({ success: result.success, result });
+    } catch (error) {
+      this.sendCustomConnectorError(res, error);
+    }
   }
 
   /**

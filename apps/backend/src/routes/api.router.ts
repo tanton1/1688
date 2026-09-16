@@ -21,6 +21,8 @@ import {
   aiTranslateImageSchema,
   bulkImportSchema,
   checkExistingSchema,
+  customStoreConnectionSchema,
+  customStoreProductActionSchema,
   checkoutSchema,
   exportCsvSchema,
   importSingleSchema,
@@ -147,6 +149,13 @@ apiRouter.post("/glossary", requirePersistence, (req, res) => glossaryCtrl.setTe
 apiRouter.post("/connectors/woocommerce/sync", requireRole("ADMIN"), validateBody(wooCommerceSyncSchema), (req, res) => connectorsCtrl.syncWooCommerce(req, res));
 apiRouter.post("/connectors/shopify/sync", requireRole("ADMIN"), validateBody(shopifySyncSchema), (req, res) => connectorsCtrl.syncShopify(req, res));
 apiRouter.post("/connectors/export-csv", requireRole("ADMIN"), validateBody(exportCsvSchema), (req, res) => connectorsCtrl.exportMarketplaceCSV(req, res));
+apiRouter.get("/connectors/custom", requireRole("ADMIN"), (req, res) => connectorsCtrl.listCustomStoreConnections(req, res));
+apiRouter.post("/connectors/custom", requireRole("ADMIN"), requirePersistence, validateBody(customStoreConnectionSchema), (req, res) => connectorsCtrl.saveCustomStoreConnection(req, res));
+apiRouter.put("/connectors/custom/:id", requireRole("ADMIN"), requirePersistence, validateBody(customStoreConnectionSchema), (req, res) => connectorsCtrl.saveCustomStoreConnection(req, res));
+apiRouter.post("/connectors/custom/:id/test", requireRole("ADMIN"), (req, res) => connectorsCtrl.testCustomStoreConnection(req, res));
+apiRouter.post("/connectors/custom/preview", requireRole("ADMIN"), validateBody(customStoreProductActionSchema), (req, res) => connectorsCtrl.previewCustomStoreProduct(req, res));
+apiRouter.post("/connectors/custom/publish", requireRole("ADMIN"), requirePersistence, validateBody(customStoreProductActionSchema), (req, res) => connectorsCtrl.publishCustomStoreProduct(req, res));
+apiRouter.post("/connectors/custom/inventory-sync", requireRole("ADMIN"), requirePersistence, validateBody(customStoreProductActionSchema), (req, res) => connectorsCtrl.syncCustomStoreInventory(req, res));
 apiRouter.get("/connectors/shopee/status", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeStatus(req, res));
 apiRouter.get("/connectors/shopee/app-config", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAppConfig(req, res));
 apiRouter.get("/connectors/shopee/app-configs", requireRole("ADMIN"), (req, res) => connectorsCtrl.listShopeeAppConfigs(req, res));

@@ -19,6 +19,9 @@ import {
   CustomerOrder,
   PersonalizationImageValue,
   CustomizerAsset,
+  CustomStoreConnectionInput,
+  CustomStoreConnectionSummary,
+  CustomStoreSyncResult,
   ChannelAccountSummary,
   ChannelListingSummary,
   ChannelPublishResult,
@@ -404,6 +407,32 @@ export const AdminApi = {
 
   async getShopeeListings(): Promise<{ success: boolean; listings: ChannelListingSummary[] }> {
     return request("/api/v1/connectors/shopee/listings");
+  },
+
+  async getCustomStoreConnections(): Promise<{ success: boolean; connections: CustomStoreConnectionSummary[] }> {
+    return request("/api/v1/connectors/custom");
+  },
+
+  async saveCustomStoreConnection(input: CustomStoreConnectionInput): Promise<{ success: boolean; connection: CustomStoreConnectionSummary }> {
+    const endpoint = input.id ? `/api/v1/connectors/custom/${encodeURIComponent(input.id)}` : "/api/v1/connectors/custom";
+    const { id: _id, ...body } = input;
+    return request(endpoint, { method: input.id ? "PUT" : "POST", body: JSON.stringify(body) });
+  },
+
+  async testCustomStoreConnection(connectionId: string): Promise<{ success: boolean; connection: CustomStoreConnectionSummary }> {
+    return request(`/api/v1/connectors/custom/${encodeURIComponent(connectionId)}/test`, { method: "POST" });
+  },
+
+  async previewCustomStoreProduct(connectionId: string, productId: string): Promise<{ success: boolean; payload: Record<string, unknown> }> {
+    return request("/api/v1/connectors/custom/preview", { method: "POST", body: JSON.stringify({ connectionId, productId }) });
+  },
+
+  async publishCustomStoreProduct(connectionId: string, productId: string): Promise<{ success: boolean; result: CustomStoreSyncResult }> {
+    return request("/api/v1/connectors/custom/publish", { method: "POST", body: JSON.stringify({ connectionId, productId }) });
+  },
+
+  async syncCustomStoreInventory(connectionId: string, productId: string): Promise<{ success: boolean; result: CustomStoreSyncResult }> {
+    return request("/api/v1/connectors/custom/inventory-sync", { method: "POST", body: JSON.stringify({ connectionId, productId }) });
   },
 
   // 19. Telegram Alerts

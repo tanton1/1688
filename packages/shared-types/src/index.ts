@@ -5,3 +5,4 @@ export * from "./pricing-rules.js";
 export * from "./sync-contracts.js";
 export * from "./quality-score.js";
 export * from "./channel-listing.js";
+export * from "./custom-connector.js";

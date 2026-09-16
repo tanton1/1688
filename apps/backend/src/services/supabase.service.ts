@@ -1099,6 +1099,69 @@ export class SupabaseDataService {
     return !error;
   }
 
+  public async listCustomStoreConnections(): Promise<any[]> {
+    if (!this.client) return [];
+    const { data, error } = await this.client.from("custom_store_connections").select("*").order("updated_at", { ascending: false });
+    if (error) {
+      console.error("[Supabase listCustomStoreConnections error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  public async getCustomStoreConnection(id: string): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("custom_store_connections").select("*").eq("id", id).maybeSingle();
+    if (error) {
+      console.error("[Supabase getCustomStoreConnection error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async upsertCustomStoreConnection(row: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("custom_store_connections").upsert(row).select("*").single();
+    if (error) {
+      console.error("[Supabase upsertCustomStoreConnection error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async updateCustomStoreConnection(id: string, patch: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("custom_store_connections")
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("*").maybeSingle();
+    if (error) {
+      console.error("[Supabase updateCustomStoreConnection error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async upsertCustomStoreListing(row: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("custom_store_listings")
+      .upsert(row, { onConflict: "connection_id,product_id" }).select("*").single();
+    if (error) {
+      console.error("[Supabase upsertCustomStoreListing error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async getCustomStoreListing(connectionId: string, productId: string): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client.from("custom_store_listings").select("*")
+      .eq("connection_id", connectionId).eq("product_id", productId).maybeSingle();
+    if (error) {
+      console.error("[Supabase getCustomStoreListing error]", error);
+      return null;
+    }
+    return data;
+  }
+
   public async replaceChannelSkus(listingId: string, rows: Array<Record<string, unknown>>): Promise<boolean> {
     if (!this.client) return false;
     const { error: deleteError } = await this.client.from("channel_skus").delete().eq("channel_listing_id", listingId);

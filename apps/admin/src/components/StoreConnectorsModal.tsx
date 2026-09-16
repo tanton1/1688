@@ -3,6 +3,7 @@ import { WebProduct } from "@hub1688/shared-types";
 import { AdminApi } from "../services/api";
 import { useAccessibleDialog } from "../hooks/useAccessibleDialog";
 import { ShopeePublishingPanel } from "./ShopeePublishingPanel";
+import { CustomStoreConnectorPanel } from "./CustomStoreConnectorPanel";
 import {
   Share2,
   Globe,
@@ -26,7 +27,7 @@ interface StoreConnectorsModalProps {
   onShowToast: (message: string, type?: "success" | "error") => void;
 }
 
-type ConnectorTab = "WOOCOMMERCE" | "SHOPIFY" | "MARKETPLACE" | "TELEGRAM";
+type ConnectorTab = "WOOCOMMERCE" | "SHOPIFY" | "CUSTOM" | "MARKETPLACE" | "TELEGRAM";
 
 export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
   isOpen,
@@ -231,6 +232,18 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab("CUSTOM")}
+            className={`py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+              activeTab === "CUSTOM"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            Website khác
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab("MARKETPLACE")}
             className={`py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
               activeTab === "MARKETPLACE"
@@ -258,7 +271,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
         {/* Body Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
           {/* Target Product Selector for Single-product pushes */}
-          {(activeTab === "WOOCOMMERCE" || activeTab === "SHOPIFY" || activeTab === "MARKETPLACE") && (
+          {(activeTab === "WOOCOMMERCE" || activeTab === "SHOPIFY" || activeTab === "CUSTOM" || activeTab === "MARKETPLACE") && (
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Sản phẩm đồng bộ:
@@ -277,7 +290,7 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
             </div>
           )}
 
-          {activeTab !== "MARKETPLACE" && (
+          {(activeTab === "WOOCOMMERCE" || activeTab === "SHOPIFY" || activeTab === "TELEGRAM") && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900" role="note">
               Khóa kết nối chỉ được đọc từ biến môi trường phía máy chủ. Trình duyệt không nhận, gửi hoặc lưu các secret này.
             </div>
@@ -409,6 +422,10 @@ export const StoreConnectorsModal: React.FC<StoreConnectorsModalProps> = ({
                 </button>
               </div>
             </div>
+          )}
+
+          {activeTab === "CUSTOM" && (
+            <CustomStoreConnectorPanel product={currentProduct} onShowToast={onShowToast} />
           )}
 
           {/* TAB 3: Marketplace publishing */}
