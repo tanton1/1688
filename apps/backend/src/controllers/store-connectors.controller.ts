@@ -4,6 +4,7 @@ import {
   ShopifyConfig,
   AICopywritingStyle,
   AITemplateDraftRequest,
+  ShopeeAppConfigInput,
   ShopeeListingDraft,
   WebProduct
 } from "@hub1688/shared-types";
@@ -214,9 +215,35 @@ export class StoreConnectorsController {
     }
   }
 
-  public getShopeeAuthorizationUrl(req: Request, res: Response): void {
+  public async getShopeeAppConfig(_req: Request, res: Response): Promise<void> {
     try {
-      const authorizationUrl = shopeeConnectorService.getAuthorizationUrl(req.auth?.id || "admin");
+      res.json({ success: true, config: await shopeeConnectorService.getAppConfig() });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async saveShopeeAppConfig(req: Request, res: Response): Promise<void> {
+    try {
+      const config = await shopeeConnectorService.saveAppConfig(req.body as ShopeeAppConfigInput, req.auth?.id || "admin");
+      res.json({ success: true, config });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async listShopeeAccounts(req: Request, res: Response): Promise<void> {
+    try {
+      const appConfigId = req.query.appConfigId ? String(req.query.appConfigId) : undefined;
+      res.json({ success: true, accounts: await shopeeConnectorService.listAccounts(appConfigId) });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async getShopeeAuthorizationUrl(req: Request, res: Response): Promise<void> {
+    try {
+      const authorizationUrl = await shopeeConnectorService.getAuthorizationUrl(req.auth?.id || "admin", req.body?.appConfigId);
       res.json({ success: true, authorizationUrl });
     } catch (error) {
       this.sendShopeeError(res, error);

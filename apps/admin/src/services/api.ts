@@ -24,6 +24,8 @@ import {
   ChannelPublishResult,
   ChannelReadinessResult,
   ShopeeAttributeOption,
+  ShopeeAppConfigInput,
+  ShopeeAppConfigSummary,
   ShopeeCategoryOption,
   ShopeeListingDraft,
   ShopeeLogisticsOption
@@ -334,8 +336,21 @@ export const AdminApi = {
     return request("/api/v1/connectors/shopee/status");
   },
 
-  async getShopeeAuthorizationUrl(): Promise<{ success: boolean; authorizationUrl: string }> {
-    return request("/api/v1/connectors/shopee/authorization-url", { method: "POST", body: JSON.stringify({}) });
+  async getShopeeAppConfig(): Promise<{ success: boolean; config: ShopeeAppConfigSummary }> {
+    return request("/api/v1/connectors/shopee/app-config");
+  },
+
+  async saveShopeeAppConfig(config: ShopeeAppConfigInput): Promise<{ success: boolean; config: ShopeeAppConfigSummary }> {
+    return request("/api/v1/connectors/shopee/app-config", { method: "PUT", body: JSON.stringify(config) });
+  },
+
+  async getShopeeAccounts(appConfigId?: string): Promise<{ success: boolean; accounts: ChannelAccountSummary[] }> {
+    const query = appConfigId ? `?appConfigId=${encodeURIComponent(appConfigId)}` : "";
+    return request(`/api/v1/connectors/shopee/accounts${query}`);
+  },
+
+  async getShopeeAuthorizationUrl(appConfigId?: string): Promise<{ success: boolean; authorizationUrl: string }> {
+    return request("/api/v1/connectors/shopee/authorization-url", { method: "POST", body: JSON.stringify({ appConfigId }) });
   },
 
   async getShopeeCategories(accountId?: string): Promise<{ success: boolean; categories: ShopeeCategoryOption[] }> {

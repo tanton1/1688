@@ -3,6 +3,7 @@ import { ENV } from "../config/env.js";
 
 interface OAuthStatePayload {
   userId: string;
+  appConfigId?: string;
   nonce: string;
   expiresAt: number;
 }
@@ -40,9 +41,10 @@ export class ChannelCryptoService {
     return Buffer.concat([decipher.update(decode(encryptedPart)), decipher.final()]).toString("utf8");
   }
 
-  public createOAuthState(userId: string, ttlSeconds = 10 * 60): string {
+  public createOAuthState(userId: string, appConfigId?: string, ttlSeconds = 10 * 60): string {
     const payload: OAuthStatePayload = {
       userId,
+      ...(appConfigId ? { appConfigId } : {}),
       nonce: crypto.randomBytes(16).toString("hex"),
       expiresAt: Math.floor(Date.now() / 1000) + ttlSeconds
     };

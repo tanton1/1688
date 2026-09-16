@@ -455,6 +455,14 @@ export const visualSourcingSchema = z.object({
   }
 });
 export const exportCsvSchema = z.object({ productIds: z.array(id).min(1).max(500), platform: z.enum(["SHOPEE", "TIKTOK_SHOP", "SHOPIFY", "WOOCOMMERCE", "HARAVAN"]) }).strict();
+export const shopeeAppConfigSchema = z.object({
+  id: id.optional(),
+  name: optionalText(100),
+  region: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/).optional(),
+  partnerId: z.string().trim().regex(/^\d{1,20}$/, "Partner ID phải là dãy số"),
+  partnerKey: z.string().trim().min(8).max(500).optional()
+}).strict();
+export const shopeeAuthorizationSchema = z.object({ appConfigId: id.optional() }).strict();
 const shopeeAttributeValueSchema = z.object({
   attributeId: id,
   valueId: optionalText(128),

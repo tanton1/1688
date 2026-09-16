@@ -934,6 +934,33 @@ export class SupabaseDataService {
     return data;
   }
 
+  public async upsertChannelAppConfig(config: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client
+      .from("channel_app_configs")
+      .upsert(config)
+      .select("*")
+      .single();
+    if (error) {
+      console.error("[Supabase upsertChannelAppConfig error]", error);
+      return null;
+    }
+    return data;
+  }
+
+  public async getChannelAppConfig(platform: string, configId?: string): Promise<any | null> {
+    if (!this.client) return null;
+    let query = this.client.from("channel_app_configs").select("*").eq("platform", platform);
+    if (configId) query = query.eq("id", configId);
+    else query = query.eq("is_active", true);
+    const { data, error } = await query.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+      console.error("[Supabase getChannelAppConfig error]", error);
+      return null;
+    }
+    return data;
+  }
+
   public async getChannelAccount(platform: string, accountId?: string): Promise<any | null> {
     if (!this.client) return null;
     let query = this.client.from("channel_accounts").select("*").eq("platform", platform);
@@ -946,12 +973,12 @@ export class SupabaseDataService {
     return data;
   }
 
-  public async listChannelAccounts(): Promise<any[]> {
+  public async listChannelAccounts(platform?: string, appConfigId?: string): Promise<any[]> {
     if (!this.client) return [];
-    const { data, error } = await this.client
-      .from("channel_accounts")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    let query = this.client.from("channel_accounts").select("*");
+    if (platform) query = query.eq("platform", platform);
+    if (appConfigId) query = query.eq("channel_app_config_id", appConfigId);
+    const { data, error } = await query.order("updated_at", { ascending: false });
     if (error) {
       console.error("[Supabase listChannelAccounts error]", error);
       return [];

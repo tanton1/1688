@@ -434,6 +434,43 @@ test("Shopee connector exposes capability status without leaking credentials", a
     .expect(403);
 });
 
+test("Shopee app credentials can be saved by admins without returning the Partner Key", async () => {
+  ENV.CHANNEL_TOKEN_ENCRYPTION_KEY = "test-channel-encryption-key-at-least-32-characters";
+  ENV.SHOPEE_REDIRECT_URL = "https://store.example.com/api/v1/connectors/shopee/callback";
+  const partnerKey = "partner-secret-that-must-never-be-returned";
+
+  await request.put("/api/v1/connectors/shopee/app-config")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({ partnerId: "1234567", partnerKey })
+    .expect(403);
+
+  const saved = await request.put("/api/v1/connectors/shopee/app-config")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({ name: "Shopee Việt Nam", region: "VN", partnerId: "1234567", partnerKey })
+    .expect(200);
+  assert.equal(saved.body.config.partnerId, "1234567");
+  assert.equal(saved.body.config.keyConfigured, true);
+  assert.equal(JSON.stringify(saved.body).includes(partnerKey), false);
+  assert.equal("partnerKey" in saved.body.config, false);
+
+  const loaded = await request.get("/api/v1/connectors/shopee/app-config")
+    .set("Authorization", "Bearer test-admin-token")
+    .expect(200);
+  assert.equal(loaded.body.config.id, saved.body.config.id);
+  assert.equal(JSON.stringify(loaded.body).includes(partnerKey), false);
+
+  const updated = await request.put("/api/v1/connectors/shopee/app-config")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({ id: saved.body.config.id, name: "Shopee VN Main", region: "VN", partnerId: "1234567" })
+    .expect(200);
+  assert.equal(updated.body.config.keyConfigured, true);
+
+  const { channelCryptoService } = await import("../dist/services/channel-crypto.service.js");
+  const state = channelCryptoService.createOAuthState("admin-user", saved.body.config.id);
+  assert.equal(channelCryptoService.verifyOAuthState(state).appConfigId, saved.body.config.id);
+  assert.throws(() => channelCryptoService.verifyOAuthState(`${state}tampered`));
+});
+
 test("store connectors reject products that have not passed the publish gate", async () => {
   const id = "draft-connector-product";
   inMemoryProducts.set(id, {

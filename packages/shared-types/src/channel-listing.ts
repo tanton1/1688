@@ -20,6 +20,7 @@ export type ChannelListingStatus =
 
 export interface ChannelAccountSummary {
   id?: string;
+  appConfigId?: string;
   platform: ChannelPlatform;
   shopId?: string;
   shopName?: string;
@@ -29,6 +30,29 @@ export interface ChannelAccountSummary {
   grantedScopes?: string[];
   lastHealthCheckAt?: string;
   message?: string;
+}
+
+export interface ShopeeAppConfigSummary {
+  id?: string;
+  platform: "SHOPEE";
+  name: string;
+  region: string;
+  partnerId?: string;
+  partnerKeyMasked?: string;
+  keyConfigured: boolean;
+  redirectUrl: string;
+  isActive: boolean;
+  source: "DATABASE" | "ENVIRONMENT" | "NONE";
+  message?: string;
+}
+
+export interface ShopeeAppConfigInput {
+  id?: string;
+  name?: string;
+  region?: string;
+  partnerId: string;
+  /** Leave blank when editing to keep the encrypted key already stored. */
+  partnerKey?: string;
 }
 
 export interface ChannelPackageDimensions {

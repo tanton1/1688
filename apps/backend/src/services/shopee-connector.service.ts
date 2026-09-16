@@ -5,6 +5,8 @@ import {
   ChannelPublishResult,
   ChannelReadinessIssue,
   ChannelReadinessResult,
+  ShopeeAppConfigInput,
+  ShopeeAppConfigSummary,
   ShopeeAttributeOption,
   ShopeeCategoryOption,
   ShopeeListingDraft,
@@ -20,6 +22,7 @@ import { supabaseService } from "./supabase.service.js";
 
 interface StoredChannelAccount {
   id: string;
+  channel_app_config_id?: string;
   platform: "SHOPEE";
   shop_id: string;
   shop_name?: string;
@@ -34,9 +37,34 @@ interface StoredChannelAccount {
   updated_at?: string;
 }
 
+interface StoredShopeeAppConfig {
+  id: string;
+  platform: "SHOPEE";
+  name: string;
+  region: string;
+  partner_id: string;
+  partner_key_ciphertext: string;
+  redirect_url: string;
+  is_active: boolean;
+  created_by?: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+interface ShopeeRuntimeConfig {
+  id?: string;
+  name: string;
+  region: string;
+  partnerId: string;
+  partnerKey: string;
+  redirectUrl: string;
+  source: "DATABASE" | "ENVIRONMENT";
+}
+
 interface ShopeeApiAccount extends StoredChannelAccount {
   accessToken: string;
   refreshToken: string;
+  appConfig: ShopeeRuntimeConfig;
 }
 
 interface ShopeeApiResult<T = any> {
@@ -240,17 +268,9 @@ export function buildShopeeItemPayload(
 
 export class ShopeeConnectorService {
   private readonly inMemoryAccounts = new Map<string, StoredChannelAccount>();
+  private readonly inMemoryAppConfigs = new Map<string, StoredShopeeAppConfig>();
 
-  private configReady(): boolean {
-    return Boolean(
-      ENV.SHOPEE_PARTNER_ID &&
-      ENV.SHOPEE_PARTNER_KEY &&
-      this.redirectUrl() &&
-      channelCryptoService.isConfigured()
-    );
-  }
-
-  private redirectUrl(): string {
+  private defaultRedirectUrl(): string {
     return ENV.SHOPEE_REDIRECT_URL || (ENV.PUBLIC_APP_URL ? `${ENV.PUBLIC_APP_URL.replace(/\/+$/, "")}/api/v1/connectors/shopee/callback` : "");
   }
 
@@ -262,66 +282,132 @@ export class ShopeeConnectorService {
     return base;
   }
 
-  private sign(path: string, timestamp: number, accessToken?: string, shopId?: string): string {
-    const base = `${ENV.SHOPEE_PARTNER_ID}${path}${timestamp}${accessToken || ""}${shopId || ""}`;
-    return crypto.createHmac("sha256", ENV.SHOPEE_PARTNER_KEY).update(base).digest("hex");
+  private sign(config: ShopeeRuntimeConfig, path: string, timestamp: number, accessToken?: string, shopId?: string): string {
+    const base = `${config.partnerId}${path}${timestamp}${accessToken || ""}${shopId || ""}`;
+    return crypto.createHmac("sha256", config.partnerKey).update(base).digest("hex");
   }
 
   public async getStatus(): Promise<ChannelAccountSummary> {
-    if (!this.configReady()) {
-      const missing = [
-        !ENV.SHOPEE_PARTNER_ID && "SHOPEE_PARTNER_ID",
-        !ENV.SHOPEE_PARTNER_KEY && "SHOPEE_PARTNER_KEY",
-        !this.redirectUrl() && "SHOPEE_REDIRECT_URL",
-        !channelCryptoService.isConfigured() && "CHANNEL_TOKEN_ENCRYPTION_KEY"
-      ].filter(Boolean).join(", ");
-      return { platform: "SHOPEE", region: ENV.SHOPEE_REGION, status: "NOT_CONFIGURED", message: `Thiếu cấu hình máy chủ: ${missing}` };
+    const config = await this.getAppConfig();
+    if (!config.keyConfigured || !config.partnerId || !config.redirectUrl) {
+      return { platform: "SHOPEE", region: config.region, status: "NOT_CONFIGURED", message: config.message || "Chưa lưu cấu hình Shopee Open Platform." };
     }
     const account = await this.getStoredAccount();
-    if (!account) return { platform: "SHOPEE", region: ENV.SHOPEE_REGION, status: "DISCONNECTED", message: "Ứng dụng đã cấu hình; hãy kết nối tài khoản Shopee Seller." };
-    const expired = account.token_expires_at && new Date(account.token_expires_at).getTime() <= Date.now();
+    if (!account) return { platform: "SHOPEE", region: config.region, status: "DISCONNECTED", message: "Ứng dụng đã cấu hình; hãy kết nối tài khoản Shopee Seller." };
+    return this.mapAccount(account);
+  }
+
+  public async getAppConfig(): Promise<ShopeeAppConfigSummary> {
+    const stored = await this.getStoredAppConfig();
+    if (stored) return this.mapAppConfig(stored);
+    const redirectUrl = this.defaultRedirectUrl();
+    if (ENV.SHOPEE_PARTNER_ID && ENV.SHOPEE_PARTNER_KEY && redirectUrl && channelCryptoService.isConfigured()) {
+      return {
+        platform: "SHOPEE",
+        name: "Shopee Open Platform",
+        region: ENV.SHOPEE_REGION,
+        partnerId: ENV.SHOPEE_PARTNER_ID,
+        partnerKeyMasked: "••••••••",
+        keyConfigured: true,
+        redirectUrl,
+        isActive: true,
+        source: "ENVIRONMENT"
+      };
+    }
+    const missing = [
+      !channelCryptoService.isConfigured() && "CHANNEL_TOKEN_ENCRYPTION_KEY",
+      !redirectUrl && "SHOPEE_REDIRECT_URL/PUBLIC_APP_URL"
+    ].filter(Boolean).join(", ");
     return {
-      id: account.id,
       platform: "SHOPEE",
-      shopId: account.shop_id,
-      shopName: account.shop_name || `Shopee Shop ${account.shop_id}`,
-      region: account.region,
-      status: expired ? "TOKEN_EXPIRED" : "CONNECTED",
-      tokenExpiresAt: account.token_expires_at,
-      grantedScopes: account.granted_scopes || [],
-      lastHealthCheckAt: account.last_health_check_at
+      name: "Shopee Open Platform",
+      region: ENV.SHOPEE_REGION,
+      keyConfigured: false,
+      redirectUrl,
+      isActive: false,
+      source: "NONE",
+      message: missing ? `Máy chủ còn thiếu: ${missing}` : "Nhập Partner ID và Partner Key để bắt đầu."
     };
   }
 
-  public getAuthorizationUrl(userId: string): string {
-    if (!this.configReady()) throw new ShopeeConnectorError("SHOPEE_NOT_CONFIGURED", "Chưa cấu hình đầy đủ Shopee Open Platform trên máy chủ", 503);
+  public async saveAppConfig(input: ShopeeAppConfigInput, userId: string): Promise<ShopeeAppConfigSummary> {
+    if (!channelCryptoService.isConfigured()) {
+      throw new ShopeeConnectorError("CHANNEL_ENCRYPTION_NOT_CONFIGURED", "Máy chủ chưa có khóa mã hóa CHANNEL_TOKEN_ENCRYPTION_KEY", 503);
+    }
+    const redirectUrl = this.defaultRedirectUrl();
+    if (!redirectUrl) throw new ShopeeConnectorError("SHOPEE_REDIRECT_NOT_CONFIGURED", "Máy chủ chưa có Redirect URL", 503);
+    const existing = await this.getStoredAppConfig(input.id);
+    const partnerKeyCiphertext = input.partnerKey
+      ? channelCryptoService.encrypt(input.partnerKey)
+      : existing?.partner_key_ciphertext;
+    if (!partnerKeyCiphertext) {
+      throw new ShopeeConnectorError("SHOPEE_PARTNER_KEY_REQUIRED", "Partner Key là bắt buộc khi cấu hình lần đầu", 400);
+    }
+    const row: Record<string, unknown> = {
+      ...(existing?.id ? { id: existing.id } : {}),
+      platform: "SHOPEE",
+      name: input.name?.trim() || existing?.name || "Shopee Open Platform",
+      region: (input.region || existing?.region || ENV.SHOPEE_REGION).toUpperCase(),
+      partner_id: input.partnerId.trim(),
+      partner_key_ciphertext: partnerKeyCiphertext,
+      redirect_url: redirectUrl,
+      is_active: true,
+      created_by: existing?.created_by || userId,
+      updated_by: userId,
+      updated_at: new Date().toISOString()
+    };
+    const saved = await supabaseService.upsertChannelAppConfig(row);
+    let stored: StoredShopeeAppConfig;
+    if (saved) stored = saved as StoredShopeeAppConfig;
+    else if (ENV.NODE_ENV !== "production") {
+      const id = existing?.id || crypto.randomUUID();
+      stored = { id, ...(row as Omit<StoredShopeeAppConfig, "id">) };
+      this.inMemoryAppConfigs.set(id, stored);
+    } else {
+      throw new ShopeeConnectorError("SHOPEE_CONFIG_SAVE_FAILED", "Không thể lưu cấu hình Shopee. Hãy chạy migration mới trên Supabase.", 500);
+    }
+    this.inMemoryAppConfigs.set(stored.id, stored);
+    return this.mapAppConfig(stored);
+  }
+
+  public async listAccounts(appConfigId?: string): Promise<ChannelAccountSummary[]> {
+    const fromDb = await supabaseService.listChannelAccounts("SHOPEE", appConfigId);
+    const rows = fromDb.length
+      ? fromDb as StoredChannelAccount[]
+      : Array.from(this.inMemoryAccounts.values()).filter(account => !appConfigId || account.channel_app_config_id === appConfigId);
+    return rows.map(account => this.mapAccount(account));
+  }
+
+  public async getAuthorizationUrl(userId: string, appConfigId?: string): Promise<string> {
+    const config = await this.getRuntimeConfig(appConfigId);
     const path = "/api/v2/shop/auth_partner";
     const timestamp = Math.floor(Date.now() / 1000);
-    const state = channelCryptoService.createOAuthState(userId);
-    const callback = new URL(this.redirectUrl());
+    const state = channelCryptoService.createOAuthState(userId, config.id);
+    const callback = new URL(config.redirectUrl);
     callback.searchParams.set("state", state);
     const url = new URL(path, this.baseUrl());
-    url.searchParams.set("partner_id", ENV.SHOPEE_PARTNER_ID);
+    url.searchParams.set("partner_id", config.partnerId);
     url.searchParams.set("timestamp", String(timestamp));
-    url.searchParams.set("sign", this.sign(path, timestamp));
+    url.searchParams.set("sign", this.sign(config, path, timestamp));
     url.searchParams.set("redirect", callback.toString());
     return url.toString();
   }
 
   public async handleCallback(code: string, shopId: string, state: string): Promise<void> {
-    if (!this.configReady()) throw new ShopeeConnectorError("SHOPEE_NOT_CONFIGURED", "Shopee chưa được cấu hình", 503);
     const statePayload = channelCryptoService.verifyOAuthState(state);
+    const config = await this.getRuntimeConfig(statePayload.appConfigId);
     if (!supabaseService.isConfigured() && ENV.NODE_ENV === "production") {
       throw new ShopeeConnectorError("PERSISTENCE_NOT_CONFIGURED", "Supabase phải được cấu hình trước khi kết nối Shopee", 503);
     }
-    const token = await this.tokenRequest("/api/v2/auth/token/get", { code, shop_id: apiId(shopId), partner_id: apiId(ENV.SHOPEE_PARTNER_ID) });
+    const token = await this.tokenRequest("/api/v2/auth/token/get", { code, shop_id: apiId(shopId), partner_id: apiId(config.partnerId) }, config);
     if (!token.access_token || !token.refresh_token) throw new ShopeeConnectorError("SHOPEE_TOKEN_FAILED", "Shopee không trả về access token", 502);
     const now = Date.now();
     const row: Record<string, unknown> = {
       platform: "SHOPEE",
+      channel_app_config_id: config.id || null,
       shop_id: shopId,
       shop_name: `Shopee Shop ${shopId}`,
-      region: ENV.SHOPEE_REGION,
+      region: config.region,
       access_token_ciphertext: channelCryptoService.encrypt(token.access_token),
       refresh_token_ciphertext: channelCryptoService.encrypt(token.refresh_token),
       token_expires_at: new Date(now + Math.max(60, token.expire_in || 14_400) * 1000).toISOString(),
@@ -537,18 +623,98 @@ export class ShopeeConnectorService {
     return Array.from(this.inMemoryAccounts.values()).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0] || null;
   }
 
+  private async getStoredAppConfig(configId?: string): Promise<StoredShopeeAppConfig | null> {
+    const fromDb = await supabaseService.getChannelAppConfig("SHOPEE", configId);
+    if (fromDb) return fromDb as StoredShopeeAppConfig;
+    if (configId) return this.inMemoryAppConfigs.get(configId) || null;
+    return Array.from(this.inMemoryAppConfigs.values())
+      .filter(config => config.is_active)
+      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0] || null;
+  }
+
+  private async getRuntimeConfig(configId?: string): Promise<ShopeeRuntimeConfig> {
+    const stored = await this.getStoredAppConfig(configId);
+    if (stored) {
+      try {
+        return {
+          id: stored.id,
+          name: stored.name,
+          region: stored.region,
+          partnerId: stored.partner_id,
+          partnerKey: channelCryptoService.decrypt(stored.partner_key_ciphertext),
+          redirectUrl: stored.redirect_url,
+          source: "DATABASE"
+        };
+      } catch {
+        throw new ShopeeConnectorError("SHOPEE_CONFIG_DECRYPT_FAILED", "Không thể giải mã Partner Key; kiểm tra khóa mã hóa máy chủ", 503);
+      }
+    }
+    if (configId) {
+      throw new ShopeeConnectorError("SHOPEE_APP_CONFIG_NOT_FOUND", "Không tìm thấy cấu hình Shopee đã dùng để cấp quyền", 404);
+    }
+    const redirectUrl = this.defaultRedirectUrl();
+    if (ENV.SHOPEE_PARTNER_ID && ENV.SHOPEE_PARTNER_KEY && redirectUrl && channelCryptoService.isConfigured()) {
+      return {
+        name: "Shopee Open Platform",
+        region: ENV.SHOPEE_REGION,
+        partnerId: ENV.SHOPEE_PARTNER_ID,
+        partnerKey: ENV.SHOPEE_PARTNER_KEY,
+        redirectUrl,
+        source: "ENVIRONMENT"
+      };
+    }
+    throw new ShopeeConnectorError("SHOPEE_NOT_CONFIGURED", "Chưa lưu Partner ID và Partner Key cho Shopee Open Platform", 503);
+  }
+
+  private mapAppConfig(config: StoredShopeeAppConfig): ShopeeAppConfigSummary {
+    return {
+      id: config.id,
+      platform: "SHOPEE",
+      name: config.name,
+      region: config.region,
+      partnerId: config.partner_id,
+      partnerKeyMasked: "••••••••",
+      keyConfigured: Boolean(config.partner_key_ciphertext),
+      redirectUrl: config.redirect_url,
+      isActive: config.is_active,
+      source: "DATABASE"
+    };
+  }
+
+  private mapAccount(account: StoredChannelAccount): ChannelAccountSummary {
+    const expired = Boolean(account.token_expires_at && new Date(account.token_expires_at).getTime() <= Date.now());
+    return {
+      id: account.id,
+      appConfigId: account.channel_app_config_id,
+      platform: "SHOPEE",
+      shopId: account.shop_id,
+      shopName: account.shop_name || `Shopee Shop ${account.shop_id}`,
+      region: account.region,
+      status: expired ? "TOKEN_EXPIRED" : account.status === "CONNECTED" ? "CONNECTED" : "ERROR",
+      tokenExpiresAt: account.token_expires_at,
+      grantedScopes: account.granted_scopes || [],
+      lastHealthCheckAt: account.last_health_check_at
+    };
+  }
+
   private async getApiAccount(accountId?: string): Promise<ShopeeApiAccount> {
-    if (!this.configReady()) throw new ShopeeConnectorError("SHOPEE_NOT_CONFIGURED", "Shopee Open Platform chưa được cấu hình", 503);
+    if (!accountId) {
+      const available = await this.listAccounts();
+      if (available.length > 1) {
+        throw new ShopeeConnectorError("SHOPEE_SELLER_REQUIRED", "Có nhiều Seller; hãy chọn shop nhận listing", 400);
+      }
+    }
     let account = await this.getStoredAccount(accountId);
     if (!account) throw new ShopeeConnectorError("SHOPEE_NOT_CONNECTED", "Chưa kết nối tài khoản Shopee Seller", 409);
+    const appConfig = await this.getRuntimeConfig(account.channel_app_config_id);
     let accessToken = channelCryptoService.decrypt(account.access_token_ciphertext);
     let refreshToken = channelCryptoService.decrypt(account.refresh_token_ciphertext);
     if (account.token_expires_at && new Date(account.token_expires_at).getTime() <= Date.now() + 5 * 60_000) {
       const refreshed = await this.tokenRequest("/api/v2/auth/access_token/get", {
-        partner_id: apiId(ENV.SHOPEE_PARTNER_ID),
+        partner_id: apiId(appConfig.partnerId),
         shop_id: apiId(account.shop_id),
         refresh_token: refreshToken
-      });
+      }, appConfig);
       if (!refreshed.access_token || !refreshed.refresh_token) throw new ShopeeConnectorError("SHOPEE_REFRESH_FAILED", "Không thể làm mới phiên Shopee", 401);
       accessToken = refreshed.access_token;
       refreshToken = refreshed.refresh_token;
@@ -562,15 +728,15 @@ export class ShopeeConnectorService {
       });
       if (updated) account = updated as StoredChannelAccount;
     }
-    return { ...account, accessToken, refreshToken };
+    return { ...account, accessToken, refreshToken, appConfig };
   }
 
-  private async tokenRequest(path: string, body: Record<string, unknown>): Promise<ShopeeApiResult> {
+  private async tokenRequest(path: string, body: Record<string, unknown>, config: ShopeeRuntimeConfig): Promise<ShopeeApiResult> {
     const timestamp = Math.floor(Date.now() / 1000);
     const url = new URL(path, this.baseUrl());
-    url.searchParams.set("partner_id", ENV.SHOPEE_PARTNER_ID);
+    url.searchParams.set("partner_id", config.partnerId);
     url.searchParams.set("timestamp", String(timestamp));
-    url.searchParams.set("sign", this.sign(path, timestamp));
+    url.searchParams.set("sign", this.sign(config, path, timestamp));
     const response = await safeFetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -592,11 +758,11 @@ export class ShopeeConnectorService {
   ): Promise<ShopeeApiResult<T>> {
     const timestamp = Math.floor(Date.now() / 1000);
     const url = new URL(path, this.baseUrl());
-    url.searchParams.set("partner_id", ENV.SHOPEE_PARTNER_ID);
+    url.searchParams.set("partner_id", account.appConfig.partnerId);
     url.searchParams.set("timestamp", String(timestamp));
     url.searchParams.set("access_token", account.accessToken);
     url.searchParams.set("shop_id", account.shop_id);
-    url.searchParams.set("sign", this.sign(path, timestamp, account.accessToken, account.shop_id));
+    url.searchParams.set("sign", this.sign(account.appConfig, path, timestamp, account.accessToken, account.shop_id));
     Object.entries(query || {}).forEach(([key, value]) => url.searchParams.set(key, value));
     const response = await safeFetch(url.toString(), {
       method,
@@ -616,11 +782,11 @@ export class ShopeeConnectorService {
     const path = "/api/v2/media_space/upload_image";
     const timestamp = Math.floor(Date.now() / 1000);
     const url = new URL(path, this.baseUrl());
-    url.searchParams.set("partner_id", ENV.SHOPEE_PARTNER_ID);
+    url.searchParams.set("partner_id", account.appConfig.partnerId);
     url.searchParams.set("timestamp", String(timestamp));
     url.searchParams.set("access_token", account.accessToken);
     url.searchParams.set("shop_id", account.shop_id);
-    url.searchParams.set("sign", this.sign(path, timestamp, account.accessToken, account.shop_id));
+    url.searchParams.set("sign", this.sign(account.appConfig, path, timestamp, account.accessToken, account.shop_id));
     const extension = downloaded.contentType.includes("png") ? "png" : downloaded.contentType.includes("webp") ? "webp" : "jpg";
     const form = new FormData();
     const imageBytes = Uint8Array.from(downloaded.buffer);

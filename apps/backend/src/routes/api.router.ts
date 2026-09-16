@@ -29,6 +29,8 @@ import {
   orderWebhookSchema,
   productUpdateSchema,
   resolveDiffSchema,
+  shopeeAppConfigSchema,
+  shopeeAuthorizationSchema,
   shopeeListingDraftSchema,
   shopifySyncSchema,
   storeSettingsSchema,
@@ -145,7 +147,10 @@ apiRouter.post("/connectors/woocommerce/sync", requireRole("ADMIN"), validateBod
 apiRouter.post("/connectors/shopify/sync", requireRole("ADMIN"), validateBody(shopifySyncSchema), (req, res) => connectorsCtrl.syncShopify(req, res));
 apiRouter.post("/connectors/export-csv", requireRole("ADMIN"), validateBody(exportCsvSchema), (req, res) => connectorsCtrl.exportMarketplaceCSV(req, res));
 apiRouter.get("/connectors/shopee/status", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeStatus(req, res));
-apiRouter.post("/connectors/shopee/authorization-url", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAuthorizationUrl(req, res));
+apiRouter.get("/connectors/shopee/app-config", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAppConfig(req, res));
+apiRouter.put("/connectors/shopee/app-config", requireRole("ADMIN"), requirePersistence, validateBody(shopeeAppConfigSchema), (req, res) => connectorsCtrl.saveShopeeAppConfig(req, res));
+apiRouter.get("/connectors/shopee/accounts", requireRole("ADMIN"), (req, res) => connectorsCtrl.listShopeeAccounts(req, res));
+apiRouter.post("/connectors/shopee/authorization-url", requireRole("ADMIN"), validateBody(shopeeAuthorizationSchema), (req, res) => connectorsCtrl.getShopeeAuthorizationUrl(req, res));
 apiRouter.get("/connectors/shopee/categories", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeCategories(req, res));
 apiRouter.get("/connectors/shopee/categories/:categoryId/attributes", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAttributes(req, res));
 apiRouter.get("/connectors/shopee/logistics", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeLogistics(req, res));

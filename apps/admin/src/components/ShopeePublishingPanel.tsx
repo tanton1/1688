@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ChannelAccountSummary,
   ChannelReadinessResult,
+  ShopeeAppConfigSummary,
   ShopeeAttributeOption,
   ShopeeCategoryOption,
   ShopeeListingDraft,
@@ -13,13 +14,18 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Copy,
   Download,
+  Eye,
+  EyeOff,
   Image as ImageIcon,
+  KeyRound,
   Link2,
   Loader2,
-  PackageCheck,
+  Plus,
   RefreshCw,
   Send,
+  Save,
   ShieldCheck
 } from "lucide-react";
 import { AdminApi } from "../services/api";
@@ -51,7 +57,8 @@ const createDraft = (product?: WebProduct | null, accountId?: string): ShopeeLis
 });
 
 export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ product, onShowToast, onExportCsv }) => {
-  const [account, setAccount] = useState<ChannelAccountSummary | null>(null);
+  const [appConfig, setAppConfig] = useState<ShopeeAppConfigSummary | null>(null);
+  const [accounts, setAccounts] = useState<ChannelAccountSummary[]>([]);
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ShopeeListingDraft>(() => createDraft(product));
   const [categories, setCategories] = useState<ShopeeCategoryOption[]>([]);
@@ -62,7 +69,12 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
   const [loading, setLoading] = useState(false);
   const [referenceLoading, setReferenceLoading] = useState(false);
   const [error, setError] = useState("");
+  const [configName, setConfigName] = useState("Shopee Open Platform");
+  const [partnerId, setPartnerId] = useState("");
+  const [partnerKey, setPartnerKey] = useState("");
+  const [showPartnerKey, setShowPartnerKey] = useState(false);
 
+  const account = useMemo(() => accounts.find(item => item.id === draft.accountId) || accounts[0] || null, [accounts, draft.accountId]);
   const isConnected = account?.status === "CONNECTED";
   const selectedVariantIds = useMemo(() => new Set(draft.selectedVariantIds || []), [draft.selectedVariantIds]);
   const categoryMatches = useMemo(() => {
@@ -75,9 +87,19 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
     setLoading(true);
     setError("");
     try {
-      const response = await AdminApi.getShopeeStatus();
-      setAccount(response.account);
-      setDraft(current => ({ ...current, accountId: response.account.id || current.accountId }));
+      const [configResponse, accountsResponse] = await Promise.all([
+        AdminApi.getShopeeAppConfig(),
+        AdminApi.getShopeeAccounts()
+      ]);
+      setAppConfig(configResponse.config);
+      setConfigName(configResponse.config.name || "Shopee Open Platform");
+      setPartnerId(configResponse.config.partnerId || "");
+      setAccounts(accountsResponse.accounts);
+      setDraft(current => {
+        const stillExists = accountsResponse.accounts.some(item => item.id === current.accountId);
+        const selected = stillExists ? current.accountId : accountsResponse.accounts.find(item => item.status === "CONNECTED")?.id || accountsResponse.accounts[0]?.id;
+        return { ...current, accountId: selected };
+      });
     } catch (err: any) {
       setError(err.message || "Không thể kiểm tra kết nối Shopee");
     } finally {
@@ -109,7 +131,7 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
   useEffect(() => { void loadStatus(); }, []);
 
   useEffect(() => {
-    setDraft(createDraft(product, account?.id));
+    setDraft(current => createDraft(product, current.accountId || account?.id));
     setStep(0);
     setReadiness(null);
     setAttributes([]);
@@ -124,12 +146,55 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
     setLoading(true);
     setError("");
     try {
-      const response = await AdminApi.getShopeeAuthorizationUrl();
+      const response = await AdminApi.getShopeeAuthorizationUrl(appConfig?.id);
       window.location.assign(response.authorizationUrl);
     } catch (err: any) {
       setError(err.message || "Không thể mở trang cấp quyền Shopee");
       setLoading(false);
     }
+  };
+
+  const saveConfig = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const response = await AdminApi.saveShopeeAppConfig({
+        id: appConfig?.id,
+        name: configName,
+        region: appConfig?.region || "VN",
+        partnerId,
+        ...(partnerKey.trim() ? { partnerKey: partnerKey.trim() } : {})
+      });
+      setAppConfig(response.config);
+      setPartnerKey("");
+      onShowToast("Đã lưu và mã hóa cấu hình Shopee Open Platform.");
+      await loadStatus();
+    } catch (err: any) {
+      setError(err.message || "Không thể lưu cấu hình Shopee");
+      onShowToast(err.message || "Không thể lưu cấu hình Shopee", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyRedirectUrl = async () => {
+    if (!appConfig?.redirectUrl) return;
+    try {
+      await navigator.clipboard.writeText(appConfig.redirectUrl);
+      onShowToast("Đã sao chép Redirect URL.");
+    } catch {
+      onShowToast("Không thể sao chép tự động. Hãy chọn và sao chép URL.", "error");
+    }
+  };
+
+  const selectAccount = (accountId: string) => {
+    setDraft(current => ({ ...current, accountId }));
+    setCategories([]);
+    setAttributes([]);
+    setLogistics([]);
+    setReadiness(null);
+    void loadReferences(accountId);
   };
 
   const chooseCategory = async (category: ShopeeCategoryOption) => {
@@ -212,77 +277,98 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
     }
   };
 
-  if (!account || account.status !== "CONNECTED") {
-    return (
-      <div className="space-y-4">
-        <div className="overflow-hidden rounded-2xl border border-orange-200 bg-white">
-          <div className="flex flex-col gap-4 bg-gradient-to-br from-orange-50 to-white p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-lg font-black text-white">S</div>
-              <div>
-                <h4 className="font-black text-slate-950">Kết nối Shopee Seller</h4>
-                <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-600">
-                  Cấp quyền cho ứng dụng để lấy ngành hàng, tải ảnh biến thể và đăng sản phẩm trực tiếp vào shop của bạn.
-                </p>
-              </div>
-            </div>
-            <button type="button" onClick={account?.status === "NOT_CONFIGURED" ? undefined : connect} disabled={loading || !account || account.status === "NOT_CONFIGURED"}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 text-sm font-black text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-              Kết nối tài khoản
-            </button>
-          </div>
-          <div className="grid gap-2 border-t border-orange-100 p-4 text-xs text-slate-700 sm:grid-cols-3">
-            <div className="flex gap-2"><ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />Token chỉ lưu mã hóa ở backend</div>
-            <div className="flex gap-2"><ImageIcon className="h-4 w-4 shrink-0 text-emerald-600" />Ảnh được upload đúng CDN Shopee</div>
-            <div className="flex gap-2"><PackageCheck className="h-4 w-4 shrink-0 text-emerald-600" />Kiểm tra SKU trước khi đăng</div>
-          </div>
-        </div>
+  const canSaveConfig = /^\d{1,20}$/.test(partnerId.trim()) && (partnerKey.trim().length >= 8 || Boolean(appConfig?.keyConfigured));
+  const canConnectSeller = Boolean(appConfig?.keyConfigured && appConfig.partnerId && appConfig.redirectUrl);
 
-        {account?.status === "NOT_CONFIGURED" && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-            <p className="font-black">Còn một bước cấu hình máy chủ</p>
-            <p className="mt-1">{account?.message}</p>
-            <p className="mt-1">Sau khi Shopee duyệt hồ sơ Seller, nhập Partner ID, Partner Key và Redirect URL vào biến môi trường production.</p>
-          </div>
-        )}
-        {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <button type="button" onClick={loadStatus} disabled={loading} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Kiểm tra lại
-          </button>
-          <button type="button" onClick={onExportCsv} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-            <Download className="h-4 w-4" /> Xuất CSV dự phòng
-          </button>
+  const configurationCard = (
+    <div className="overflow-hidden rounded-2xl border border-orange-200 bg-white">
+      <div className="flex items-start gap-3 bg-gradient-to-br from-orange-50 to-white p-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-lg font-black text-white">S</div>
+        <div className="min-w-0">
+          <h4 className="font-black text-slate-950">Shopee Open Platform</h4>
+          <p className="mt-1 text-xs leading-relaxed text-slate-600">Lưu khóa ứng dụng một lần, sau đó cấp quyền cho từng Seller shop.</p>
         </div>
       </div>
-    );
-  }
+      <form onSubmit={saveConfig} className="space-y-3 border-t border-orange-100 p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs font-black text-slate-700">Tên cấu hình</span>
+            <input value={configName} maxLength={100} onChange={event => setConfigName(event.target.value)} placeholder="Shopee Việt Nam" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-black text-slate-700">Partner ID</span>
+            <input value={partnerId} inputMode="numeric" autoComplete="off" onChange={event => setPartnerId(event.target.value.replace(/\D/g, ""))} placeholder="Nhập Partner ID" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+          </label>
+        </div>
+        <label className="block">
+          <span className="mb-1 flex items-center justify-between text-xs font-black text-slate-700"><span>Partner Key</span>{appConfig?.keyConfigured && <span className="text-emerald-700">Đã mã hóa</span>}</span>
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <input type={showPartnerKey ? "text" : "password"} value={partnerKey} autoComplete="new-password" onChange={event => setPartnerKey(event.target.value)} placeholder={appConfig?.keyConfigured ? "Để trống nếu không đổi Partner Key" : "Nhập Partner Key"} className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-11 font-mono text-sm outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+            <button type="button" onClick={() => setShowPartnerKey(value => !value)} aria-label={showPartnerKey ? "Ẩn Partner Key" : "Hiện Partner Key"} className="absolute right-2 top-1.5 rounded-lg p-2 text-slate-500 hover:bg-slate-100">{showPartnerKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+          </div>
+        </label>
+        <div>
+          <span className="mb-1 block text-xs font-black text-slate-700">Redirect URL</span>
+          <div className="flex gap-2">
+            <input readOnly value={appConfig?.redirectUrl || "Máy chủ chưa cấu hình URL production"} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-[11px] text-slate-600" />
+            <button type="button" onClick={copyRedirectUrl} disabled={!appConfig?.redirectUrl} className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Copy className="h-4 w-4" /> <span className="hidden sm:inline">Sao chép</span></button>
+          </div>
+        </div>
+        {appConfig?.message && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{appConfig.message}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-1.5 text-[11px] text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" />Partner Key không được trả lại trình duyệt sau khi lưu.</p>
+          <button type="submit" disabled={loading || !canSaveConfig} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu cấu hình</button>
+        </div>
+      </form>
+    </div>
+  );
 
   return (
     <div className="space-y-4 pb-20 sm:pb-0">
-      <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600 font-black text-white">S</div>
+      {configurationCard}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="flex items-center gap-1.5 text-sm font-black text-slate-950"><CheckCircle2 className="h-4 w-4 text-emerald-600" />{account.shopName}</p>
-            <p className="text-[11px] text-slate-600">Shop ID {account.shopId} · {account.region}</p>
+            <h4 className="text-sm font-black text-slate-950">Seller đã kết nối</h4>
+            <p className="mt-0.5 text-xs text-slate-500">Chọn shop nhận listing hoặc cấp quyền thêm shop mới.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={loadStatus} disabled={loading} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Làm mới</button>
+            <button type="button" onClick={connect} disabled={loading || !canConnectSeller} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-orange-600 px-3 text-xs font-black text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"><Plus className="h-4 w-4" /> Kết nối Seller</button>
           </div>
         </div>
-        <button type="button" onClick={loadStatus} className="inline-flex items-center gap-1.5 self-start rounded-lg px-2.5 py-2 text-xs font-bold text-slate-600 hover:bg-white sm:self-auto">
-          <RefreshCw className="h-3.5 w-3.5" /> Làm mới kết nối
-        </button>
+        {accounts.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {accounts.map(item => {
+              const selected = item.id === account?.id;
+              const connected = item.status === "CONNECTED";
+              return (
+                <button key={item.id || item.shopId} type="button" onClick={() => item.id && selectAccount(item.id)} className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? "border-orange-400 bg-orange-50 ring-2 ring-orange-100" : "border-slate-200 hover:border-slate-300"}`}>
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-white ${connected ? "bg-orange-600" : "bg-slate-400"}`}>S</div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-900">{item.shopName || `Shopee Shop ${item.shopId}`}</p><p className="mt-0.5 text-[11px] text-slate-500">Shop ID {item.shopId} · {connected ? "Sẵn sàng" : "Cần kết nối lại"}</p></div>
+                  {selected && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-col items-center rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center"><Link2 className="h-6 w-6 text-slate-400" /><p className="mt-2 text-sm font-bold text-slate-700">Chưa có Seller nào</p><p className="mt-1 text-xs text-slate-500">Lưu Partner ID/Key rồi bấm “Kết nối Seller”.</p></div>
+        )}
       </div>
 
-      <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
+      {!isConnected && <div className="grid gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 sm:grid-cols-[1fr_auto] sm:items-center"><p>{account?.status === "TOKEN_EXPIRED" ? "Phiên Seller đã hết hạn. Hãy kết nối lại shop này." : "Cần chọn một Seller đang kết nối trước khi tạo listing."}</p><button type="button" onClick={onExportCsv} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 font-bold"><Download className="h-4 w-4" /> Xuất CSV dự phòng</button></div>}
+
+      {isConnected && <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
         {steps.map((label, index) => (
           <button key={label} type="button" onClick={() => setStep(index)} className={`rounded-lg px-1 py-2 text-[10px] font-black transition sm:text-xs ${step === index ? "bg-white text-orange-700 shadow-sm" : index < step ? "text-emerald-700" : "text-slate-500"}`}>
             <span className="mr-1 hidden sm:inline">{index < step ? "✓" : index + 1}.</span>{label}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {!product ? (
+      {isConnected && (!product ? (
         <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chọn một sản phẩm ở phía trên để tạo listing.</div>
       ) : (
         <div className="min-h-[360px]">
@@ -405,11 +491,11 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
 
-      {product && (
+      {isConnected && product && (
         <div className="fixed inset-x-0 bottom-0 z-10 flex items-center justify-between gap-2 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:static sm:rounded-xl sm:border sm:shadow-none">
           <button type="button" disabled={step === 0 || loading} onClick={() => setStep(value => value - 1)} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-30"><ArrowLeft className="h-4 w-4" /> Quay lại</button>
           <div className="flex gap-2">
