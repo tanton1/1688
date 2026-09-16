@@ -194,7 +194,6 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
     setAttributes([]);
     setLogistics([]);
     setReadiness(null);
-    void loadReferences(accountId);
   };
 
   const chooseCategory = async (category: ShopeeCategoryOption) => {
@@ -277,7 +276,8 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
     }
   };
 
-  const canSaveConfig = /^\d{1,20}$/.test(partnerId.trim()) && (partnerKey.trim().length >= 8 || Boolean(appConfig?.keyConfigured));
+  const canKeepStoredKey = appConfig?.source === "DATABASE" && appConfig.keyConfigured;
+  const canSaveConfig = /^\d{1,20}$/.test(partnerId.trim()) && (partnerKey.trim().length >= 8 || Boolean(canKeepStoredKey));
   const canConnectSeller = Boolean(appConfig?.keyConfigured && appConfig.partnerId && appConfig.redirectUrl);
 
   const configurationCard = (
@@ -304,7 +304,7 @@ export const ShopeePublishingPanel: React.FC<ShopeePublishingPanelProps> = ({ pr
           <span className="mb-1 flex items-center justify-between text-xs font-black text-slate-700"><span>Partner Key</span>{appConfig?.keyConfigured && <span className="text-emerald-700">Đã mã hóa</span>}</span>
           <div className="relative">
             <KeyRound className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <input type={showPartnerKey ? "text" : "password"} value={partnerKey} autoComplete="new-password" onChange={event => setPartnerKey(event.target.value)} placeholder={appConfig?.keyConfigured ? "Để trống nếu không đổi Partner Key" : "Nhập Partner Key"} className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-11 font-mono text-sm outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+            <input type={showPartnerKey ? "text" : "password"} value={partnerKey} autoComplete="new-password" onChange={event => setPartnerKey(event.target.value)} placeholder={canKeepStoredKey ? "Để trống nếu không đổi Partner Key" : "Nhập Partner Key"} className="w-full rounded-xl border border-slate-300 py-2.5 pl-9 pr-11 font-mono text-sm outline-hidden focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
             <button type="button" onClick={() => setShowPartnerKey(value => !value)} aria-label={showPartnerKey ? "Ẩn Partner Key" : "Hiện Partner Key"} className="absolute right-2 top-1.5 rounded-lg p-2 text-slate-500 hover:bg-slate-100">{showPartnerKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
           </div>
         </label>
