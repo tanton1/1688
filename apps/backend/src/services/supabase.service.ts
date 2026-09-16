@@ -924,7 +924,7 @@ export class SupabaseDataService {
     if (!this.client) return null;
     const { data, error } = await this.client
       .from("channel_accounts")
-      .upsert(account, { onConflict: "platform,shop_id" })
+      .upsert(account, { onConflict: "platform,channel_app_config_id,shop_id" })
       .select("*")
       .single();
     if (error) {
@@ -961,6 +961,18 @@ export class SupabaseDataService {
     return data;
   }
 
+  public async listChannelAppConfigs(platform?: string): Promise<any[]> {
+    if (!this.client) return [];
+    let query = this.client.from("channel_app_configs").select("*");
+    if (platform) query = query.eq("platform", platform);
+    const { data, error } = await query.order("updated_at", { ascending: false });
+    if (error) {
+      console.error("[Supabase listChannelAppConfigs error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
   public async getChannelAccount(platform: string, accountId?: string): Promise<any | null> {
     if (!this.client) return null;
     let query = this.client.from("channel_accounts").select("*").eq("platform", platform);
@@ -984,6 +996,21 @@ export class SupabaseDataService {
       return [];
     }
     return data || [];
+  }
+
+  public async updateChannelAccount(accountId: string, patch: Record<string, unknown>): Promise<any | null> {
+    if (!this.client) return null;
+    const { data, error } = await this.client
+      .from("channel_accounts")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", accountId)
+      .select("*")
+      .maybeSingle();
+    if (error) {
+      console.error("[Supabase updateChannelAccount error]", error);
+      return null;
+    }
+    return data;
   }
 
   public async upsertChannelListing(listing: Record<string, unknown>): Promise<any | null> {
@@ -1015,16 +1042,61 @@ export class SupabaseDataService {
     return data;
   }
 
-  public async listChannelListings(platform?: string): Promise<any[]> {
+  public async listChannelListings(platform?: string, accountId?: string): Promise<any[]> {
     if (!this.client) return [];
     let query = this.client.from("channel_listings").select("*");
     if (platform) query = query.eq("platform", platform);
+    if (accountId) query = query.eq("channel_account_id", accountId);
     const { data, error } = await query.order("updated_at", { ascending: false }).limit(200);
     if (error) {
       console.error("[Supabase listChannelListings error]", error);
       return [];
     }
     return data || [];
+  }
+
+  public async listChannelListingsForSync(platform: string, accountId?: string, limit = 10): Promise<any[]> {
+    if (!this.client) return [];
+    let query = this.client
+      .from("channel_listings")
+      .select("*")
+      .eq("platform", platform)
+      .in("status", ["UNDER_REVIEW", "LIVE", "PAUSED", "SYNC_ERROR"])
+      .not("external_product_id", "is", null);
+    if (accountId) query = query.eq("channel_account_id", accountId);
+    const { data, error } = await query
+      .order("last_synced_at", { ascending: true, nullsFirst: true })
+      .limit(Math.max(1, Math.min(limit, 50)));
+    if (error) {
+      console.error("[Supabase listChannelListingsForSync error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  public async listChannelSkusForSync(listingId: string): Promise<any[]> {
+    if (!this.client) return [];
+    const { data, error } = await this.client
+      .from("channel_skus")
+      .select("*, product_variants(id, stock_quantity, inventory_tracked, source_available, selected_for_sale)")
+      .eq("channel_listing_id", listingId)
+      .eq("sync_enabled", true)
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.error("[Supabase listChannelSkusForSync error]", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  public async updateChannelSku(skuId: string, patch: Record<string, unknown>): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client
+      .from("channel_skus")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", skuId);
+    if (error) console.error("[Supabase updateChannelSku error]", error);
+    return !error;
   }
 
   public async replaceChannelSkus(listingId: string, rows: Array<Record<string, unknown>>): Promise<boolean> {

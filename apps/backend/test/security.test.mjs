@@ -136,11 +136,12 @@ test("glossary response follows the admin contract", async () => {
   assert.equal(response.body.total, response.body.items.length);
 });
 
-test("cron needs its own secret and does not claim fake work", async () => {
+test("cron needs its own secret and runs the Shopee inventory worker", async () => {
   await request.post("/api/v1/sync/cron").set("Authorization", "Bearer wrong").expect(401);
   const response = await request.post("/api/v1/sync/cron")
-    .set("Authorization", "Bearer test-cron-secret").expect(501);
-  assert.equal(response.body.error, "NOT_IMPLEMENTED");
+    .set("Authorization", "Bearer test-cron-secret").expect(200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.shopee.processed, 0);
 });
 
 test("URL guard blocks loopback/private targets and restricts Shopify", async () => {
@@ -432,6 +433,27 @@ test("Shopee connector exposes capability status without leaking credentials", a
   await request.get("/api/v1/connectors/shopee/status")
     .set("Authorization", "Bearer test-extension-token")
     .expect(403);
+
+  await request.get("/api/v1/connectors/shopee/dashboard")
+    .set("Authorization", "Bearer test-extension-token")
+    .expect(403);
+  await request.post("/api/v1/connectors/shopee/inventory-sync")
+    .set("Authorization", "Bearer test-extension-token")
+    .send({ limit: 10 })
+    .expect(403);
+  await request.delete("/api/v1/connectors/shopee/accounts/11111111-1111-4111-8111-111111111111")
+    .set("Authorization", "Bearer test-extension-token")
+    .expect(403);
+
+  const dashboard = await request.get("/api/v1/connectors/shopee/dashboard")
+    .set("Authorization", "Bearer test-admin-token")
+    .expect(200);
+  assert.equal(dashboard.body.dashboard.listingCount, 0);
+  const sync = await request.post("/api/v1/connectors/shopee/inventory-sync")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({ limit: 10 })
+    .expect(200);
+  assert.equal(sync.body.result.processed, 0);
 });
 
 test("Shopee app credentials can be saved by admins without returning the Partner Key", async () => {
@@ -469,6 +491,16 @@ test("Shopee app credentials can be saved by admins without returning the Partne
   const state = channelCryptoService.createOAuthState("admin-user", saved.body.config.id);
   assert.equal(channelCryptoService.verifyOAuthState(state).appConfigId, saved.body.config.id);
   assert.throws(() => channelCryptoService.verifyOAuthState(`${state}tampered`));
+
+  const second = await request.put("/api/v1/connectors/shopee/app-config")
+    .set("Authorization", "Bearer test-admin-token")
+    .send({ name: "Shopee VN Backup", region: "VN", partnerId: "7654321", partnerKey })
+    .expect(200);
+  assert.notEqual(second.body.config.id, saved.body.config.id);
+  const configs = await request.get("/api/v1/connectors/shopee/app-configs")
+    .set("Authorization", "Bearer test-admin-token")
+    .expect(200);
+  assert.equal(configs.body.configs.length, 2);
 });
 
 test("store connectors reject products that have not passed the publish gate", async () => {

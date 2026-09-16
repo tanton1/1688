@@ -463,6 +463,10 @@ export const shopeeAppConfigSchema = z.object({
   partnerKey: z.string().trim().min(8).max(500).optional()
 }).strict();
 export const shopeeAuthorizationSchema = z.object({ appConfigId: id.optional() }).strict();
+export const shopeeInventorySyncSchema = z.object({
+  accountId: id.optional(),
+  limit: z.number().int().min(1).max(50).optional()
+}).strict();
 const shopeeAttributeValueSchema = z.object({
   attributeId: id,
   valueId: optionalText(128),

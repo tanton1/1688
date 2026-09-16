@@ -381,9 +381,26 @@ CREATE TABLE IF NOT EXISTS storefront_settings (
 );
 
 -- 15. OMNICHANNEL LISTINGS (SHOPEE / TIKTOK SHOP)
+CREATE TABLE IF NOT EXISTS channel_app_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    platform VARCHAR(30) NOT NULL CHECK (platform IN ('SHOPEE', 'TIKTOK_SHOP')),
+    name TEXT NOT NULL DEFAULT 'Shopee Open Platform',
+    region VARCHAR(12) NOT NULL DEFAULT 'VN',
+    partner_id TEXT NOT NULL,
+    partner_key_ciphertext TEXT NOT NULL,
+    redirect_url TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_channel_app_partner UNIQUE (platform, partner_id)
+);
+
 CREATE TABLE IF NOT EXISTS channel_accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     platform VARCHAR(30) NOT NULL CHECK (platform IN ('SHOPEE', 'TIKTOK_SHOP')),
+    channel_app_config_id UUID REFERENCES channel_app_configs(id) ON DELETE RESTRICT,
     shop_id TEXT NOT NULL,
     shop_name TEXT,
     region VARCHAR(12) NOT NULL DEFAULT 'VN',
@@ -397,9 +414,13 @@ CREATE TABLE IF NOT EXISTS channel_accounts (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by TEXT,
     last_health_check_at TIMESTAMPTZ,
+    last_inventory_sync_at TIMESTAMPTZ,
+    auto_sync_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    sync_error_count INTEGER NOT NULL DEFAULT 0,
+    disconnected_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_channel_account_shop UNIQUE (platform, shop_id)
+    CONSTRAINT uq_channel_account_app_shop UNIQUE (platform, channel_app_config_id, shop_id)
 );
 
 CREATE TABLE IF NOT EXISTS channel_listings (
@@ -500,7 +521,11 @@ CREATE TABLE IF NOT EXISTS channel_sync_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_channel_accounts_platform_status ON channel_accounts(platform, status);
+CREATE INDEX IF NOT EXISTS idx_channel_app_configs_platform_active ON channel_app_configs(platform, is_active, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_channel_accounts_app_config ON channel_accounts(channel_app_config_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_channel_accounts_sync_due ON channel_accounts(platform, auto_sync_enabled, status, last_inventory_sync_at);
 CREATE INDEX IF NOT EXISTS idx_channel_listings_status ON channel_listings(platform, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_channel_listings_sync_due ON channel_listings(platform, status, last_synced_at);
 CREATE INDEX IF NOT EXISTS idx_channel_skus_external ON channel_skus(channel_listing_id, external_sku_id);
 CREATE INDEX IF NOT EXISTS idx_channel_jobs_queue ON channel_jobs(status, available_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_channel_sync_events_listing ON channel_sync_events(channel_listing_id, created_at DESC);
@@ -520,6 +545,7 @@ ALTER TABLE product_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE import_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE storefront_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE channel_app_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_listings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_skus ENABLE ROW LEVEL SECURITY;

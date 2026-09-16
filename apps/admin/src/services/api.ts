@@ -27,8 +27,10 @@ import {
   ShopeeAppConfigInput,
   ShopeeAppConfigSummary,
   ShopeeCategoryOption,
+  ShopeeConnectorDashboard,
   ShopeeListingDraft,
-  ShopeeLogisticsOption
+  ShopeeLogisticsOption,
+  ShopeeSyncRunResult
 } from "@hub1688/shared-types";
 
 export interface AISEOContentDraft {
@@ -340,6 +342,10 @@ export const AdminApi = {
     return request("/api/v1/connectors/shopee/app-config");
   },
 
+  async getShopeeAppConfigs(): Promise<{ success: boolean; configs: ShopeeAppConfigSummary[] }> {
+    return request("/api/v1/connectors/shopee/app-configs");
+  },
+
   async saveShopeeAppConfig(config: ShopeeAppConfigInput): Promise<{ success: boolean; config: ShopeeAppConfigSummary }> {
     return request("/api/v1/connectors/shopee/app-config", { method: "PUT", body: JSON.stringify(config) });
   },
@@ -347,6 +353,26 @@ export const AdminApi = {
   async getShopeeAccounts(appConfigId?: string): Promise<{ success: boolean; accounts: ChannelAccountSummary[] }> {
     const query = appConfigId ? `?appConfigId=${encodeURIComponent(appConfigId)}` : "";
     return request(`/api/v1/connectors/shopee/accounts${query}`);
+  },
+
+  async getShopeeDashboard(appConfigId?: string): Promise<{ success: boolean; dashboard: ShopeeConnectorDashboard }> {
+    const query = appConfigId ? `?appConfigId=${encodeURIComponent(appConfigId)}` : "";
+    return request(`/api/v1/connectors/shopee/dashboard${query}`);
+  },
+
+  async refreshShopeeAccount(accountId: string): Promise<{ success: boolean; account: ChannelAccountSummary }> {
+    return request(`/api/v1/connectors/shopee/accounts/${encodeURIComponent(accountId)}/refresh`, { method: "POST" });
+  },
+
+  async disconnectShopeeAccount(accountId: string): Promise<{ success: boolean; account: ChannelAccountSummary }> {
+    return request(`/api/v1/connectors/shopee/accounts/${encodeURIComponent(accountId)}`, { method: "DELETE" });
+  },
+
+  async syncShopeeInventory(accountId?: string, limit = 10): Promise<{ success: boolean; result: ShopeeSyncRunResult }> {
+    return request("/api/v1/connectors/shopee/inventory-sync", {
+      method: "POST",
+      body: JSON.stringify({ ...(accountId ? { accountId } : {}), limit })
+    });
   },
 
   async getShopeeAuthorizationUrl(appConfigId?: string): Promise<{ success: boolean; authorizationUrl: string }> {

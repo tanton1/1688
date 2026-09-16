@@ -223,6 +223,23 @@ export class StoreConnectorsController {
     }
   }
 
+  public async listShopeeAppConfigs(_req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, configs: await shopeeConnectorService.listAppConfigs() });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async getShopeeDashboard(req: Request, res: Response): Promise<void> {
+    try {
+      const appConfigId = req.query.appConfigId ? String(req.query.appConfigId) : undefined;
+      res.json({ success: true, dashboard: await shopeeConnectorService.getDashboard(appConfigId) });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
   public async saveShopeeAppConfig(req: Request, res: Response): Promise<void> {
     try {
       const config = await shopeeConnectorService.saveAppConfig(req.body as ShopeeAppConfigInput, req.auth?.id || "admin");
@@ -236,6 +253,32 @@ export class StoreConnectorsController {
     try {
       const appConfigId = req.query.appConfigId ? String(req.query.appConfigId) : undefined;
       res.json({ success: true, accounts: await shopeeConnectorService.listAccounts(appConfigId) });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async refreshShopeeAccount(req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, account: await shopeeConnectorService.refreshAccountProfile(String(req.params.id)) });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async disconnectShopeeAccount(req: Request, res: Response): Promise<void> {
+    try {
+      res.json({ success: true, account: await shopeeConnectorService.disconnectAccount(String(req.params.id)) });
+    } catch (error) {
+      this.sendShopeeError(res, error);
+    }
+  }
+
+  public async syncShopeeInventory(req: Request, res: Response): Promise<void> {
+    try {
+      const { accountId, limit } = req.body as { accountId?: string; limit?: number };
+      const result = await shopeeConnectorService.syncInventory(accountId, limit || 10);
+      res.status(result.success ? 200 : 207).json({ success: result.success, result });
     } catch (error) {
       this.sendShopeeError(res, error);
     }

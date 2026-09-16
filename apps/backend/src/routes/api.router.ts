@@ -31,6 +31,7 @@ import {
   resolveDiffSchema,
   shopeeAppConfigSchema,
   shopeeAuthorizationSchema,
+  shopeeInventorySyncSchema,
   shopeeListingDraftSchema,
   shopifySyncSchema,
   storeSettingsSchema,
@@ -148,8 +149,13 @@ apiRouter.post("/connectors/shopify/sync", requireRole("ADMIN"), validateBody(sh
 apiRouter.post("/connectors/export-csv", requireRole("ADMIN"), validateBody(exportCsvSchema), (req, res) => connectorsCtrl.exportMarketplaceCSV(req, res));
 apiRouter.get("/connectors/shopee/status", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeStatus(req, res));
 apiRouter.get("/connectors/shopee/app-config", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAppConfig(req, res));
+apiRouter.get("/connectors/shopee/app-configs", requireRole("ADMIN"), (req, res) => connectorsCtrl.listShopeeAppConfigs(req, res));
 apiRouter.put("/connectors/shopee/app-config", requireRole("ADMIN"), requirePersistence, validateBody(shopeeAppConfigSchema), (req, res) => connectorsCtrl.saveShopeeAppConfig(req, res));
+apiRouter.get("/connectors/shopee/dashboard", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeDashboard(req, res));
 apiRouter.get("/connectors/shopee/accounts", requireRole("ADMIN"), (req, res) => connectorsCtrl.listShopeeAccounts(req, res));
+apiRouter.post("/connectors/shopee/accounts/:id/refresh", requireRole("ADMIN"), (req, res) => connectorsCtrl.refreshShopeeAccount(req, res));
+apiRouter.delete("/connectors/shopee/accounts/:id", requireRole("ADMIN"), requirePersistence, (req, res) => connectorsCtrl.disconnectShopeeAccount(req, res));
+apiRouter.post("/connectors/shopee/inventory-sync", requireRole("ADMIN"), requirePersistence, validateBody(shopeeInventorySyncSchema), (req, res) => connectorsCtrl.syncShopeeInventory(req, res));
 apiRouter.post("/connectors/shopee/authorization-url", requireRole("ADMIN"), validateBody(shopeeAuthorizationSchema), (req, res) => connectorsCtrl.getShopeeAuthorizationUrl(req, res));
 apiRouter.get("/connectors/shopee/categories", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeCategories(req, res));
 apiRouter.get("/connectors/shopee/categories/:categoryId/attributes", requireRole("ADMIN"), (req, res) => connectorsCtrl.getShopeeAttributes(req, res));

@@ -9,8 +9,10 @@ import {
   ShopeeAppConfigSummary,
   ShopeeAttributeOption,
   ShopeeCategoryOption,
+  ShopeeConnectorDashboard,
   ShopeeListingDraft,
   ShopeeLogisticsOption,
+  ShopeeSyncRunResult,
   WebProduct,
   WebProductVariant
 } from "@hub1688/shared-types";
@@ -34,6 +36,11 @@ interface StoredChannelAccount {
   granted_scopes?: string[];
   status: string;
   last_health_check_at?: string;
+  last_inventory_sync_at?: string;
+  auto_sync_enabled?: boolean;
+  sync_error_count?: number;
+  disconnected_at?: string | null;
+  metadata?: Record<string, unknown>;
   updated_at?: string;
 }
 
@@ -102,6 +109,32 @@ const stripHtml = (value: string): string => value
   .trim();
 
 const unique = <T>(values: T[]): T[] => Array.from(new Set(values));
+
+export function mapShopeeItemStatus(itemStatus?: string, auditStatus?: string): ChannelListingSummary["status"] {
+  const status = String(itemStatus || "").toUpperCase();
+  const audit = String(auditStatus || "").toUpperCase();
+  if (["BANNED", "DELETED", "REJECTED"].includes(status) || audit === "REJECTED") return "REJECTED";
+  if (["UNLIST", "SUSPENDED"].includes(status)) return "PAUSED";
+  if (status === "NORMAL" && !["PENDING", "PROCESSING"].includes(audit)) return "LIVE";
+  return "UNDER_REVIEW";
+}
+
+export function buildShopeeStockPayload(
+  itemId: string,
+  stocks: Array<{ modelId?: string; stock: number }>
+): Record<string, unknown> {
+  if (!stocks.length) throw new ShopeeConnectorError("SHOPEE_STOCK_EMPTY", "Listing không có SKU đủ điều kiện đồng bộ", 422);
+  if (stocks.length > 1 && stocks.some(item => !item.modelId)) {
+    throw new ShopeeConnectorError("SHOPEE_MODEL_MAPPING_REQUIRED", "Chưa ánh xạ đủ Model ID cho các biến thể Shopee", 409);
+  }
+  return {
+    item_id: apiId(itemId),
+    stock_list: stocks.map(item => ({
+      model_id: apiId(item.modelId || "0"),
+      seller_stock: [{ stock: Math.max(0, Math.floor(item.stock)) }]
+    }))
+  };
+}
 
 export function selectShopeeVariants(product: WebProduct, draft: ShopeeListingDraft): WebProductVariant[] {
   const selectedIds = new Set(draft.selectedVariantIds || []);
@@ -297,8 +330,8 @@ export class ShopeeConnectorService {
     return this.mapAccount(account);
   }
 
-  public async getAppConfig(): Promise<ShopeeAppConfigSummary> {
-    const stored = await this.getStoredAppConfig();
+  public async getAppConfig(configId?: string): Promise<ShopeeAppConfigSummary> {
+    const stored = await this.getStoredAppConfig(configId);
     if (stored) return this.mapAppConfig(stored);
     const redirectUrl = this.defaultRedirectUrl();
     if (ENV.SHOPEE_PARTNER_ID && ENV.SHOPEE_PARTNER_KEY && redirectUrl && channelCryptoService.isConfigured()) {
@@ -330,13 +363,23 @@ export class ShopeeConnectorService {
     };
   }
 
+  public async listAppConfigs(): Promise<ShopeeAppConfigSummary[]> {
+    const fromDb = await supabaseService.listChannelAppConfigs("SHOPEE");
+    const stored = fromDb.length
+      ? fromDb as StoredShopeeAppConfig[]
+      : Array.from(this.inMemoryAppConfigs.values()).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+    if (stored.length) return stored.map(config => this.mapAppConfig(config));
+    const fallback = await this.getAppConfig();
+    return fallback.source === "NONE" ? [] : [fallback];
+  }
+
   public async saveAppConfig(input: ShopeeAppConfigInput, userId: string): Promise<ShopeeAppConfigSummary> {
     if (!channelCryptoService.isConfigured()) {
       throw new ShopeeConnectorError("CHANNEL_ENCRYPTION_NOT_CONFIGURED", "Máy chủ chưa có khóa mã hóa CHANNEL_TOKEN_ENCRYPTION_KEY", 503);
     }
     const redirectUrl = this.defaultRedirectUrl();
     if (!redirectUrl) throw new ShopeeConnectorError("SHOPEE_REDIRECT_NOT_CONFIGURED", "Máy chủ chưa có Redirect URL", 503);
-    const existing = await this.getStoredAppConfig(input.id);
+    const existing = input.id ? await this.getStoredAppConfig(input.id) : null;
     const partnerKeyCiphertext = input.partnerKey
       ? channelCryptoService.encrypt(input.partnerKey)
       : existing?.partner_key_ciphertext;
@@ -378,6 +421,73 @@ export class ShopeeConnectorService {
     return rows.map(account => this.mapAccount(account));
   }
 
+  public async disconnectAccount(accountId: string): Promise<ChannelAccountSummary> {
+    const account = await this.getStoredAccount(accountId);
+    if (!account) throw new ShopeeConnectorError("SHOPEE_ACCOUNT_NOT_FOUND", "Không tìm thấy Seller cần ngắt kết nối", 404);
+    const now = new Date().toISOString();
+    const patch = {
+      status: "DISCONNECTED",
+      auto_sync_enabled: false,
+      access_token_ciphertext: channelCryptoService.encrypt(""),
+      refresh_token_ciphertext: channelCryptoService.encrypt(""),
+      disconnected_at: now,
+      last_health_check_at: now
+    };
+    const updated = await supabaseService.updateChannelAccount(accountId, patch);
+    if (!updated && ENV.NODE_ENV === "production") {
+      throw new ShopeeConnectorError("SHOPEE_ACCOUNT_UPDATE_FAILED", "Không thể lưu trạng thái ngắt kết nối Seller", 500);
+    }
+    const disconnected = { ...account, ...patch, updated_at: now } as StoredChannelAccount;
+    this.inMemoryAccounts.set(accountId, disconnected);
+    await supabaseService.recordChannelEvent({
+      channel_account_id: accountId,
+      platform: "SHOPEE",
+      event_type: "SELLER_DISCONNECTED",
+      level: "INFO",
+      message: `Đã ngắt kết nối Seller ${account.shop_id}`,
+      details: {}
+    });
+    return this.mapAccount((updated || disconnected) as StoredChannelAccount);
+  }
+
+  public async refreshAccountProfile(accountId: string): Promise<ChannelAccountSummary> {
+    const account = await this.getApiAccount(accountId);
+    try {
+      const profile = await this.apiRequest<any>("/api/v2/shop/get_shop_info", "GET", account);
+      const shop = (profile.response || profile) as any;
+      const now = new Date().toISOString();
+      const patch = {
+        shop_name: shop.shop_name || account.shop_name || `Shopee Shop ${account.shop_id}`,
+        region: shop.region || account.region,
+        metadata: {
+          ...(account.metadata || {}),
+          shopLogo: shop.shop_logo || shop.shop_logo_url || null,
+          status: shop.status || null,
+          sipAffiShops: shop.sip_affi_shops || []
+        },
+        status: "CONNECTED",
+        last_health_check_at: now,
+        sync_error_count: 0,
+        disconnected_at: null
+      };
+      const updated = await supabaseService.updateChannelAccount(accountId, patch);
+      if (!updated && ENV.NODE_ENV === "production") {
+        throw new ShopeeConnectorError("SHOPEE_ACCOUNT_UPDATE_FAILED", "Không thể lưu thông tin Seller vừa làm mới", 500);
+      }
+      const merged = { ...account, ...patch, updated_at: now } as StoredChannelAccount;
+      this.inMemoryAccounts.set(accountId, merged);
+      return this.mapAccount((updated || merged) as StoredChannelAccount);
+    } catch (error) {
+      const failures = Number(account.sync_error_count || 0) + 1;
+      await supabaseService.updateChannelAccount(accountId, {
+        status: failures >= 3 ? "ERROR" : account.status,
+        sync_error_count: failures,
+        last_health_check_at: new Date().toISOString()
+      });
+      throw error;
+    }
+  }
+
   public async getAuthorizationUrl(userId: string, appConfigId?: string): Promise<string> {
     const config = await this.getRuntimeConfig(appConfigId);
     const path = "/api/v2/shop/auth_partner";
@@ -402,7 +512,7 @@ export class ShopeeConnectorService {
     const token = await this.tokenRequest("/api/v2/auth/token/get", { code, shop_id: apiId(shopId), partner_id: apiId(config.partnerId) }, config);
     if (!token.access_token || !token.refresh_token) throw new ShopeeConnectorError("SHOPEE_TOKEN_FAILED", "Shopee không trả về access token", 502);
     const now = Date.now();
-    const row: Record<string, unknown> = {
+    const row: Record<string, any> = {
       platform: "SHOPEE",
       channel_app_config_id: config.id || null,
       shop_id: shopId,
@@ -413,10 +523,35 @@ export class ShopeeConnectorService {
       token_expires_at: new Date(now + Math.max(60, token.expire_in || 14_400) * 1000).toISOString(),
       refresh_token_expires_at: token.refresh_token_expire_in ? new Date(now + token.refresh_token_expire_in * 1000).toISOString() : null,
       status: "CONNECTED",
+      auto_sync_enabled: true,
+      disconnected_at: null,
+      sync_error_count: 0,
       created_by: statePayload.userId,
       last_health_check_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
+    try {
+      const profileAccount = {
+        id: crypto.randomUUID(),
+        ...(row as Omit<StoredChannelAccount, "id">),
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+        appConfig: config
+      } as ShopeeApiAccount;
+      const profile = await this.apiRequest<any>("/api/v2/shop/get_shop_info", "GET", profileAccount);
+      const shop = (profile.response || profile) as any;
+      row.shop_name = shop.shop_name || row.shop_name;
+      row.region = shop.region || row.region;
+      row.metadata = {
+        shopLogo: shop.shop_logo || shop.shop_logo_url || null,
+        status: shop.status || null,
+        sipAffiShops: shop.sip_affi_shops || []
+      };
+    } catch (error) {
+      // Profile enrichment is best-effort; a valid OAuth grant must not be lost
+      // merely because the optional shop profile endpoint is temporarily down.
+      row.metadata = { profileWarning: error instanceof Error ? error.message : "SHOP_PROFILE_UNAVAILABLE" };
+    }
     const saved = await supabaseService.upsertChannelAccount(row);
     if (saved) this.inMemoryAccounts.set(saved.id, saved as StoredChannelAccount);
     else if (ENV.NODE_ENV !== "production") {
@@ -600,6 +735,185 @@ export class ShopeeConnectorService {
     return rows.map(row => this.mapListing(row, row.product_id, row.channel_account_id, row.external_product_id));
   }
 
+  public async getDashboard(appConfigId?: string): Promise<ShopeeConnectorDashboard> {
+    const [apps, accounts, listings] = await Promise.all([
+      this.listAppConfigs(),
+      this.listAccounts(appConfigId),
+      supabaseService.listChannelListings("SHOPEE")
+    ]);
+    const accountIds = new Set(accounts.map(account => account.id).filter(Boolean));
+    const relevantListings = appConfigId
+      ? listings.filter(listing => accountIds.has(listing.channel_account_id))
+      : listings;
+    const now = Date.now();
+    const connected = accounts.filter(account => account.status === "CONNECTED");
+    const attention = accounts.filter(account => {
+      if (account.status !== "CONNECTED") return true;
+      return Boolean(account.tokenExpiresAt && new Date(account.tokenExpiresAt).getTime() <= now + 24 * 60 * 60_000);
+    });
+    const lastInventorySyncAt = accounts
+      .map(account => account.lastInventorySyncAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => b.localeCompare(a))[0];
+    return {
+      appCount: appConfigId ? apps.filter(app => app.id === appConfigId).length : apps.length,
+      sellerCount: accounts.length,
+      connectedSellerCount: connected.length,
+      attentionSellerCount: attention.length,
+      listingCount: relevantListings.length,
+      liveListingCount: relevantListings.filter(item => item.status === "LIVE").length,
+      reviewListingCount: relevantListings.filter(item => item.status === "UNDER_REVIEW").length,
+      rejectedListingCount: relevantListings.filter(item => item.status === "REJECTED").length,
+      syncErrorListingCount: relevantListings.filter(item => item.status === "SYNC_ERROR" || Boolean(item.last_error)).length,
+      lastInventorySyncAt,
+      schedule: "Mỗi ngày lúc 07:00 (Asia/Saigon)"
+    };
+  }
+
+  public async syncInventory(accountId?: string, limit = 10): Promise<ShopeeSyncRunResult> {
+    const result: ShopeeSyncRunResult = {
+      success: true,
+      processed: 0,
+      stockUpdated: 0,
+      statusUpdated: 0,
+      failed: 0,
+      skipped: 0,
+      completedAt: new Date().toISOString(),
+      errors: []
+    };
+    if (!supabaseService.isConfigured()) return result;
+    const listings = await supabaseService.listChannelListingsForSync("SHOPEE", accountId, limit);
+    const accountCache = new Map<string, ShopeeApiAccount>();
+    for (const listing of listings) {
+      result.processed += 1;
+      try {
+        let account = accountCache.get(listing.channel_account_id);
+        if (!account) {
+          account = await this.getApiAccount(listing.channel_account_id);
+          if (account.auto_sync_enabled === false || account.status !== "CONNECTED") {
+            result.skipped += 1;
+            continue;
+          }
+          accountCache.set(account.id, account);
+        }
+        const itemResult = await this.apiRequest<any>(
+          "/api/v2/product/get_item_base_info",
+          "GET",
+          account,
+          undefined,
+          { item_id_list: String(listing.external_product_id), need_tax_info: "false", need_complaint_policy: "false" }
+        );
+        const remoteItem = itemResult.response?.item_list?.[0];
+        if (!remoteItem) throw new ShopeeConnectorError("SHOPEE_ITEM_NOT_FOUND", "Shopee không trả về dữ liệu listing", 404);
+        const remoteStatus = mapShopeeItemStatus(remoteItem.item_status, remoteItem.audit_status);
+        const now = new Date().toISOString();
+        const rejectionReasons = [remoteItem.banned_reason, remoteItem.audit_rejection_reason, remoteItem.deboost_reason]
+          .filter(Boolean)
+          .map(String);
+        if (remoteStatus !== listing.status) result.statusUpdated += 1;
+        await supabaseService.upsertChannelListing({
+          ...listing,
+          status: remoteStatus,
+          audit_status: remoteItem.audit_status || remoteItem.item_status || listing.audit_status,
+          rejection_reasons: rejectionReasons,
+          last_error: remoteStatus === "REJECTED" ? rejectionReasons.join("; ") || "Listing bị Shopee từ chối" : null,
+          published_at: remoteStatus === "LIVE" ? listing.published_at || now : listing.published_at,
+          published_snapshot: remoteItem,
+          last_synced_at: now,
+          updated_at: now
+        });
+
+        if (remoteStatus !== "LIVE") {
+          result.skipped += 1;
+          continue;
+        }
+        const skus = await supabaseService.listChannelSkusForSync(listing.id);
+        if (!skus.length) {
+          result.skipped += 1;
+          continue;
+        }
+        const stockBuffer = Math.max(0, Number(listing.pricing_config?.stockBuffer || 0));
+        const desired = skus.map(sku => {
+          const variantValue = Array.isArray(sku.product_variants) ? sku.product_variants[0] : sku.product_variants;
+          const variant = variantValue || {};
+          const tracked = variant.inventory_tracked !== false;
+          const sellable = variant.selected_for_sale !== false && variant.source_available !== false;
+          const stock = tracked
+            ? Math.max(0, Math.floor(sellable ? Number(variant.stock_quantity || 0) - stockBuffer : 0))
+            : Math.max(0, Number(sku.channel_stock || 0));
+          return { sku, stock };
+        });
+        const changed = desired.filter(item => Number(item.sku.channel_stock || 0) !== item.stock);
+        if (!changed.length) {
+          result.skipped += 1;
+          continue;
+        }
+
+        if (skus.length > 1 && skus.some(sku => !sku.external_sku_id)) {
+          const modelsResult = await this.apiRequest<any>(
+            "/api/v2/product/get_model_list",
+            "GET",
+            account,
+            undefined,
+            { item_id: String(listing.external_product_id) }
+          );
+          const models = modelsResult.response?.model || modelsResult.response?.model_list || [];
+          const bySellerSku = new Map(models.map((model: any) => [String(model.model_sku || ""), String(model.model_id)]));
+          for (const sku of skus) {
+            const modelId = bySellerSku.get(String(sku.seller_sku || sku.source_sku_id));
+            if (modelId) {
+              sku.external_sku_id = modelId;
+              await supabaseService.updateChannelSku(sku.id, { external_sku_id: modelId });
+            }
+          }
+        }
+        const payload = buildShopeeStockPayload(String(listing.external_product_id), changed.map(item => ({
+          modelId: item.sku.external_sku_id || (skus.length === 1 ? "0" : undefined),
+          stock: item.stock
+        })));
+        const stockResponse = await this.apiRequest<any>("/api/v2/product/update_stock", "POST", account, payload);
+        for (const item of changed) await supabaseService.updateChannelSku(item.sku.id, { channel_stock: item.stock });
+        result.stockUpdated += 1;
+        await supabaseService.recordChannelEvent({
+          channel_listing_id: listing.id,
+          channel_account_id: account.id,
+          platform: "SHOPEE",
+          event_type: "INVENTORY_SYNCED",
+          level: "INFO",
+          request_id: stockResponse.request_id || null,
+          message: `Đã đồng bộ tồn kho ${changed.length} SKU`,
+          details: { itemId: listing.external_product_id, skuCount: changed.length }
+        });
+      } catch (error) {
+        result.failed += 1;
+        result.success = false;
+        const message = error instanceof Error ? error.message : "Lỗi đồng bộ Shopee";
+        result.errors.push({ listingId: listing.id, message });
+        await supabaseService.upsertChannelListing({ ...listing, last_error: message, last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+        await supabaseService.recordChannelEvent({
+          channel_listing_id: listing.id,
+          channel_account_id: listing.channel_account_id,
+          platform: "SHOPEE",
+          event_type: "INVENTORY_SYNC_FAILED",
+          level: "ERROR",
+          message,
+          details: {}
+        });
+      }
+    }
+    const now = new Date().toISOString();
+    const touchedAccountIds = new Set(listings.map(item => item.channel_account_id));
+    for (const id of touchedAccountIds) {
+      await supabaseService.updateChannelAccount(id, {
+        last_inventory_sync_at: now,
+        last_health_check_at: now,
+        sync_error_count: result.errors.filter(error => listings.some(item => item.id === error.listingId && item.channel_account_id === id)).length
+      });
+    }
+    result.completedAt = now;
+    return result;
+  }
+
   private mapListing(row: any, productId: string, accountId: string, externalProductId?: string): ChannelListingSummary {
     return {
       id: row.id,
@@ -690,10 +1004,20 @@ export class ShopeeConnectorService {
       shopId: account.shop_id,
       shopName: account.shop_name || `Shopee Shop ${account.shop_id}`,
       region: account.region,
-      status: expired ? "TOKEN_EXPIRED" : account.status === "CONNECTED" ? "CONNECTED" : "ERROR",
+      status: expired && account.status === "CONNECTED"
+        ? "TOKEN_EXPIRED"
+        : account.status === "CONNECTED"
+          ? "CONNECTED"
+          : account.status === "DISCONNECTED"
+            ? "DISCONNECTED"
+            : "ERROR",
       tokenExpiresAt: account.token_expires_at,
       grantedScopes: account.granted_scopes || [],
-      lastHealthCheckAt: account.last_health_check_at
+      lastHealthCheckAt: account.last_health_check_at,
+      lastInventorySyncAt: account.last_inventory_sync_at,
+      autoSyncEnabled: account.auto_sync_enabled !== false,
+      syncErrorCount: Number(account.sync_error_count || 0),
+      disconnectedAt: account.disconnected_at || undefined
     };
   }
 
@@ -706,6 +1030,9 @@ export class ShopeeConnectorService {
     }
     let account = await this.getStoredAccount(accountId);
     if (!account) throw new ShopeeConnectorError("SHOPEE_NOT_CONNECTED", "Chưa kết nối tài khoản Shopee Seller", 409);
+    if (account.status !== "CONNECTED") {
+      throw new ShopeeConnectorError("SHOPEE_NOT_CONNECTED", "Seller đã ngắt kết nối hoặc cần cấp quyền lại", 409);
+    }
     const appConfig = await this.getRuntimeConfig(account.channel_app_config_id);
     let accessToken = channelCryptoService.decrypt(account.access_token_ciphertext);
     let refreshToken = channelCryptoService.decrypt(account.refresh_token_ciphertext);

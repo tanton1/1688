@@ -6,6 +6,7 @@ import { SEED_DIFF_LOGS } from "../services/seed-data.js";
 import { ENV } from "../config/env.js";
 import { PricingEngineService } from "../services/pricing.service.js";
 import { supabaseService } from "../services/supabase.service.js";
+import { shopeeConnectorService } from "../services/shopee-connector.service.js";
 
 const diffSyncService = new DiffSyncService();
 const pricingService = new PricingEngineService();
@@ -137,10 +138,13 @@ export class SyncController {
    * Background Cron Worker - Tự động quét và cảnh báo biến động giá/tồn kho
    */
   public async runCronSync(req: Request, res: Response): Promise<void> {
-    res.status(501).json({
-      success: false,
-      error: "NOT_IMPLEMENTED",
-      message: "Cron chưa có crawler nguồn xác thực; không có lượt kiểm tra nào được ghi nhận"
+    const shopee = await shopeeConnectorService.syncInventory(undefined, 10);
+    res.status(shopee.success ? 200 : 207).json({
+      success: shopee.success,
+      message: shopee.processed
+        ? `Đã kiểm tra ${shopee.processed} listing Shopee`
+        : "Không có listing Shopee đến lịch đồng bộ",
+      shopee
     });
   }
 }

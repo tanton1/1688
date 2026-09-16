@@ -29,6 +29,10 @@ export interface ChannelAccountSummary {
   tokenExpiresAt?: string;
   grantedScopes?: string[];
   lastHealthCheckAt?: string;
+  lastInventorySyncAt?: string;
+  autoSyncEnabled?: boolean;
+  syncErrorCount?: number;
+  disconnectedAt?: string;
   message?: string;
 }
 
@@ -53,6 +57,31 @@ export interface ShopeeAppConfigInput {
   partnerId: string;
   /** Leave blank when editing to keep the encrypted key already stored. */
   partnerKey?: string;
+}
+
+export interface ShopeeConnectorDashboard {
+  appCount: number;
+  sellerCount: number;
+  connectedSellerCount: number;
+  attentionSellerCount: number;
+  listingCount: number;
+  liveListingCount: number;
+  reviewListingCount: number;
+  rejectedListingCount: number;
+  syncErrorListingCount: number;
+  lastInventorySyncAt?: string;
+  schedule: string;
+}
+
+export interface ShopeeSyncRunResult {
+  success: boolean;
+  processed: number;
+  stockUpdated: number;
+  statusUpdated: number;
+  failed: number;
+  skipped: number;
+  completedAt: string;
+  errors: Array<{ listingId: string; message: string }>;
 }
 
 export interface ChannelPackageDimensions {

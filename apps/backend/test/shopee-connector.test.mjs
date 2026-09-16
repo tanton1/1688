@@ -8,7 +8,9 @@ process.env.SHOPEE_PARTNER_ID = "";
 process.env.SHOPEE_PARTNER_KEY = "";
 
 const {
+  buildShopeeStockPayload,
   buildShopeeItemPayload,
+  mapShopeeItemStatus,
   validateShopeeListing
 } = await import("../dist/services/shopee-connector.service.js");
 
@@ -94,4 +96,25 @@ test("Shopee payload maps variation images, price adjustment and safe stock", ()
   assert.equal(payload.model[0].original_price, 220000);
   assert.equal(payload.model[0].seller_stock[0].stock, 8);
   assert.deepEqual(payload.model[2].tier_index, [1, 0]);
+});
+
+test("Shopee remote statuses map to local review lifecycle", () => {
+  assert.equal(mapShopeeItemStatus("NORMAL", "APPROVED"), "LIVE");
+  assert.equal(mapShopeeItemStatus("NORMAL", "PENDING"), "UNDER_REVIEW");
+  assert.equal(mapShopeeItemStatus("UNLIST", "APPROVED"), "PAUSED");
+  assert.equal(mapShopeeItemStatus("BANNED", "REJECTED"), "REJECTED");
+});
+
+test("Shopee stock payload uses model zero for a single-SKU listing", () => {
+  assert.deepEqual(buildShopeeStockPayload("123", [{ stock: 7 }]), {
+    item_id: 123,
+    stock_list: [{ model_id: 0, seller_stock: [{ stock: 7 }] }]
+  });
+});
+
+test("Shopee stock sync rejects ambiguous multi-variation model mapping", () => {
+  assert.throws(
+    () => buildShopeeStockPayload("123", [{ modelId: "10", stock: 2 }, { stock: 3 }]),
+    error => error?.code === "SHOPEE_MODEL_MAPPING_REQUIRED"
+  );
 });
