@@ -104,6 +104,8 @@ test("3. SKU Matrix Cartesian Product Generator", (t) => {
   assert.equal(variants.length, 4, "Tổ hợp 2 màu x 2 size phải tạo ra 4 variants");
   assert.ok(variants.some(v => v.colorName === "Đen" && v.sizeName === "M"));
   assert.ok(variants.some(v => v.colorName === "Trắng" && v.sizeName === "L"));
+  assert.equal(new Set(variants.map(v => v.sourceSkuId)).size, variants.length, "Tổ hợp không tồn tại không được tái sử dụng sourceSkuId của SKU khác");
+  assert.equal(variants.find(v => v.colorName === "Đen" && v.sizeName === "L")?.selectedForSale, false, "Tổ hợp thiếu phải được đánh dấu không bán");
 
   // Kiểm tra trường hợp Bộ Sản Phẩm (chỉ có 1 chiều quy cách/combo/bộ)
   const bundleProps = [

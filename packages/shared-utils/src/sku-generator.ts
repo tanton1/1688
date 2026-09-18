@@ -185,16 +185,24 @@ function findMatchingSkuItem(
   const items = Object.values(skuMap);
   if (items.length === 0) return undefined;
 
-  // 1. Thử tìm chính xác bằng các định dạng Key phổ biến của 1688
-  const candidateKeys = [
-    val2CN ? `${val1CN}&${val2CN}` : val1CN,
-    val2CN ? `${val1CN}>${val2CN}` : val1CN,
-    val2CN ? `${val1CN};${val2CN}` : val1CN,
-    val2CN ? `${val1CN} ${val2CN}` : val1CN,
-    val1CN,
-    val1Id && val2Id ? `${val1Id}_${val2Id}` : (val1Id || ""),
-    val1Id || ""
-  ].filter(Boolean);
+  const hasMeaningfulSecondValue = Boolean(val2CN && val2CN !== "Mặc định");
+
+  // 1. Thử tìm chính xác bằng các định dạng Key phổ biến của 1688. Khi đã
+  // có hai thuộc tính, tuyệt đối không thử key của riêng trục thứ nhất:
+  // làm vậy sẽ lấy nhầm SKU (ví dụ Adult/L lấy lại Adult/S) và tạo nhiều
+  // dòng product_variants trùng sourceSkuId khi lưu Supabase.
+  const candidateKeys = hasMeaningfulSecondValue
+    ? [
+        `${val1CN}&${val2CN}`,
+        `${val1CN}>${val2CN}`,
+        `${val1CN};${val2CN}`,
+        `${val1CN} ${val2CN}`,
+        `${val1CN}_${val2CN}`,
+        `${val1CN} / ${val2CN}`,
+        val1Id && val2Id ? `${val1Id}_${val2Id}` : "",
+        val1Id && val2Id ? `${val1Id}&${val2Id}` : ""
+      ]
+    : [val1CN, val1Id || ""];
 
   for (const k of candidateKeys) {
     if (skuMap[k]) return skuMap[k];
@@ -216,8 +224,10 @@ function findMatchingSkuItem(
 
   if (matched) return matched;
 
-  // 3. Khớp 1 thuộc tính nếu trục thứ hai là mặc định
-  if (val1CN && val1CN !== "Mặc định") {
+  // 3. Khớp 1 thuộc tính chỉ khi thực sự không có trục thứ hai. Với ma trận
+  // hai trục, tổ hợp không có trong nguồn phải trả undefined để được đánh
+  // dấu unavailable, không được tái sử dụng SKU của tổ hợp khác.
+  if (!hasMeaningfulSecondValue && val1CN && val1CN !== "Mặc định") {
     const singleMatch = items.find(item => {
       const attrs = Object.values(item.attributes || {});
       return attrs.some(v => v && (v === val1CN || v.includes(val1CN) || val1CN.includes(v)));

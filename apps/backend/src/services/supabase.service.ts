@@ -732,7 +732,17 @@ export class SupabaseDataService {
         return false;
       }
 
-      const variantRows = product.variants.map(v => ({
+      // Clients older than the sparse-matrix fix may still send the same
+      // source SKU more than once when a non-existent option combination was
+      // matched to the first SKU in a row. The database correctly enforces
+      // (product_id, source_sku_id) uniqueness, so normalize defensively here
+      // as a final persistence guard instead of failing the whole import.
+      const uniqueVariants = [...new Map(
+        product.variants
+          .filter(variant => Boolean(String(variant.sourceSkuId || "").trim()))
+          .map(variant => [variant.sourceSkuId, variant])
+      ).values()];
+      const variantRows = uniqueVariants.map(v => ({
         product_id: createdProd.id,
         source_sku_id: v.sourceSkuId,
         color_name: v.colorName || "",
