@@ -93,6 +93,79 @@ async function waitForTabComplete(tabId: number): Promise<void> {
   });
 }
 
+type ProductPageReadiness = {
+  ready: boolean;
+  challenge: boolean;
+  title: string;
+};
+
+/**
+ * Cloudflare can finish the first document load while it is still showing the
+ * interstitial. Wait for real product evidence instead of extracting that
+ * temporary page and reporting a misleading "missing title/image/price" error.
+ */
+async function waitForProductPageReady(tabId: number, timeoutMs = 30000): Promise<void> {
+  const startedAt = Date.now();
+  let lastState: ProductPageReadiness | null = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (): ProductPageReadiness => {
+          const title = document.title || "";
+          const bodyText = (document.body?.innerText || "").slice(0, 4000);
+          const challengeText = `${title}\n${bodyText}`;
+          const challenge = /checking your browser|just a moment|verify you are human|performing security verification|cf-chl-/i.test(challengeText)
+            || Boolean(document.querySelector("#challenge-running, #challenge-stage, .cf-browser-verification"));
+          const jsonLdProduct = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+            .some(script => /[\"']@type[\"']\s*:\s*[\"']Product[\"']/i.test(script.textContent || ""));
+          const genericProductEvidence = Boolean(
+            document.querySelector('meta[property="og:type"][content*="product" i]')
+            || (document.querySelector("h1")
+              && document.querySelector('meta[property="product:price:amount"], meta[property="og:price:amount"], [itemprop="price"], .price')
+              && document.querySelector('meta[property="og:image"], [itemprop="image"], main img'))
+          );
+          const productEvidence = Boolean(document.querySelector(
+            "form.variations_form, .woocommerce-product-gallery, .single-product, .product.type-product, [data-product-id], [data-product-json], [data-product], #productTitle, [data-listing-id]"
+          )) || jsonLdProduct || genericProductEvidence;
+          return {
+            ready: document.readyState === "complete" && !challenge && productEvidence,
+            challenge,
+            title
+          };
+        }
+      });
+      lastState = results?.[0]?.result || null;
+      if (lastState?.ready) return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/Cannot access contents|Missing host permission|The extensions gallery cannot be scripted/i.test(message)) {
+        throw error;
+      }
+    }
+
+    await new Promise(resolve => window.setTimeout(resolve, 750));
+  }
+
+  if (lastState?.challenge) {
+    throw new Error("CLOUDFLARE_PENDING: Trang nguồn vẫn đang kiểm tra trình duyệt. Hãy mở tab nguồn, hoàn tất xác minh nếu được hỏi rồi bấm Quét lại.");
+  }
+  throw new Error(`PRODUCT_PAGE_NOT_READY: Trang nguồn chưa hiển thị dữ liệu sản phẩm${lastState?.title ? ` (${lastState.title})` : ""}.`);
+}
+
+function optionalOriginPattern(value: URL): string {
+  return `${value.protocol}//${value.host}/*`;
+}
+
+async function requestOptionalHostAccess(value: URL): Promise<boolean> {
+  if (typeof chrome === "undefined" || !chrome.permissions?.request) return true;
+  // This call is intentionally the first awaited browser operation in the
+  // paste-URL handler. Chrome only permits an optional host prompt while the
+  // user's click/submit gesture is still active.
+  return chrome.permissions.request({ origins: [optionalOriginPattern(value)] });
+}
+
 /**
  * Hàm thực thi trực tiếp trên DOM của Tab để trích xuất thông số tức thời (Shopify .js, Schema.org, OpenGraph, DOM Tags)
  */
@@ -1051,20 +1124,39 @@ export function useProductExtractor() {
       return;
     }
 
+    let pastedUrl: URL;
+    try {
+      pastedUrl = new URL(cleanUrl);
+    } catch {
+      setError("Vui lòng nhập đường dẫn URL hợp lệ (bắt đầu bằng https://)");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setCurrentUrl(cleanUrl);
 
     try {
-      // Etsy/Amazon pages frequently block server-side fetches or render price,
-      // gallery and variation controls only after hydration. Open the URL in a
-      // real tab and extract its DOM before trying the backend preview.
-      const pastedUrl = new URL(cleanUrl);
-      const needsBrowserDom = /(?:^|\.)macorner\.co$/i.test(pastedUrl.hostname) && /\/products\//i.test(pastedUrl.pathname)
-        || detectProductPlatform(cleanUrl) === "ETSY"
-        || detectProductPlatform(cleanUrl) === "AMAZON";
+      let browserExtractionError = "";
+      // Generic stores (especially WooCommerce/Shopify behind Cloudflare)
+      // require an explicit optional host grant before Chrome lets the addon
+      // inspect their real DOM. Request it directly from the user's Quét click.
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.scripting) {
+        const hostGranted = await requestOptionalHostAccess(pastedUrl);
+        if (!hostGranted) {
+          setProduct(null);
+          setError(`Addon cần quyền đọc ${pastedUrl.hostname} để lấy ảnh, giá và biến thể. Hãy bấm Quét lại rồi chọn Cho phép.`);
+          return;
+        }
+      }
+
+      // Prefer a real browser tab for every product website. This keeps the
+      // customer's cookies/session and supports hydrated WooCommerce/Shopify
+      // data that a server-side request cannot see.
+      const needsBrowserDom = pastedUrl.protocol === "https:" || pastedUrl.protocol === "http:";
       if (typeof chrome !== "undefined" && chrome.tabs && chrome.scripting && needsBrowserDom) {
         let temporaryTabId: number | undefined;
+        let keepTemporaryTabOpen = false;
         try {
           const expectedUrl = comparableProductUrl(cleanUrl);
           const openTabs = await chrome.tabs.query({});
@@ -1077,6 +1169,7 @@ export function useProductExtractor() {
 
           if (sourceTab.id) {
             await waitForTabComplete(sourceTab.id);
+            await waitForProductPageReady(sourceTab.id);
             const results = await chrome.scripting.executeScript({
               target: { tabId: sourceTab.id },
               func: extractCommerceProductFromDom
@@ -1089,11 +1182,21 @@ export function useProductExtractor() {
             }
           }
         } catch (domError) {
-          console.warn("[Sidepanel] Pasted Macorner DOM extraction warning:", domError);
+          browserExtractionError = domError instanceof Error ? domError.message : String(domError);
+          console.warn("[Sidepanel] Pasted URL DOM extraction warning:", domError);
+          if (temporaryTabId && /CLOUDFLARE_PENDING/i.test(browserExtractionError)) {
+            keepTemporaryTabOpen = true;
+            try { await chrome.tabs.update(temporaryTabId, { active: true }); } catch {}
+          }
         } finally {
-          if (temporaryTabId) {
+          if (temporaryTabId && !keepTemporaryTabOpen) {
             try { await chrome.tabs.remove(temporaryTabId); } catch {}
           }
+        }
+
+        // Keep the most actionable browser-side error for the final fallback.
+        if (browserExtractionError) {
+          console.info("[Sidepanel] Browser extraction fallback reason:", browserExtractionError);
         }
       }
 
@@ -1108,10 +1211,19 @@ export function useProductExtractor() {
         setError(null);
       } else {
         setProduct(null);
-        setError(prevData?.error || "EXTRACTION_UNVERIFIED: Dữ liệu từ URL chưa đủ tin cậy để nhập.");
+        setError(
+          browserExtractionError
+          || prevData?.error
+          || "EXTRACTION_UNVERIFIED: Dữ liệu từ URL chưa đủ tin cậy để nhập."
+        );
       }
     } catch (e: any) {
-      setError(`Lỗi kết nối máy chủ: ${e.message}`);
+      const message = String(e?.message || e || "Không rõ nguyên nhân");
+      if (/Cannot access contents|Missing host permission/i.test(message)) {
+        setError(`Addon chưa có quyền đọc ${pastedUrl.hostname}. Hãy bấm Quét lại và chọn Cho phép khi Chrome hỏi quyền truy cập.`);
+      } else {
+        setError(`Không thể lấy sản phẩm: ${message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -1146,6 +1258,7 @@ export function useProductExtractor() {
           const tryDomInjection = async (): Promise<boolean> => {
             if (!tab.id || !chrome.scripting) return false;
             try {
+              await waitForProductPageReady(tab.id, 12000);
               const results = await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: extractCommerceProductFromDom
