@@ -195,6 +195,7 @@ export interface ExtractedHtmlMetadata {
   currency?: SourceCurrency;
   brand?: string;
   schemaProduct?: any;
+  commercePlatform?: "SHOPIFY" | "WOOCOMMERCE" | "GENERIC";
   options?: Array<{ name: string; values: string[] }>;
   variants?: Array<any>;
 }
@@ -310,6 +311,120 @@ function readJsonLdOffers(offersValue: any): { prices: number[]; currency?: Sour
   return { prices, currency };
 }
 
+function readHtmlAttribute(tag: string, name: string): string {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = tag.match(new RegExp(`\\b${escapedName}\\s*=\\s*["']([^"']*)["']`, "i"));
+  return match ? decodeHtmlEntities(match[1]) : "";
+}
+
+function stripHtml(value: string): string {
+  return decodeHtmlEntities(value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * WooCommerce exposes the complete variation matrix in a JSON attribute on
+ * `.variations_form`. The public Schema.org block has price/images but does
+ * not carry the option combinations, so read both sources together.
+ */
+function parseWooCommerceProductMetadata(html: string, result: ExtractedHtmlMetadata): void {
+  const formMatch = html.match(/<form\b[^>]*class=["'][^"']*\bvariations_form\b[^"']*["'][^>]*>/i);
+  if (!formMatch) return;
+
+  const rawVariations = readHtmlAttribute(formMatch[0], "data-product_variations");
+  let rows: any[] = [];
+  if (rawVariations) {
+    try {
+      const parsed = JSON.parse(rawVariations);
+      if (Array.isArray(parsed)) rows = parsed;
+    } catch {
+      try {
+        const parsed = JSON.parse(decodeHtmlEntities(rawVariations));
+        if (Array.isArray(parsed)) rows = parsed;
+      } catch {
+        rows = [];
+      }
+    }
+  }
+
+  const optionDefinitions: Array<{ name: string; attribute: string; values: string[]; labels: Map<string, string> }> = [];
+  const selectRegex = /<select\b[^>]*name=["'](attribute_[^"']+)["'][^>]*>[\s\S]*?<\/select>/gi;
+  let selectMatch: RegExpExecArray | null;
+  while ((selectMatch = selectRegex.exec(html)) !== null) {
+    const selectMarkup = selectMatch[0];
+    const attribute = selectMatch[1];
+    const selectId = readHtmlAttribute(selectMarkup, "id");
+    const labelMarkup = selectId
+      ? html.match(new RegExp(`<label\\b[^>]*for=["']${escapeRegex(selectId)}["'][^>]*>([\\s\S]*?)<\\/label>`, "i"))
+      : null;
+    const inferredName = attribute.replace(/^attribute_(?:pa_)?/i, "").replace(/[-_]+/g, " ");
+    const name = stripHtml(labelMarkup?.[1] || inferredName)
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, char => char.toUpperCase());
+    const labels = new Map<string, string>();
+    const values: string[] = [];
+    const optionRegex = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi;
+    let optionMatch: RegExpExecArray | null;
+    while ((optionMatch = optionRegex.exec(selectMarkup)) !== null) {
+      const value = readHtmlAttribute(optionMatch[1], "value").trim();
+      const label = stripHtml(optionMatch[2]);
+      if (!value || !label || /^(?:choose|select|please select|chọn)/i.test(label)) continue;
+      if (!values.includes(value)) values.push(value);
+      labels.set(value, label);
+    }
+    if (attribute && values.length > 0) optionDefinitions.push({ name, attribute, values, labels });
+  }
+
+  if (optionDefinitions.length > 0) {
+    result.options = optionDefinitions.map(option => ({
+      name: option.name,
+      values: option.values.map(value => option.labels.get(value) || value)
+    }));
+  }
+
+  if (rows.length > 0) {
+    result.commercePlatform = "WOOCOMMERCE";
+    result.variants = rows.map((row, index) => {
+      const attributes = row?.attributes && typeof row.attributes === "object" ? row.attributes : {};
+      const optionValues = optionDefinitions.map(option => {
+        const rawValue = String(attributes[option.attribute] || "");
+        return option.labels.get(rawValue) || rawValue;
+      }).filter(Boolean);
+      const imageUrl = normalizeHtmlImageUrl(
+        row?.image?.full_src || row?.image?.url || row?.image?.src || row?.image?.srcset?.split(",")[0]?.trim().split(/\s+/)[0]
+      );
+      const variationId = String(row?.variation_id || row?.sku || `woo-variation-${index + 1}`);
+      return {
+        ...row,
+        id: variationId,
+        sku: String(row?.sku || variationId),
+        title: optionValues.join(" / ") || String(row?.sku || `Biến thể ${index + 1}`),
+        option1: optionValues[0],
+        option2: optionValues[1],
+        option3: optionValues[2],
+        price: Number(row?.display_price) > 0 ? Number(row.display_price) : undefined,
+        priceIsMajorUnits: true,
+        available: row?.is_in_stock !== false && row?.is_purchasable !== false,
+        stock: 0,
+        imageUrl: imageUrl || undefined,
+        featured_image: imageUrl ? { src: imageUrl } : undefined
+      };
+    });
+
+    const prices = result.variants.map(variant => Number(variant.price)).filter(price => Number.isFinite(price) && price > 0);
+    if (prices.length > 0) {
+      result.price = result.price || Math.min(...prices);
+      result.priceMin = Math.min(...prices);
+      result.priceMax = Math.max(...prices);
+    }
+    if (!result.currency) result.currency = "USD";
+  }
+}
+
 /**
  * Trích xuất OpenGraph, Meta tags, Shopify JSON và JSON-LD Schema.org từ nội dung HTML
  */
@@ -344,6 +459,7 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
     }
 
     if (shopifyData && shopifyData.title && Array.isArray(shopifyData.variants)) {
+      result.commercePlatform = "SHOPIFY";
       result.title = shopifyData.title;
       result.brand = shopifyData.vendor || "Macorner";
       result.description = shopifyData.description || "";
@@ -438,6 +554,12 @@ export function parseHtmlProductMetadata(html: string): ExtractedHtmlMetadata {
         } catch {}
       }
     } catch {}
+  }
+
+  // 1c. WooCommerce variation form. This is deliberately after Shopify
+  // parsing so a hybrid theme keeps the richer native platform payload.
+  if (!result.commercePlatform || result.commercePlatform === "GENERIC") {
+    parseWooCommerceProductMetadata(html, result);
   }
 
   // 2. Trích xuất JSON-LD Schema.org

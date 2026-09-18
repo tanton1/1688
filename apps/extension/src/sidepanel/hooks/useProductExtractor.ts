@@ -673,6 +673,50 @@ async function extractCommerceProductFromDom(): Promise<any> {
       }
     } catch {}
 
+    // WooCommerce keeps its complete SKU matrix in a JSON attribute rather
+    // than an application/json script. Preserve the 26+ real combinations
+    // instead of collapsing the product into one default SKU.
+    try {
+      const wooForm = doc.querySelector("form.variations_form");
+      const wooVariationJson = wooForm?.getAttribute("data-product_variations") || "";
+      const wooRows = wooVariationJson ? JSON.parse(wooVariationJson) : [];
+      if (Array.isArray(wooRows) && wooRows.length > 0) {
+        const optionLabels = new Map<string, Map<string, string>>();
+        doc.querySelectorAll("select[name^='attribute_']").forEach(selectElement => {
+          const select = selectElement as HTMLSelectElement;
+          const labels = new Map<string, string>();
+          Array.from(select.options).forEach(option => {
+            const label = (option.textContent || option.value).replace(/\s+/g, " ").trim();
+            if (option.value && label && !/^(?:choose|select|please select|chọn)/i.test(label)) labels.set(option.value, label);
+          });
+          if (select.name && labels.size > 0) optionLabels.set(select.name, labels);
+        });
+        domVariants = wooRows.map((row: any, index: number) => {
+          const attributes = row?.attributes && typeof row.attributes === "object" ? row.attributes : {};
+          const values = Object.entries(attributes).map(([name, rawValue]) =>
+            optionLabels.get(name)?.get(String(rawValue)) || String(rawValue || "")
+          ).filter(Boolean);
+          const imageUrl = normalizeImageUrl(row?.image?.full_src || row?.image?.url || row?.image?.src);
+          const id = String(row?.variation_id || row?.sku || `woo-variation-${index + 1}`);
+          return {
+            ...row,
+            id,
+            sku: String(row?.sku || id),
+            title: values.join(" / ") || String(row?.sku || `Biến thể ${index + 1}`),
+            option1: values[0],
+            option2: values[1],
+            option3: values[2],
+            price: Number(row?.display_price) > 0 ? Number(row.display_price) : undefined,
+            priceIsMajorUnits: true,
+            stock: 0,
+            available: row?.is_in_stock !== false && row?.is_purchasable !== false,
+            imageUrl,
+            featured_image: imageUrl ? { src: imageUrl } : undefined
+          };
+        });
+      }
+    } catch {}
+
     // 3. Trích xuất JSON-LD Schema.org Product
     const schemaProduct = readJsonLdProduct();
 
@@ -724,10 +768,10 @@ async function extractCommerceProductFromDom(): Promise<any> {
       ? "#landingImage, #imgBlkFront, #altImages img, #imageBlock img, #main-image-container img"
       : detectedPlatform === "ETSY"
         ? "[data-listing-id] img, [data-carousel] img, [data-selector='listing-image'] img, .listing-page-image img"
-        : ".product__media img, .product-single__photo img, .product-gallery img, .pdp-image-gallery img, [data-media-id] img";
+        : ".product__media img, .product-single__photo img, .product-gallery img, .pdp-image-gallery img, .woocommerce-product-gallery img, [data-media-id] img";
     doc.querySelectorAll(gallerySelector).forEach((el: any) => {
       if (el.closest?.(".recommendations, .related-products, .product-recommendations, footer, header, nav, .cart")) return;
-      addImg(el.getAttribute("data-old-hires") || el.getAttribute("data-zoom-image") || el.getAttribute("data-src") || el.getAttribute("zoom-src") || el.src);
+      addImg(el.getAttribute("data-old-hires") || el.getAttribute("data-large_image") || el.getAttribute("data-zoom-image") || el.getAttribute("data-src") || el.getAttribute("zoom-src") || el.src);
       const dynamic = el.getAttribute("data-a-dynamic-image");
       if (dynamic) { try { Object.keys(JSON.parse(dynamic)).forEach(addImg); } catch {} }
     });
@@ -1312,7 +1356,7 @@ function convertDomDataToRawProduct(domData: any, url: string): Raw1688Product {
       ],
       variants: verifiedVariants.map((v: any) => {
         let vPrice = Number(v.price) > 0 ? Number(v.price) : originalPrice;
-        if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+        if (!v.priceIsMajorUnits && vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
         let img = v.imageUrl || v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
         if (img && img.startsWith("//")) img = "https:" + img;
 

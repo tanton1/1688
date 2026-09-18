@@ -853,3 +853,61 @@ test("13. Variant Sample Images, Detail Description Images & Synchronization Int
   assert.equal(secondaryImageVariants[0].imageUrl, "https://cdn.example.com/lincoln.jpg", "Ảnh ở trục variation thứ hai phải được giữ lại");
   assert.equal(secondaryImageVariants[1].imageUrl, "https://cdn.example.com/washington.jpg", "Ảnh ở trục variation thứ hai phải được giữ lại cho mọi số lượng");
 });
+
+test("14. WooCommerce variation forms preserve verified SKU combinations", () => {
+  const variationRows = [
+    {
+      attributes: { "attribute_pa_fit-type": "adult", "attribute_pa_size": "s" },
+      display_price: 59.99,
+      image: { full_src: "https://shop.example.com/adult-s.webp" },
+      is_in_stock: true,
+      is_purchasable: true,
+      sku: "JERSEY-01",
+      variation_id: 24969
+    },
+    {
+      attributes: { "attribute_pa_fit-type": "kids", "attribute_pa_size": "m" },
+      display_price: 54.99,
+      image: { full_src: "https://shop.example.com/kids-m.webp" },
+      is_in_stock: true,
+      is_purchasable: true,
+      sku: "JERSEY-01",
+      variation_id: 24970
+    }
+  ];
+  const encodedRows = JSON.stringify(variationRows).replace(/"/g, "&quot;");
+  const html = `
+    <script type="application/ld+json">{
+      "@context":"https://schema.org",
+      "@type":"Product",
+      "name":"City Connect Jersey",
+      "sku":"JERSEY-01",
+      "image":["https://shop.example.com/main.webp"],
+      "offers":{"@type":"AggregateOffer","lowPrice":"54.99","highPrice":"59.99","priceCurrency":"USD"}
+    }</script>
+    <label for="pa_fit-type">Fit Type</label>
+    <select id="pa_fit-type" name="attribute_pa_fit-type">
+      <option value="">Choose an option</option><option value="adult">Adult</option><option value="kids">Kids</option>
+    </select>
+    <label for="pa_size">Size</label>
+    <select id="pa_size" name="attribute_pa_size">
+      <option value="">Choose an option</option><option value="s">S</option><option value="m">M</option>
+    </select>
+    <form class="variations_form cart" data-product_id="24968" data-product_variations="${encodedRows}"></form>
+  `;
+
+  const parsed = parseHtmlProductMetadata(html);
+  assert.equal(parsed.commercePlatform, "WOOCOMMERCE");
+  assert.equal(parsed.title, "City Connect Jersey");
+  assert.equal(parsed.currency, "USD");
+  assert.equal(parsed.priceMin, 54.99);
+  assert.equal(parsed.priceMax, 59.99);
+  assert.equal(parsed.variants?.length, 2);
+  assert.equal(parsed.variants?.[0].id, "24969");
+  assert.equal(parsed.variants?.[0].title, "Adult / S");
+  assert.equal(parsed.variants?.[0].featured_image.src, "https://shop.example.com/adult-s.webp");
+  assert.deepEqual(parsed.options, [
+    { name: "Fit Type", values: ["Adult", "Kids"] },
+    { name: "Size", values: ["S", "M"] }
+  ]);
+});

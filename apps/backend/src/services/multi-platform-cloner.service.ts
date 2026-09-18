@@ -48,6 +48,25 @@ const getSourceInventoryState = (variant: any): { stock: number; available: bool
   return { stock, available, inventoryTracked };
 };
 
+// External WooCommerce stores expose retail prices rather than 1688 cost
+// prices. Use transparent reference rates only to make an editable draft
+// importable; the merchant can adjust the final selling price before publish.
+const EXTERNAL_CURRENCY_TO_VND: Record<string, number> = {
+  USD: 25_000,
+  EUR: 27_000,
+  GBP: 32_000,
+  CAD: 18_000,
+  AUD: 16_500,
+  CNY: 3_800,
+  VND: 1
+};
+
+const externalPriceToVnd = (amount: number, currency: string): number => {
+  const rate = EXTERNAL_CURRENCY_TO_VND[currency] || 0;
+  if (!rate || !Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.round(amount * rate);
+};
+
 type ExternalCustomizerMetadata = {
   customOptionGroups: SourceOptionGroup[];
   customizationEvidence: CustomizationEvidence;
@@ -1103,10 +1122,13 @@ export class MultiPlatformClonerService {
       throw new Error("EXTRACTION_FAILED: metadata công khai thiếu tiêu đề, ảnh hoặc giá xác thực");
     }
 
-    // HTML công khai không đủ để xác định giá vốn, tỷ giá hay giá bán mục tiêu.
-    // Giữ nguyên giá/currency nguồn, nhưng không dựng số VND để tránh tạo cảm giác đã xác minh.
+    const isWooCommerce = extracted.commercePlatform === "WOOCOMMERCE";
+    const canImportExternalDraft = isWooCommerce && hasDeclaredCurrency && priceMin > 0;
+    // WooCommerce exposes a declared retail price and currency. Convert it to
+    // a reference VND value so the product can be saved as an editable draft;
+    // this is not treated as 1688 cost or a final margin calculation.
     const costVND = 0;
-    const sellingVND = 0;
+    const sellingVND = canImportExternalDraft ? externalPriceToVnd(priceMin, currency) : 0;
     const margin = 0;
 
     // Dịch thuật tự động nếu là tiếng Trung hoặc tiếng Anh
@@ -1123,8 +1145,8 @@ export class MultiPlatformClonerService {
     if (Array.isArray(extracted.variants) && extracted.variants.length > 0) {
       variants = extracted.variants.map((v: any, idx: number) => {
         let vPrice = typeof v.price === "number" ? v.price : rawPrice;
-        if (vPrice > 1000 && currency === "USD") vPrice = vPrice / 100;
-        const vSellingVND = 0;
+        if (!v.priceIsMajorUnits && vPrice > 1000 && currency === "USD") vPrice = vPrice / 100;
+        const vSellingVND = canImportExternalDraft ? externalPriceToVnd(vPrice, currency) : 0;
         let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : primaryImage);
         if (typeof img === "string" && img.startsWith("//")) img = "https:" + img;
 
@@ -1188,12 +1210,16 @@ export class MultiPlatformClonerService {
       ],
       qualityScorePreview: [rawTitle, primaryImage, priceMin > 0, hasDeclaredCurrency, variants.length > 0]
         .filter(Boolean).length * 20,
-      extractionStatus: "UNVERIFIED",
+      extractionStatus: canImportExternalDraft ? "LIVE" : "UNVERIFIED",
       isDemo: false,
-      confidence: 0.55,
-      provenance: ["Public HTML metadata"],
+      confidence: canImportExternalDraft ? 0.9 : 0.55,
+      provenance: canImportExternalDraft
+        ? ["WooCommerce variation form", "Schema.org Product metadata"]
+        : ["Public HTML metadata"],
       warnings: [
-        "Giá vốn, giá bán VND và biên lợi nhuận chưa được tính từ metadata công khai",
+        ...(canImportExternalDraft
+          ? ["Giá VND là giá tham chiếu quy đổi từ giá bán nguồn; cần kiểm tra lại trước khi xuất bản"]
+          : ["Giá vốn, giá bán VND và biên lợi nhuận chưa được tính từ metadata công khai"]),
         ...(!hasDeclaredCurrency ? ["Đơn vị tiền tệ đang được suy đoán từ nền tảng và cần xác minh"] : []),
         "Cần kiểm tra lại giá, tồn kho và biến thể trước khi xuất bản"
       ]

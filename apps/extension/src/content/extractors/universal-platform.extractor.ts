@@ -279,6 +279,7 @@ export class UniversalPlatformExtractor {
       ".product-single__media img",
       ".product__modal-opener img",
       ".product-gallery img",
+      ".woocommerce-product-gallery img",
       ".pdp-image-gallery img",
       "[data-media-id] img",
       // Shopee
@@ -317,7 +318,7 @@ export class UniversalPlatformExtractor {
         // Bỏ qua nếu ảnh nằm trong vùng gợi ý, thanh toán, menu, footer
         if (el.closest?.(".recommendations, .related-products, .product-recommendations, footer, header, nav, .cart, .announcement-bar")) return;
         const img = el as HTMLImageElement;
-        const src = img.getAttribute("data-old-hires") || img.getAttribute("data-zoom-image") || img.getAttribute("data-src") || img.getAttribute("zoom-src") || img.src;
+        const src = img.getAttribute("data-old-hires") || img.getAttribute("data-large_image") || img.getAttribute("data-zoom-image") || img.getAttribute("data-src") || img.getAttribute("zoom-src") || img.src;
         addImg(src);
         const dynamic = img.getAttribute("data-a-dynamic-image");
         if (dynamic) {
@@ -1066,6 +1067,50 @@ export class UniversalPlatformExtractor {
       }
     } catch {}
 
+    // WooCommerce renders its sellable combinations in the variation form
+    // attribute instead of an application/json script.
+    if (parsedVariants.length === 0 && canTrustEmbeddedVariantArray) {
+      try {
+        const wooForm = document.querySelector("form.variations_form");
+        const raw = wooForm?.getAttribute("data-product_variations") || "";
+        const rows = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(rows) && rows.length > 0) {
+          const optionLabels = new Map<string, Map<string, string>>();
+          document.querySelectorAll("select[name^='attribute_']").forEach(selectElement => {
+            const select = selectElement as HTMLSelectElement;
+            const labels = new Map<string, string>();
+            Array.from(select.options).forEach(option => {
+              const label = (option.textContent || option.value).replace(/\s+/g, " ").trim();
+              if (option.value && label && !/^(?:choose|select|please select|chọn)/i.test(label)) labels.set(option.value, label);
+            });
+            if (select.name && labels.size > 0) optionLabels.set(select.name, labels);
+          });
+          parsedVariants = rows.map((row: any, index: number) => {
+            const attributes = row?.attributes && typeof row.attributes === "object" ? row.attributes : {};
+            const optionValues = Object.entries(attributes).map(([name, rawValue]) =>
+              optionLabels.get(name)?.get(String(rawValue)) || String(rawValue || "")
+            ).filter(Boolean);
+            const imageUrl = normalizePublicImageUrl(row?.image?.full_src || row?.image?.url || row?.image?.src);
+            const id = String(row?.variation_id || row?.sku || `woo-variation-${index + 1}`);
+            return {
+              ...row,
+              id,
+              sku: String(row?.sku || id),
+              title: optionValues.join(" / ") || String(row?.sku || `Biến thể ${index + 1}`),
+              option1: optionValues[0],
+              option2: optionValues[1],
+              option3: optionValues[2],
+              price: Number(row?.display_price) > 0 ? Number(row.display_price) : undefined,
+              priceIsMajorUnits: true,
+              stock: 0,
+              available: row?.is_in_stock !== false && row?.is_purchasable !== false,
+              featured_image: imageUrl ? { src: imageUrl } : undefined
+            };
+          });
+        }
+      } catch {}
+    }
+
     // 2. Thử quét từ thẻ select[name="id"] của Shopify form
     if (parsedVariants.length === 0) {
       try {
@@ -1118,7 +1163,7 @@ export class UniversalPlatformExtractor {
 
         parsedVariants.forEach((v: any) => {
           let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
-          if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+          if (!v.priceIsMajorUnits && vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
           const vPriceCNY = toCny(vPrice);
           let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
           if (img && img.startsWith("//")) img = "https:" + img;
@@ -1165,7 +1210,7 @@ export class UniversalPlatformExtractor {
 
         parsedVariants.forEach((v: any) => {
           let vPrice = typeof v.price === "number" ? v.price : basePriceCNY;
-          if (vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
+          if (!v.priceIsMajorUnits && vPrice >= 100 && currency === "USD") vPrice = Math.round((vPrice / 100) * 100) / 100;
           const vPriceCNY = toCny(vPrice);
           let img = v.featured_image?.src || (typeof v.featured_image === "string" ? v.featured_image : undefined);
           if (img && img.startsWith("//")) img = "https:" + img;
